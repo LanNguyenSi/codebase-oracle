@@ -16,7 +16,7 @@ const JSON_ALLOWLIST = new Set([
 
 export interface ScannedFile {
   absolutePath: string;
-  relativePath: string; // relative to pandoraRoot
+  relativePath: string; // relative to scanRoot
   repo: string;         // repo directory name
   language: string;     // extension without dot
   content: string;
@@ -28,18 +28,18 @@ export interface RepoInfo {
   fileCount: number;
 }
 
-export async function discoverRepos(pandoraRoot: string): Promise<RepoInfo[]> {
-  const entries = await readdir(pandoraRoot, { withFileTypes: true });
+export async function discoverRepos(scanRoot: string): Promise<RepoInfo[]> {
+  const entries = await readdir(scanRoot, { withFileTypes: true });
   const repos: RepoInfo[] = [];
 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".")) continue;
     // Check if it's a git repo (has .git dir or is a file like a submodule)
-    const gitPath = join(pandoraRoot, entry.name, ".git");
+    const gitPath = join(scanRoot, entry.name, ".git");
     try {
       await stat(gitPath);
-      repos.push({ name: entry.name, path: join(pandoraRoot, entry.name), fileCount: 0 });
+      repos.push({ name: entry.name, path: join(scanRoot, entry.name), fileCount: 0 });
     } catch {
       // Not a git repo, skip
     }
@@ -51,7 +51,7 @@ export async function discoverRepos(pandoraRoot: string): Promise<RepoInfo[]> {
 export async function* walkRepo(
   repoPath: string,
   repoName: string,
-  pandoraRoot: string,
+  scanRoot: string,
 ): AsyncGenerator<ScannedFile> {
   async function* walk(dir: string): AsyncGenerator<ScannedFile> {
     const entries = await readdir(dir, { withFileTypes: true });
@@ -80,7 +80,7 @@ export async function* walkRepo(
 
         yield {
           absolutePath: fullPath,
-          relativePath: relative(pandoraRoot, fullPath),
+          relativePath: relative(scanRoot, fullPath),
           repo: repoName,
           language: ext.slice(1),
           content,

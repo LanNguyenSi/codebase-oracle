@@ -6,16 +6,16 @@ describe("loadConfig", () => {
     const config = loadConfig();
     expect(config.embeddingModel).toBe("text-embedding-3-small");
     expect(config.vectorStoreType).toBe("directory");
-    expect(config.pandoraRoot).toContain("git/pandora");
+    expect(config.scanRoot).toContain("git");
   });
 
   it("accepts overrides", () => {
     const config = loadConfig({
-      pandoraRoot: "/custom/path",
+      scanRoot: "/custom/path",
       embeddingModel: "text-embedding-3-large",
       vectorStoreType: "memory",
     });
-    expect(config.pandoraRoot).toBe("/custom/path");
+    expect(config.scanRoot).toBe("/custom/path");
     expect(config.embeddingModel).toBe("text-embedding-3-large");
     expect(config.vectorStoreType).toBe("memory");
   });

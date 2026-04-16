@@ -1,7 +1,7 @@
 {
   "name": "codebase-oracle",
   "version": "0.1.0",
-  "description": "RAG-powered codebase Q&A for the Pandora ecosystem — LangChain + MCP server",
+  "description": "RAG-powered codebase Q&A for the multi-repo codebases — LangChain + MCP server",
   "type": "module",
   "bin": {
     "codebase-oracle": "./dist/index.js"

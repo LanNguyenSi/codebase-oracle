@@ -26,7 +26,7 @@ function fakeEmbeddings(): Embeddings {
 }
 
 const testConfig: Config = {
-  pandoraRoot: "/tmp/test",
+  scanRoot: "/tmp/test",
   dataDir: "/tmp/oracle-test-data",
   embeddingModel: "test",
   llmModel: "test",

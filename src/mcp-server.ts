@@ -30,7 +30,7 @@ function getStore() {
 
 server.tool(
   "oracle_query",
-  "Ask a natural-language question about the Pandora codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
+  "Ask a natural-language question about the indexed codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
   {
     question: z.string().describe("Natural language question about the codebase"),
     repo: z.string().optional().describe("Optional: filter to a specific repo name (e.g. 'agent-tasks')"),
@@ -72,10 +72,10 @@ server.tool(
 
 server.tool(
   "oracle_list_repos",
-  "List all indexed repos in the Pandora ecosystem with basic stats.",
+  "List all indexed repos in the indexed ecosystem with basic stats.",
   {},
   async () => {
-    const repos = await discoverRepos(config.pandoraRoot);
+    const repos = await discoverRepos(config.scanRoot);
     const text = repos
       .map((r) => `- ${r.name} (${r.path})`)
       .join("\n");

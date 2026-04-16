@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const configSchema = z.object({
   // Paths
-  pandoraRoot: z.string().default(process.env.HOME + "/git/pandora"),
+  scanRoot: z.string().default(process.env.HOME + "/git"),
   dataDir: z.string().default(process.env.HOME + "/.codebase-oracle"),
 
   // Embeddings
@@ -21,7 +21,7 @@ export type Config = z.infer<typeof configSchema>;
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
   return configSchema.parse({
-    pandoraRoot: process.env.PANDORA_ROOT,
+    scanRoot: process.env.ORACLE_SCAN_ROOT,
     dataDir: process.env.ORACLE_DATA_DIR,
     openaiApiKey: process.env.OPENAI_API_KEY,
     embeddingModel: process.env.ORACLE_EMBEDDING_MODEL,

@@ -12,18 +12,18 @@ const program = new Command();
 
 program
   .name("codebase-oracle")
-  .description("RAG-powered codebase Q&A for the Pandora ecosystem")
+  .description("RAG-powered codebase Q&A for the your multi-repo codebase")
   .version("0.1.0");
 
 program
   .command("index")
-  .description("Index all repos under the Pandora root")
-  .option("-p, --path <path>", "Path to Pandora root")
+  .description("Index all repos under the scan root")
+  .option("-p, --path <path>", "Path to scan root")
   .action(async (opts) => {
-    const config = loadConfig({ pandoraRoot: opts.path });
-    console.log(`Scanning repos in ${config.pandoraRoot}...`);
+    const config = loadConfig({ scanRoot: opts.path });
+    console.log(`Scanning repos in ${config.scanRoot}...`);
 
-    const repos = await discoverRepos(config.pandoraRoot);
+    const repos = await discoverRepos(config.scanRoot);
     console.log(`Found ${repos.length} repos`);
 
     const embeddings = createEmbeddings(config);
@@ -34,7 +34,7 @@ program
       let repoFiles = 0;
       process.stdout.write(`  ${repo.name}...`);
 
-      for await (const file of walkRepo(repo.path, repo.name, config.pandoraRoot)) {
+      for await (const file of walkRepo(repo.path, repo.name, config.scanRoot)) {
         const chunks = await splitFile(file);
         allDocs.push(...chunks);
         repoFiles++;

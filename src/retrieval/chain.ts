@@ -6,7 +6,7 @@ import type { Document } from "@langchain/core/documents";
 import type { Config } from "../config.js";
 import type { VectorStoreWrapper } from "../store/vector-store.js";
 
-const SYSTEM_PROMPT = `You are Codebase Oracle, an expert on the Pandora software ecosystem.
+const SYSTEM_PROMPT = `You are Codebase Oracle, an expert on the indexed multi-repo codebase.
 You answer questions about the codebase using the retrieved source code and documentation chunks below.
 
 Rules:

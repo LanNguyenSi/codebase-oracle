@@ -1,13 +1,13 @@
 # codebase-oracle
 
-RAG-powered codebase Q&A for the Pandora ecosystem. Ask natural-language questions about ~50 repos and get answers with source citations — powered by LangChain.js.
+RAG-powered codebase Q&A for multi-repo projects. Ask natural-language questions about your codebase and get answers with source citations — powered by LangChain.js.
 
 [![CI](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml/badge.svg)](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml)
 
 ## How it works
 
 ```
-~/git/pandora/**/*.ts,md,prisma
+~/git/**/*.ts,md,prisma
         |
         v
    [Scanner]  ── walk repos, filter files
@@ -43,11 +43,11 @@ npm install
 # Set your API key
 export OPENAI_API_KEY=sk-...
 
-# Index all repos (takes 2-5 min depending on repo count)
+# Index all repos under ~/git (default)
 npm run index
 
 # Ask a question
-npm run query -- "how does task_finish handle autoMerge?"
+npm run query -- "how does the authentication middleware work?"
 ```
 
 ## CLI reference
@@ -55,18 +55,18 @@ npm run query -- "how does task_finish handle autoMerge?"
 ### `index` — Build the vector index
 
 ```bash
-npm run index                           # Index ~/git/pandora (default)
-npm run index -- --path /other/root     # Custom root path
+npm run index                           # Index ~/git (default scan root)
+npm run index -- --path /path/to/repos  # Custom root path
 ```
 
-Scans all git repos, loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
+Scans all git repos under the root directory. Loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
 
 ### `query` — Ask a question
 
 ```bash
 npm run query -- "what is the performPrMerge helper?"
-npm run query -- -r agent-tasks "how does the audit system work?"
-npm run query -- -k 20 "list all MCP tools"
+npm run query -- -r my-repo "how does the audit system work?"
+npm run query -- -k 20 "list all API endpoints"
 ```
 
 | Flag | Description |
@@ -78,7 +78,7 @@ npm run query -- -k 20 "list all MCP tools"
 
 ```bash
 npm run dev -- search "evaluateTransitionRules"
-npm run dev -- search -r agent-tasks "Prisma schema"
+npm run dev -- search -r my-repo "Prisma schema"
 ```
 
 Returns matching code chunks without LLM interpretation.
@@ -105,7 +105,7 @@ claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
 |----------|----------|---------|-------------|
 | `OPENAI_API_KEY` | Yes | — | OpenAI API key for embeddings |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |
-| `PANDORA_ROOT` | No | `~/git/pandora` | Root directory to scan for repos |
+| `ORACLE_SCAN_ROOT` | No | `~/git` | Root directory to scan for git repos |
 | `ORACLE_DATA_DIR` | No | `~/.codebase-oracle` | Directory for persisted index data |
 | `ORACLE_EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model |
 | `ORACLE_LLM_MODEL` | No | `claude-sonnet-4-20250514` | LLM model for answer generation |
