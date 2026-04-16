@@ -15,6 +15,12 @@ export interface StoredVector {
   doc: { pageContent: string; metadata: Record<string, unknown> };
 }
 
+export interface IndexedRepo {
+  repo: string;
+  chunkCount: number;
+  fileCount: number;
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
@@ -28,6 +34,27 @@ function cosineSimilarity(a: number[], b: number[]): number {
 export interface VectorStoreWrapper {
   addDocuments(docs: Document[]): Promise<void>;
   similaritySearch(query: string, k?: number, filter?: Record<string, string>): Promise<Document[]>;
+  listRepos(): IndexedRepo[];
+}
+
+export function aggregateIndexedRepos(vectors: StoredVector[]): IndexedRepo[] {
+  const stats = new Map<string, { chunks: number; files: Set<string> }>();
+
+  for (const vector of vectors) {
+    const metadata = vector.doc.metadata as { repo?: unknown; filePath?: unknown };
+    const repo = typeof metadata.repo === "string" ? metadata.repo : null;
+    if (!repo) continue;
+
+    const filePath = typeof metadata.filePath === "string" ? metadata.filePath : null;
+    const entry = stats.get(repo) ?? { chunks: 0, files: new Set<string>() };
+    entry.chunks++;
+    if (filePath) entry.files.add(filePath);
+    stats.set(repo, entry);
+  }
+
+  return Array.from(stats.entries())
+    .map(([repo, s]) => ({ repo, chunkCount: s.chunks, fileCount: s.files.size }))
+    .sort((a, b) => a.repo.localeCompare(b.repo));
 }
 
 function getEmbeddingsPath(config: Config): string {
@@ -242,7 +269,15 @@ export async function createVectorStore(
         (s) => new Document({ pageContent: s.doc.pageContent, metadata: s.doc.metadata }),
       );
     },
+
+    listRepos() {
+      return aggregateIndexedRepos(vectors);
+    },
   };
+}
+
+export async function listIndexedRepos(config: Config): Promise<IndexedRepo[]> {
+  return aggregateIndexedRepos(await loadStoredVectors(config));
 }
 
 export async function persistIndex(

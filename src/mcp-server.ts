@@ -7,7 +7,6 @@ import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
-import { discoverRepos } from "./ingest/scanner.js";
 
 loadEnvFromFile();
 
@@ -75,18 +74,29 @@ server.tool(
 
 server.tool(
   "oracle_list_repos",
-  "List all indexed repos in the indexed ecosystem with basic stats.",
+  "List repos actually present in the vector index, with chunk and file counts. Reflects what oracle_search / oracle_query can answer over — not just what exists on disk.",
   {},
   async () => {
-    const repos = await discoverRepos(config.scanRoot);
+    const store = await getStore();
+    const repos = store.listRepos();
+
+    if (repos.length === 0) {
+      return {
+        content: [{
+          type: "text" as const,
+          text: "No repos in the index yet. Run `npm run index` to build it.",
+        }],
+      };
+    }
+
     const text = repos
-      .map((r) => `- ${r.name} (${r.path})`)
+      .map((r) => `- ${r.repo} — ${r.chunkCount} chunks across ${r.fileCount} files`)
       .join("\n");
 
     return {
       content: [{
         type: "text" as const,
-        text: `${repos.length} repos found:\n${text}`,
+        text: `${repos.length} indexed repos:\n${text}`,
       }],
     };
   },

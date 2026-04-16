@@ -105,7 +105,7 @@ From that point on, any Claude Code session on the same machine can call the too
 |------|-------------|
 | `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
 | `oracle_search` | Raw vector similarity search, returns code chunks |
-| `oracle_list_repos` | List all indexed repos |
+| `oracle_list_repos` | List repos actually present in the index, with chunk and file counts |
 
 ### Example agent prompts
 
@@ -149,7 +149,7 @@ npm run index                           # Index ~/git (default scan root)
 npm run index -- --path /path/to/repos  # Custom root path
 ```
 
-Scans all git repos under the root directory. Loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
+Scans all git repos under the root directory. By default loads JS/TS sources (`.ts`, `.tsx`, `.js`, `.jsx`, `.vue`), docs (`.md`), sibling languages (`.py`, `.php`, `.go`, `.rs`, `.java`), config/infra (`.yaml`, `.yml`, `.toml`, `.sql`, `.prisma`, `.sh`), and the `package.json` / `tsconfig.json` manifests. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200 KB. Override the extension allowlist with `ORACLE_INCLUDE_EXTENSIONS` (see below).
 
 Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
 
@@ -169,6 +169,7 @@ Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files ar
 | `ORACLE_EMBEDDING_MODEL` | No | `text-embedding-3-small` (OpenAI) / `nomic-embed-text` (Ollama) | Embedding model name for selected provider |
 | `ORACLE_LLM_MODEL` | No | `claude-sonnet-4-20250514` (`auto`/Anthropic), `gpt-4o-mini` (OpenAI), `llama3.1` (Ollama) | LLM model name for selected provider |
 | `ORACLE_VECTOR_STORE` | No | `directory` | `directory` (persisted) or `memory` (ephemeral) |
+| `ORACLE_INCLUDE_EXTENSIONS` | No | _see scanner defaults_ | Comma-separated extension allowlist, replaces defaults entirely (e.g. `.ts,.py,.rb`). Leading dot optional. If you include `.json`, the built-in manifest filter (only `package.json`/`tsconfig.json`) is bypassed — you'll get every matching JSON file. |
 
 ## Development
 
