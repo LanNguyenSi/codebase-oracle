@@ -7,8 +7,13 @@ const SKIP_DIRS = new Set([
   "coverage", ".nyc_output", "__pycache__", ".venv", "vendor",
 ]);
 
-const INCLUDE_EXTENSIONS = new Set([
+export const DEFAULT_INCLUDE_EXTENSIONS: ReadonlySet<string> = new Set([
+  // JS / TS ecosystem
   ".ts", ".tsx", ".js", ".jsx", ".md", ".prisma", ".json",
+  // Common sibling languages across the indexed repos
+  ".py", ".php", ".go", ".rs", ".java", ".vue",
+  // Config / infra / scripts
+  ".yaml", ".yml", ".sh", ".toml", ".sql",
 ]);
 
 const JSON_ALLOWLIST = new Set([
@@ -50,11 +55,22 @@ export async function discoverRepos(scanRoot: string): Promise<RepoInfo[]> {
   return repos.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+export interface WalkRepoOptions {
+  extensions?: ReadonlySet<string>;
+}
+
 export async function* walkRepo(
   repoPath: string,
   repoName: string,
   scanRoot: string,
+  options?: WalkRepoOptions,
 ): AsyncGenerator<ScannedFile> {
+  const extensions = options?.extensions ?? DEFAULT_INCLUDE_EXTENSIONS;
+  // Lockfiles + per-package manifests explode the index, so we only whitelist
+  // a couple by name when the user hasn't taken control of the extension list.
+  // An explicit override means the user knows what they're asking for.
+  const applyJsonAllowlist = !options?.extensions;
+
   async function* walk(dir: string): AsyncGenerator<ScannedFile> {
     const entries = await readdir(dir, { withFileTypes: true });
 
@@ -70,10 +86,9 @@ export async function* walkRepo(
       if (!entry.isFile()) continue;
 
       const ext = extname(entry.name);
-      if (!INCLUDE_EXTENSIONS.has(ext)) continue;
+      if (!extensions.has(ext)) continue;
 
-      // Only allow specific JSON files
-      if (ext === ".json" && !JSON_ALLOWLIST.has(entry.name)) continue;
+      if (ext === ".json" && applyJsonAllowlist && !JSON_ALLOWLIST.has(entry.name)) continue;
 
       try {
         const content = await readFile(fullPath, "utf-8");

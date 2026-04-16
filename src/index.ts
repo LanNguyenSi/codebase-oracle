@@ -83,13 +83,22 @@ program
     let newFiles = 0;
     let reusedChunks = 0;
 
+    const walkOptions = config.includeExtensions
+      ? { extensions: new Set(config.includeExtensions) }
+      : undefined;
+    if (walkOptions) {
+      console.log(
+        `Using ORACLE_INCLUDE_EXTENSIONS override: ${config.includeExtensions!.join(", ")}`,
+      );
+    }
+
     for (const repo of repos) {
       let repoFiles = 0;
       let repoChunks = 0;
       let repoReusedFiles = 0;
       process.stdout.write(`  ${repo.name}...`);
 
-      for await (const file of walkRepo(repo.path, repo.name, config.scanRoot)) {
+      for await (const file of walkRepo(repo.path, repo.name, config.scanRoot, walkOptions)) {
         repoFiles++;
         totalFiles++;
 

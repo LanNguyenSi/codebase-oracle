@@ -22,6 +22,9 @@ const configSchema = z.object({
 
   // Vector store
   vectorStoreType: z.enum(["memory", "directory"]).default("directory"),
+
+  // Ingest — optional override of the file-extension allowlist
+  includeExtensions: z.array(z.string().startsWith(".")).optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -56,6 +59,18 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     llmModel: process.env.ORACLE_LLM_MODEL ?? defaultLlmModel,
     vectorStoreType: process.env.ORACLE_VECTOR_STORE,
+    includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),
     ...overrides,
   });
+}
+
+function parseExtensionsList(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((s) => (s.startsWith(".") ? s : `.${s}`))
+    .filter((s) => s.length > 1);
+  return parts.length > 0 ? parts : undefined;
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { Document } from "@langchain/core/documents";
-import { createVectorStore } from "../../src/store/vector-store.js";
+import { aggregateIndexedRepos, createVectorStore, type StoredVector } from "../../src/store/vector-store.js";
 import type { Config } from "../../src/config.js";
 import type { Embeddings } from "@langchain/core/embeddings";
 
@@ -80,5 +80,44 @@ describe("createVectorStore", () => {
 
     const results = await store.similaritySearch("chunk", 3);
     expect(results).toHaveLength(3);
+  });
+
+  it("listRepos reports chunk and file counts per repo", async () => {
+    const store = await createVectorStore(fakeEmbeddings(), testConfig);
+
+    await store.addDocuments([
+      new Document({ pageContent: "a", metadata: { repo: "auth", filePath: "auth/login.ts" } }),
+      new Document({ pageContent: "b", metadata: { repo: "auth", filePath: "auth/login.ts" } }),
+      new Document({ pageContent: "c", metadata: { repo: "auth", filePath: "auth/middleware.ts" } }),
+      new Document({ pageContent: "d", metadata: { repo: "billing", filePath: "billing/pay.ts" } }),
+    ]);
+
+    expect(store.listRepos()).toEqual([
+      { repo: "auth", chunkCount: 3, fileCount: 2 },
+      { repo: "billing", chunkCount: 1, fileCount: 1 },
+    ]);
+  });
+});
+
+describe("aggregateIndexedRepos", () => {
+  function vec(repo: string | undefined, filePath?: string): StoredVector {
+    const metadata: Record<string, unknown> = {};
+    if (repo !== undefined) metadata.repo = repo;
+    if (filePath !== undefined) metadata.filePath = filePath;
+    return { embedding: [0], doc: { pageContent: "x", metadata } };
+  }
+
+  it("returns [] for empty input", () => {
+    expect(aggregateIndexedRepos([])).toEqual([]);
+  });
+
+  it("skips vectors without a repo", () => {
+    expect(aggregateIndexedRepos([vec(undefined, "x.ts")])).toEqual([]);
+  });
+
+  it("counts a chunk without filePath as a chunk, not a file", () => {
+    expect(aggregateIndexedRepos([vec("r"), vec("r", "x.ts")])).toEqual([
+      { repo: "r", chunkCount: 2, fileCount: 1 },
+    ]);
   });
 });

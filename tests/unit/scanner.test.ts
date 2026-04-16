@@ -80,6 +80,82 @@ describe("walkRepo", () => {
     }
   });
 
+  it("includes python and yaml files by default", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "poly-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "main.py"), "print('hi')");
+      await writeFile(join(repo, "docker-compose.yml"), "services: {}");
+      await writeFile(join(repo, "Cargo.toml"), "[package]");
+      await writeFile(join(repo, "secret.pem"), "-----BEGIN KEY-----");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "poly-repo", root)) {
+        files.push(file.relativePath);
+      }
+
+      expect(files.sort()).toEqual([
+        "poly-repo/Cargo.toml",
+        "poly-repo/docker-compose.yml",
+        "poly-repo/main.py",
+      ]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("bypasses the JSON manifest allowlist when override includes .json", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "json-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "package.json"), "{}");
+      await writeFile(join(repo, "openapi.json"), "{}");
+
+      const defaultFiles: string[] = [];
+      for await (const file of walkRepo(repo, "json-repo", root)) {
+        defaultFiles.push(file.relativePath);
+      }
+      expect(defaultFiles).toEqual(["json-repo/package.json"]);
+
+      const overrideFiles: string[] = [];
+      for await (const file of walkRepo(repo, "json-repo", root, {
+        extensions: new Set([".json"]),
+      })) {
+        overrideFiles.push(file.relativePath);
+      }
+      expect(overrideFiles.sort()).toEqual([
+        "json-repo/openapi.json",
+        "json-repo/package.json",
+      ]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("honours the extensions override (only .rb included)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "ruby-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "app.rb"), "puts 'hi'");
+      await writeFile(join(repo, "ignored.ts"), "const x = 1;");
+      await writeFile(join(repo, "README.md"), "# Ruby");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "ruby-repo", root, {
+        extensions: new Set([".rb"]),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["ruby-repo/app.rb"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("includes metadata in scanned files", async () => {
     const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
     const repo = join(root, "my-repo");
