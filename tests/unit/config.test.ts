@@ -2,11 +2,14 @@ import { describe, it, expect } from "vitest";
 import { loadConfig } from "../../src/config.js";
 
 describe("loadConfig", () => {
-  it("applies defaults when no env vars set", () => {
-    const config = loadConfig();
+  it("applies defaults for optional fields", () => {
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
     expect(config.embeddingModel).toBe("text-embedding-3-small");
     expect(config.vectorStoreType).toBe("directory");
-    expect(config.scanRoot).toContain("git");
+  });
+
+  it("throws when scanRoot is not provided", () => {
+    expect(() => loadConfig()).toThrow();
   });
 
   it("accepts overrides", () => {
@@ -21,9 +24,7 @@ describe("loadConfig", () => {
   });
 
   it("preserves optional keys as undefined when not set", () => {
-    const config = loadConfig();
-    // These depend on env vars, which may or may not be set
-    // Just verify the shape is valid
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
     expect(typeof config.openaiApiKey === "string" || config.openaiApiKey === undefined).toBe(true);
     expect(typeof config.anthropicApiKey === "string" || config.anthropicApiKey === undefined).toBe(true);
   });

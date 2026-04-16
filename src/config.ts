@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const configSchema = z.object({
   // Paths
-  scanRoot: z.string().default(process.env.HOME + "/git"),
+  scanRoot: z.string().min(1, "ORACLE_SCAN_ROOT is required — set it to the directory containing your git repos"),
   dataDir: z.string().default(process.env.HOME + "/.codebase-oracle"),
 
   // Embeddings
