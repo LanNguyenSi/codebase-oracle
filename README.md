@@ -22,16 +22,17 @@ RAG-powered codebase Q&A for multi-repo projects. Ask natural-language questions
  [Vector Store] ── cosine similarity search (in-memory, persisted to disk)
         |
         v
-  [RAG Chain]  ── retrieved chunks + question → Claude/OpenAI → cited answer
+  [RAG Chain]  ── retrieved chunks + question → Claude/OpenAI/Ollama → cited answer
 ```
 
-The index pipeline scans all git repos under a root directory, splits source files into chunks with language-aware boundaries, embeds them via OpenAI, and stores the vectors locally. Queries retrieve the most relevant chunks and feed them to an LLM for answer generation with source citations.
+The index pipeline scans all git repos under a root directory, splits source files into chunks with language-aware boundaries, embeds them via OpenAI-compatible APIs (OpenAI or Ollama), and stores the vectors locally. Queries retrieve the most relevant chunks and feed them to an LLM for answer generation with source citations.
 
 ## Prerequisites
 
 - Node.js 22+
-- `OPENAI_API_KEY` (required for embeddings)
-- `ANTHROPIC_API_KEY` (optional, for Claude-powered answers — falls back to OpenAI)
+- `OPENAI_API_KEY` (required if `ORACLE_EMBEDDING_PROVIDER=openai`)
+- `ANTHROPIC_API_KEY` (optional, for Claude-powered answers)
+- Running Ollama locally if you want `ORACLE_*_PROVIDER=ollama`
 
 ## Quick start
 
@@ -48,6 +49,20 @@ npm run index
 
 # Ask a question
 npm run query -- "how does the authentication middleware work?"
+```
+
+### Ollama as provider
+
+```bash
+# Route embeddings + LLM through Ollama's OpenAI-compatible API
+export ORACLE_EMBEDDING_PROVIDER=ollama
+export ORACLE_LLM_PROVIDER=ollama
+export ORACLE_OLLAMA_BASE_URL=http://localhost:11434/v1
+export OLLAMA_API_KEY=ollama
+
+# Pick local models available in your Ollama instance
+export ORACLE_EMBEDDING_MODEL=nomic-embed-text
+export ORACLE_LLM_MODEL=llama3.1
 ```
 
 ## CLI reference
@@ -103,12 +118,17 @@ claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OPENAI_API_KEY` | Yes | — | OpenAI API key for embeddings |
+| `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama` |
+| `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `ollama` |
+| `OPENAI_API_KEY` | Conditionally | — | Required when `ORACLE_EMBEDDING_PROVIDER=openai`; also used for OpenAI LLM |
+| `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |
+| `OLLAMA_API_KEY` | No | — | Optional API key for Ollama provider (defaults to `ollama`) |
+| `ORACLE_OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible base URL |
 | `ORACLE_SCAN_ROOT` | No | `~/git` | Root directory to scan for git repos |
 | `ORACLE_DATA_DIR` | No | `~/.codebase-oracle` | Directory for persisted index data |
-| `ORACLE_EMBEDDING_MODEL` | No | `text-embedding-3-small` | OpenAI embedding model |
-| `ORACLE_LLM_MODEL` | No | `claude-sonnet-4-20250514` | LLM model for answer generation |
+| `ORACLE_EMBEDDING_MODEL` | No | `text-embedding-3-small` (OpenAI) / `nomic-embed-text` (Ollama) | Embedding model name for selected provider |
+| `ORACLE_LLM_MODEL` | No | `claude-sonnet-4-20250514` (`auto`/Anthropic), `gpt-4o-mini` (OpenAI), `llama3.1` (Ollama) | LLM model name for selected provider |
 | `ORACLE_VECTOR_STORE` | No | `directory` | `directory` (persisted) or `memory` (ephemeral) |
 
 ## Development
@@ -122,7 +142,7 @@ npx tsc --noEmit       # Type check only
 ## Tech stack
 
 - **LangChain.js** — document splitting, embeddings orchestration, RAG chain
-- **OpenAI** — text-embedding-3-small for vector embeddings
+- **OpenAI-compatible APIs** — OpenAI and Ollama for embeddings/LLM
 - **Claude** (Anthropic) — answer generation with source citations
 - **MCP SDK** — Model Context Protocol server for Claude Code integration
 - **TypeScript** + **Zod** — type-safe configuration and validation

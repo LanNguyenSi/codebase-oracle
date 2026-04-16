@@ -20,6 +20,7 @@ Context chunks:
 {context}`;
 
 const USER_PROMPT = `{question}`;
+const OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini";
 
 export interface QueryResult {
   answer: string;
@@ -54,20 +55,7 @@ export async function queryCodebase(
     .join("\n\n");
 
   // Build LLM
-  const llm = config.anthropicApiKey
-    ? new ChatAnthropic({
-        anthropicApiKey: config.anthropicApiKey,
-        modelName: config.llmModel,
-        temperature: 0,
-        maxTokens: 4096,
-      })
-    : config.openaiApiKey
-      ? new ChatOpenAI({
-          openAIApiKey: config.openaiApiKey,
-          modelName: "gpt-4o-mini",
-          temperature: 0,
-        })
-      : null;
+  const llm = createLlm(config);
 
   if (!llm) {
     // No LLM available — return raw chunks
@@ -96,6 +84,72 @@ export async function queryCodebase(
     answer,
     sources: extractSources(docs),
   };
+}
+
+function ensureV1BaseUrl(baseUrl: string): string {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+}
+
+function createAnthropicLlm(config: Config) {
+  return new ChatAnthropic({
+    anthropicApiKey: config.anthropicApiKey!,
+    modelName: config.llmModel,
+    temperature: 0,
+    maxTokens: 4096,
+  });
+}
+
+function createOpenAILlm(config: Config, modelName: string) {
+  return new ChatOpenAI({
+    openAIApiKey: config.openaiApiKey!,
+    modelName,
+    temperature: 0,
+    configuration: config.openaiBaseUrl
+      ? { baseURL: config.openaiBaseUrl }
+      : undefined,
+  });
+}
+
+function createOllamaLlm(config: Config) {
+  return new ChatOpenAI({
+    apiKey: config.ollamaApiKey ?? config.openaiApiKey ?? "ollama",
+    modelName: config.llmModel,
+    temperature: 0,
+    configuration: {
+      baseURL: ensureV1BaseUrl(config.ollamaBaseUrl),
+    },
+  });
+}
+
+function createLlm(config: Config) {
+  if (config.llmProvider === "anthropic") {
+    if (!config.anthropicApiKey) {
+      throw new Error("ORACLE_LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.");
+    }
+    return createAnthropicLlm(config);
+  }
+
+  if (config.llmProvider === "openai") {
+    if (!config.openaiApiKey) {
+      throw new Error("ORACLE_LLM_PROVIDER=openai requires OPENAI_API_KEY.");
+    }
+    return createOpenAILlm(config, config.llmModel);
+  }
+
+  if (config.llmProvider === "ollama") {
+    return createOllamaLlm(config);
+  }
+
+  if (config.anthropicApiKey) {
+    return createAnthropicLlm(config);
+  }
+
+  if (config.openaiApiKey) {
+    return createOpenAILlm(config, OPENAI_AUTO_FALLBACK_MODEL);
+  }
+
+  return null;
 }
 
 function extractSources(docs: Document[]) {
