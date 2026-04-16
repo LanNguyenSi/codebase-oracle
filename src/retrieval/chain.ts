@@ -1,0 +1,122 @@
+import { ChatAnthropic } from "@langchain/anthropic";
+import { ChatOpenAI } from "@langchain/openai";
+import { StringOutputParser } from "@langchain/core/output_parsers";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+import type { Document } from "@langchain/core/documents";
+import type { Config } from "../config.js";
+import type { VectorStoreWrapper } from "../store/vector-store.js";
+
+const SYSTEM_PROMPT = `You are Codebase Oracle, an expert on the Pandora software ecosystem.
+You answer questions about the codebase using the retrieved source code and documentation chunks below.
+
+Rules:
+- Base your answers ONLY on the provided context chunks. If the context doesn't contain enough information, say so.
+- Always cite sources: include the file path for every claim (e.g. "In \`agent-tasks/backend/src/routes/tasks.ts\`...").
+- When showing code, reference the repo and file path.
+- Be concise and technical. The user is a developer.
+- If asked about cross-repo relationships, explain how the pieces connect.
+
+Context chunks:
+{context}`;
+
+const USER_PROMPT = `{question}`;
+
+export interface QueryResult {
+  answer: string;
+  sources: Array<{ repo: string; filePath: string; snippet: string }>;
+}
+
+export async function queryCodebase(
+  question: string,
+  vectorStore: VectorStoreWrapper,
+  config: Config,
+  options?: { repo?: string; limit?: number },
+): Promise<QueryResult> {
+  const k = options?.limit ?? 12;
+  const filter = options?.repo ? { repo: options.repo } : undefined;
+
+  // Retrieve relevant chunks
+  const docs = await vectorStore.similaritySearch(question, k, filter);
+
+  if (docs.length === 0) {
+    return {
+      answer: "No relevant code found in the index. Try re-indexing or rephrasing your question.",
+      sources: [],
+    };
+  }
+
+  // Format context
+  const context = docs
+    .map((doc, i) => {
+      const { repo, filePath } = doc.metadata as { repo: string; filePath: string };
+      return `[${i + 1}] ${filePath} (${repo}):\n\`\`\`\n${doc.pageContent}\n\`\`\``;
+    })
+    .join("\n\n");
+
+  // Build LLM
+  const llm = config.anthropicApiKey
+    ? new ChatAnthropic({
+        anthropicApiKey: config.anthropicApiKey,
+        modelName: config.llmModel,
+        temperature: 0,
+        maxTokens: 4096,
+      })
+    : config.openaiApiKey
+      ? new ChatOpenAI({
+          openAIApiKey: config.openaiApiKey,
+          modelName: "gpt-4o-mini",
+          temperature: 0,
+        })
+      : null;
+
+  if (!llm) {
+    // No LLM available — return raw chunks
+    return {
+      answer: docs
+        .map((doc) => {
+          const { filePath } = doc.metadata as { filePath: string };
+          return `### ${filePath}\n\`\`\`\n${doc.pageContent.slice(0, 500)}\n\`\`\``;
+        })
+        .join("\n\n"),
+      sources: extractSources(docs),
+    };
+  }
+
+  // RAG chain
+  const prompt = ChatPromptTemplate.fromMessages([
+    ["system", SYSTEM_PROMPT],
+    ["human", USER_PROMPT],
+  ]);
+
+  const chain = prompt.pipe(llm).pipe(new StringOutputParser());
+
+  const answer = await chain.invoke({ context, question });
+
+  return {
+    answer,
+    sources: extractSources(docs),
+  };
+}
+
+function extractSources(docs: Document[]) {
+  const seen = new Set<string>();
+  return docs
+    .map((doc) => {
+      const { repo, filePath } = doc.metadata as { repo: string; filePath: string };
+      const key = filePath;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return { repo, filePath, snippet: doc.pageContent.slice(0, 200) };
+    })
+    .filter((s): s is NonNullable<typeof s> => s !== null);
+}
+
+export async function searchCodebase(
+  query: string,
+  vectorStore: VectorStoreWrapper,
+  options?: { repo?: string; limit?: number },
+): Promise<Document[]> {
+  const k = options?.limit ?? 10;
+  const filter = options?.repo ? { repo: options.repo } : undefined;
+  return vectorStore.similaritySearch(query, k, filter);
+}

@@ -1,0 +1,44 @@
+{
+  "name": "codebase-oracle",
+  "version": "0.1.0",
+  "description": "RAG-powered codebase Q&A for the Pandora ecosystem — LangChain + MCP server",
+  "type": "module",
+  "bin": {
+    "codebase-oracle": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "index": "tsx src/index.ts index",
+    "query": "tsx src/index.ts query",
+    "mcp": "tsx src/mcp-server.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github2:LanNguyenSi/codebase-oracle.git"
+  },
+  "keywords": [
+    "rag",
+    "langchain",
+    "mcp",
+    "codebase",
+    "search"
+  ],
+  "author": "LanNguyenSi",
+  "license": "MIT",
+  "dependencies": {
+    "@langchain/anthropic": "^1.3.26",
+    "@langchain/core": "^1.1.40",
+    "@langchain/openai": "^1.4.4",
+    "@langchain/textsplitters": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "commander": "^14.0.3",
+    "langchain": "^1.3.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2"
+  }
+}
