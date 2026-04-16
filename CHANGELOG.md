@@ -47,12 +47,25 @@ on their own.
   `oracle_list_repos`.
 - Lazy store initialization so registration is cheap and the first
   tool call triggers index load.
+- `oracle_list_repos` reports repos actually present in the vector
+  index with chunk and file counts (backed by
+  `VectorStoreWrapper.listRepos()`), not just directories on disk.
 
 #### HTTP MCP server (`src/http-server.ts`)
 - Streamable HTTP MCP transport, bound to `127.0.0.1:3100` by default
   (override with `ORACLE_HTTP_PORT`).
 - Same three tools as the stdio server, shared singleton.
 - Health endpoint at `GET /health`.
+
+#### Scanner defaults
+- Default file-extension allowlist covers JS/TS plus sibling languages
+  (`.py`, `.php`, `.go`, `.rs`, `.java`, `.vue`) and config/infra
+  (`.yaml`, `.yml`, `.toml`, `.sql`, `.prisma`, `.sh`). The built-in
+  manifest filter still keeps random `.json` files out by default
+  but only applies when defaults are in use.
+- `ORACLE_INCLUDE_EXTENSIONS` env var overrides the allowlist entirely
+  (comma-separated, leading dot optional). When set, a manifest `.json`
+  is no longer filtered.
 
 #### Docs
 - Agent-first README: the MCP use case is framed as primary, the CLI
