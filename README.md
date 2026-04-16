@@ -1,6 +1,8 @@
 # codebase-oracle
 
-RAG-powered codebase Q&A for multi-repo projects. Ask natural-language questions about your codebase and get answers with source citations — powered by LangChain.js.
+A shared semantic index over your local repos — built for agents first, humans second. Run it once, then let any local Claude Code (or other MCP-capable) session query 48+ repos via `oracle_search` / `oracle_query` without scanning or embedding on its own.
+
+Powered by LangChain.js, with source citations.
 
 [![CI](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml/badge.svg)](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml)
 
@@ -27,6 +29,25 @@ RAG-powered codebase Q&A for multi-repo projects. Ask natural-language questions
 
 The index pipeline scans all git repos under a root directory, splits source files into chunks with language-aware boundaries, embeds them via OpenAI-compatible APIs (OpenAI or Ollama), and stores the vectors locally. Queries retrieve the most relevant chunks and feed them to an LLM for answer generation with source citations.
 
+## Two use cases
+
+### For agents (primary)
+
+A local Claude Code session (or any MCP client) talks to the oracle's MCP server over stdio. The agent runs `oracle_search` / `oracle_query` / `oracle_list_repos` against a shared, pre-built index — it never has to scan the filesystem, embed anything, or burn its own context on grep output.
+
+**Why an agent would use this:**
+
+- **One scan for everyone.** Index is built once; every session reuses it.
+- **Semantic, not grep.** Cross-repo conceptual search ("where do we read `AGENT_TASKS_TOKEN`?") instead of regex chasing.
+- **No duplicate embeddings.** Each agent session would otherwise pay embedding cost + time for its own index.
+- **MCP-first design.** Tools return compact, citation-ready snippets — friendly to an agent's context window.
+
+See [MCP server](#mcp-server-for-agents) below for setup.
+
+### For humans
+
+There's also a CLI — `npm run query -- "..."` — useful for spot checks, debugging the index, or when you want a terminal-driven answer without going through an agent. See [CLI reference](#cli-reference-for-humans).
+
 ## Prerequisites
 
 - Node.js 22+
@@ -46,10 +67,9 @@ export OPENAI_API_KEY=sk-...
 
 # Index all repos under ~/git (default)
 npm run index
-
-# Ask a question
-npm run query -- "how does the authentication middleware work?"
 ```
+
+From here, either register the MCP server for agents (see [MCP server](#mcp-server-for-agents)) or use the CLI directly (see [CLI reference](#cli-reference-for-humans)).
 
 The CLI and MCP server auto-load `.env` from the repo root if present.
 
@@ -67,18 +87,38 @@ export ORACLE_EMBEDDING_MODEL=nomic-embed-text
 export ORACLE_LLM_MODEL=llama3.1
 ```
 
-## CLI reference
+## MCP server (for agents)
 
-### `index` — Build the vector index
+Register the oracle as an MCP tool in Claude Code:
 
 ```bash
-npm run index                           # Index ~/git (default scan root)
-npm run index -- --path /path/to/repos  # Custom root path
+claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
 ```
 
-Scans all git repos under the root directory. Loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
+(Or run the server standalone with `npm run mcp` for local development.)
 
-Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
+From that point on, any Claude Code session on the same machine can call the tools below — without its own scan, its own embeddings, or a separate API key per session.
+
+### Tools
+
+| Tool | Description |
+|------|-------------|
+| `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
+| `oracle_search` | Raw vector similarity search, returns code chunks |
+| `oracle_list_repos` | List all indexed repos |
+
+### Example agent prompts
+
+Once the MCP server is registered, an agent can issue calls like the following (shorthand — the actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo`):
+
+- `oracle_search` with `query="AGENT_TASKS_TOKEN"` — find every repo that reads the token, across all indexed repos
+- `oracle_query` with `question="how does the audit system work?"` — cross-repo answer with citations
+- `oracle_query` with `question="where is the embedding provider chosen?"`, `repo="codebase-oracle"` — scoped to a single repo
+- `oracle_list_repos` — inventory of what the index actually covers
+
+The returned chunks include file path + repo name, so the agent can read the full file only when it actually needs to.
+
+## CLI reference (for humans)
 
 ### `query` — Ask a question
 
@@ -102,21 +142,16 @@ npm run dev -- search -r my-repo "Prisma schema"
 
 Returns matching code chunks without LLM interpretation.
 
-## MCP server
-
-Use codebase-oracle as an MCP tool in Claude Code:
+### `index` — Build the vector index
 
 ```bash
-claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
+npm run index                           # Index ~/git (default scan root)
+npm run index -- --path /path/to/repos  # Custom root path
 ```
 
-### Tools
+Scans all git repos under the root directory. Loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
 
-| Tool | Description |
-|------|-------------|
-| `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
-| `oracle_search` | Raw vector similarity search, returns code chunks |
-| `oracle_list_repos` | List all indexed repos |
+Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
 
 ## Environment variables
 
@@ -150,3 +185,7 @@ npx tsc --noEmit       # Type check only
 - **Claude** (Anthropic) — answer generation with source citations
 - **MCP SDK** — Model Context Protocol server for Claude Code integration
 - **TypeScript** + **Zod** — type-safe configuration and validation
+
+## Credits
+
+The core idea — exposing a semantic index of docs + code to agents through a single MCP endpoint — was inspired by [andrepester/rag-search-mcp](https://github.com/andrepester/rag-search-mcp). codebase-oracle is a Node/LangChain-flavoured take on the same concept, tuned for multi-repo JavaScript/TypeScript workspaces.
