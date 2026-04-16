@@ -51,6 +51,8 @@ npm run index
 npm run query -- "how does the authentication middleware work?"
 ```
 
+The CLI and MCP server auto-load `.env` from the repo root if present.
+
 ### Ollama as provider
 
 ```bash
@@ -75,6 +77,8 @@ npm run index -- --path /path/to/repos  # Custom root path
 ```
 
 Scans all git repos under the root directory. Loads `.ts`, `.tsx`, `.js`, `.jsx`, `.md`, `.prisma`, `package.json`, and `tsconfig.json` files. Skips `node_modules`, `.git`, `dist`, `build`, and files over 200KB.
+
+Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
 
 ### `query` — Ask a question
 

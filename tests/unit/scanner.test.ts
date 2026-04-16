@@ -96,6 +96,8 @@ describe("walkRepo", () => {
       expect(files[0].repo).toBe("my-repo");
       expect(files[0].language).toBe("tsx");
       expect(files[0].content).toContain("App");
+      expect(typeof files[0].contentHash).toBe("string");
+      expect(files[0].contentHash.length).toBe(64);
     } finally {
       await rm(root, { recursive: true });
     }

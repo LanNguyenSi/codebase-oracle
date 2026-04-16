@@ -2,11 +2,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { discoverRepos } from "./ingest/scanner.js";
+
+loadEnvFromFile();
 
 const config = loadConfig();
 

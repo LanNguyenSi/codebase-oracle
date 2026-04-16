@@ -43,6 +43,7 @@ export async function splitFile(file: ScannedFile): Promise<Document[]> {
         filePath: file.relativePath,
         language: file.language,
         absolutePath: file.absolutePath,
+        fileHash: file.contentHash,
       },
     ],
   );
