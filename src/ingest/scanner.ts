@@ -1,5 +1,6 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
+import { createHash } from "node:crypto";
 
 const SKIP_DIRS = new Set([
   "node_modules", ".git", "dist", "build", ".next", ".turbo",
@@ -20,6 +21,7 @@ export interface ScannedFile {
   repo: string;         // repo directory name
   language: string;     // extension without dot
   content: string;
+  contentHash: string;
 }
 
 export interface RepoInfo {
@@ -84,6 +86,7 @@ export async function* walkRepo(
           repo: repoName,
           language: ext.slice(1),
           content,
+          contentHash: createHash("sha256").update(content).digest("hex"),
         };
       } catch {
         // Permission error or binary, skip

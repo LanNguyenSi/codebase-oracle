@@ -60,12 +60,7 @@ export async function queryCodebase(
   if (!llm) {
     // No LLM available — return raw chunks
     return {
-      answer: docs
-        .map((doc) => {
-          const { filePath } = doc.metadata as { filePath: string };
-          return `### ${filePath}\n\`\`\`\n${doc.pageContent.slice(0, 500)}\n\`\`\``;
-        })
-        .join("\n\n"),
+      answer: formatRawContextAnswer(docs),
       sources: extractSources(docs),
     };
   }
@@ -77,13 +72,52 @@ export async function queryCodebase(
   ]);
 
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
-
-  const answer = await chain.invoke({ context, question });
+  let answer: string;
+  try {
+    answer = await chain.invoke({ context, question });
+  } catch (err) {
+    const details = getLlmErrorDetails(err);
+    const detailText = details
+      ? ` (${details})`
+      : "";
+    return {
+      answer: `LLM request failed${detailText}. Returning raw retrieved context instead.\n\n${formatRawContextAnswer(docs)}`,
+      sources: extractSources(docs),
+    };
+  }
 
   return {
     answer,
     sources: extractSources(docs),
   };
+}
+
+function formatRawContextAnswer(docs: Document[]): string {
+  return docs
+    .map((doc) => {
+      const { filePath } = doc.metadata as { filePath: string };
+      return `### ${filePath}\n\`\`\`\n${doc.pageContent.slice(0, 500)}\n\`\`\``;
+    })
+    .join("\n\n");
+}
+
+function getLlmErrorDetails(err: unknown): string | null {
+  if (!err || typeof err !== "object") return null;
+  const e = err as {
+    status?: number;
+    requestID?: string;
+    message?: string;
+  };
+  const parts: string[] = [];
+  if (typeof e.status === "number") {
+    parts.push(`status ${e.status}`);
+  }
+  if (typeof e.requestID === "string" && e.requestID.length > 0) {
+    parts.push(`request id ${e.requestID}`);
+  }
+  if (parts.length > 0) return parts.join(", ");
+  if (typeof e.message === "string" && e.message.length > 0) return e.message;
+  return null;
 }
 
 function ensureV1BaseUrl(baseUrl: string): string {

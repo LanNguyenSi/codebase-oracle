@@ -9,6 +9,7 @@ function makeFile(overrides: Partial<ScannedFile> = {}): ScannedFile {
     repo: "repo",
     language: "ts",
     content: "export function hello() { return 'world'; }",
+    contentHash: "a".repeat(64),
     ...overrides,
   };
 }
@@ -24,6 +25,7 @@ describe("splitFile", () => {
     expect(docs[0].metadata.repo).toBe("my-repo");
     expect(docs[0].metadata.filePath).toBe("my-repo/src/app.ts");
     expect(docs[0].metadata.language).toBe("ts");
+    expect(docs[0].metadata.fileHash).toBe("a".repeat(64));
   });
 
   it("splits large files into multiple chunks", async () => {
