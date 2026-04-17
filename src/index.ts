@@ -18,6 +18,7 @@ import {
 } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { Document } from "@langchain/core/documents";
+import { runWatchMode } from "./watch.js";
 
 loadEnvFromFile();
 
@@ -236,6 +237,26 @@ program
       console.log(`\n--- ${filePath} (${repo}) ---`);
       console.log(doc.pageContent.slice(0, 500));
     }
+  });
+
+program
+  .command("watch")
+  .description("Watch the scan root and re-embed files on change (debounced, incremental)")
+  .option("-p, --path <path>", "Path to scan root")
+  .option("--debounce <ms>", "Debounce window in ms after the last event", "3000")
+  .action(async (opts) => {
+    const config = loadConfig(opts.path ? { scanRoot: opts.path } : {});
+    const debounceMs = Number.parseInt(opts.debounce, 10);
+    const watcher = await runWatchMode(config, {
+      debounceMs: Number.isFinite(debounceMs) && debounceMs > 0 ? debounceMs : undefined,
+    });
+    const shutdown = async (signal: NodeJS.Signals) => {
+      console.log(`\nwatch: ${signal} received, flushing and closing...`);
+      await watcher.close();
+      process.exit(0);
+    };
+    process.on("SIGINT", () => void shutdown("SIGINT"));
+    process.on("SIGTERM", () => void shutdown("SIGTERM"));
   });
 
 program.parseAsync().catch((err: unknown) => {
