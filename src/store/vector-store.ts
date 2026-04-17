@@ -21,6 +21,21 @@ export interface IndexedRepo {
   fileCount: number;
 }
 
+export interface IndexMeta {
+  embeddingProvider?: string;
+  embeddingModel?: string;
+  dimension?: number;
+  embeddedAt?: string;
+  count?: number;
+}
+
+export class IndexFingerprintError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "IndexFingerprintError";
+  }
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
@@ -65,8 +80,11 @@ function getLegacyEmbeddingsPath(config: Config): string {
   return join(config.dataDir, LEGACY_EMBEDDINGS_FILE);
 }
 
-async function loadStoredVectorsFromJsonl(path: string): Promise<StoredVector[]> {
+async function loadStoredVectorsFromJsonl(
+  path: string,
+): Promise<{ vectors: StoredVector[]; meta: IndexMeta | null }> {
   const vectors: StoredVector[] = [];
+  let meta: IndexMeta | null = null;
   const rl = createInterface({
     input: createReadStream(path, { encoding: "utf8" }),
     crlfDelay: Infinity,
@@ -81,8 +99,24 @@ async function loadStoredVectorsFromJsonl(path: string): Promise<StoredVector[]>
         type?: string;
         embedding?: number[];
         doc?: { pageContent: string; metadata: Record<string, unknown> };
+        embeddingProvider?: unknown;
+        embeddingModel?: unknown;
+        dimension?: unknown;
+        embeddedAt?: unknown;
+        count?: unknown;
       };
-      if (parsed.type === "meta") continue;
+      if (parsed.type === "meta") {
+        meta = {
+          embeddingProvider:
+            typeof parsed.embeddingProvider === "string" ? parsed.embeddingProvider : undefined,
+          embeddingModel:
+            typeof parsed.embeddingModel === "string" ? parsed.embeddingModel : undefined,
+          dimension: typeof parsed.dimension === "number" ? parsed.dimension : undefined,
+          embeddedAt: typeof parsed.embeddedAt === "string" ? parsed.embeddedAt : undefined,
+          count: typeof parsed.count === "number" ? parsed.count : undefined,
+        };
+        continue;
+      }
       if (!Array.isArray(parsed.embedding) || !parsed.doc) continue;
       vectors.push(parsed as StoredVector);
     } catch {
@@ -90,7 +124,7 @@ async function loadStoredVectorsFromJsonl(path: string): Promise<StoredVector[]>
     }
   }
 
-  return vectors;
+  return { vectors, meta };
 }
 
 async function loadStoredVectorsFromLegacyJson(path: string): Promise<StoredVector[]> {
@@ -99,10 +133,17 @@ async function loadStoredVectorsFromLegacyJson(path: string): Promise<StoredVect
   return Array.isArray(data.vectors) ? data.vectors : [];
 }
 
+interface WriteJsonlOptions {
+  append: boolean;
+  includeMeta: boolean;
+  totalCount?: number;
+  meta?: { embeddingProvider: string; embeddingModel: string };
+}
+
 async function writeJsonlVectors(
   path: string,
   vectors: StoredVector[],
-  options: { append: boolean; includeMeta: boolean; totalCount?: number },
+  options: WriteJsonlOptions,
 ): Promise<void> {
   const stream = createWriteStream(path, {
     encoding: "utf8",
@@ -116,13 +157,20 @@ async function writeJsonlVectors(
 
   try {
     if (options.includeMeta) {
-      await writeLine(
-        JSON.stringify({
-          type: "meta",
-          embeddedAt: new Date().toISOString(),
-          count: options.totalCount ?? vectors.length,
-        }),
-      );
+      const firstDim = vectors.find((v) => v.embedding.length > 0)?.embedding.length;
+      const metaLine: Record<string, unknown> = {
+        type: "meta",
+        embeddedAt: new Date().toISOString(),
+        count: options.totalCount ?? vectors.length,
+      };
+      if (options.meta) {
+        metaLine.embeddingProvider = options.meta.embeddingProvider;
+        metaLine.embeddingModel = options.meta.embeddingModel;
+      }
+      if (typeof firstDim === "number") {
+        metaLine.dimension = firstDim;
+      }
+      await writeLine(JSON.stringify(metaLine));
     }
     for (const vector of vectors) {
       await writeLine(JSON.stringify(vector));
@@ -136,22 +184,76 @@ async function writeJsonlVectors(
   }
 }
 
-export async function loadStoredVectors(config: Config): Promise<StoredVector[]> {
-  if (config.vectorStoreType !== "directory") return [];
+export function assertCompatibleIndex(
+  vectors: StoredVector[],
+  meta: IndexMeta | null,
+  config: Config,
+): void {
+  if (vectors.length === 0) return;
+
+  if (meta === null || !meta.embeddingProvider || !meta.embeddingModel) {
+    console.warn(
+      `codebase-oracle: index at ${config.dataDir} has no embedding fingerprint (legacy). ` +
+        `Assuming model "${config.embeddingModel}" (${config.embeddingProvider}). ` +
+        "Re-run 'npm run index' to upgrade; stale results are possible until then.",
+    );
+    const storedDim = vectors[0].embedding.length;
+    if (storedDim === 0) {
+      throw new IndexFingerprintError(
+        `Corrupt index at ${config.dataDir}: first vector has zero dimension. ` +
+          "Delete the data dir and re-index.",
+      );
+    }
+    return;
+  }
+
+  if (meta.embeddingProvider && meta.embeddingProvider !== config.embeddingProvider) {
+    throw new IndexFingerprintError(
+      `Index at ${config.dataDir} was built with provider "${meta.embeddingProvider}" but config is "${config.embeddingProvider}". ` +
+        `Delete ${config.dataDir} and re-index, or set ORACLE_EMBEDDING_PROVIDER=${meta.embeddingProvider}.`,
+    );
+  }
+
+  if (meta.embeddingModel && meta.embeddingModel !== config.embeddingModel) {
+    throw new IndexFingerprintError(
+      `Index at ${config.dataDir} was built with model "${meta.embeddingModel}" but config is "${config.embeddingModel}". ` +
+        `Delete ${config.dataDir} and re-index, or set ORACLE_EMBEDDING_MODEL=${meta.embeddingModel}.`,
+    );
+  }
+
+  const storedDim = vectors[0].embedding.length;
+  if (typeof meta.dimension === "number" && meta.dimension !== storedDim) {
+    throw new IndexFingerprintError(
+      `Corrupt index at ${config.dataDir}: meta says dimension ${meta.dimension} but first vector has ${storedDim}. ` +
+        "Delete the data dir and re-index.",
+    );
+  }
+}
+
+export async function loadStoredVectorsWithMeta(
+  config: Config,
+): Promise<{ vectors: StoredVector[]; meta: IndexMeta | null }> {
+  if (config.vectorStoreType !== "directory") return { vectors: [], meta: null };
 
   const jsonlPath = getEmbeddingsPath(config);
   const legacyPath = getLegacyEmbeddingsPath(config);
-  if (!existsSync(jsonlPath) && !existsSync(legacyPath)) return [];
+  if (!existsSync(jsonlPath) && !existsSync(legacyPath)) return { vectors: [], meta: null };
 
   try {
     if (existsSync(jsonlPath)) {
       return await loadStoredVectorsFromJsonl(jsonlPath);
     }
-    return await loadStoredVectorsFromLegacyJson(legacyPath);
+    const vectors = await loadStoredVectorsFromLegacyJson(legacyPath);
+    return { vectors, meta: null };
   } catch (err) {
     console.warn("Failed to load cached embeddings:", err);
-    return [];
+    return { vectors: [], meta: null };
   }
+}
+
+export async function loadStoredVectors(config: Config): Promise<StoredVector[]> {
+  const { vectors } = await loadStoredVectorsWithMeta(config);
+  return vectors;
 }
 
 export async function persistStoredVectors(
@@ -169,6 +271,10 @@ export async function persistStoredVectors(
     append: false,
     includeMeta: true,
     totalCount: vectors.length,
+    meta: {
+      embeddingProvider: config.embeddingProvider,
+      embeddingModel: config.embeddingModel,
+    },
   });
   await rename(tempPath, embPath);
   if (existsSync(legacyPath)) {
@@ -190,6 +296,10 @@ export async function initializeStoredVectors(
     append: false,
     includeMeta: true,
     totalCount: vectors.length,
+    meta: {
+      embeddingProvider: config.embeddingProvider,
+      embeddingModel: config.embeddingModel,
+    },
   });
   if (existsSync(legacyPath)) {
     await rm(legacyPath, { force: true });
@@ -215,11 +325,14 @@ export async function createVectorStore(
   embeddings: Embeddings,
   config: Config,
 ): Promise<VectorStoreWrapper> {
-  const vectors: StoredVector[] = await loadStoredVectors(config);
+  const { vectors, meta } = await loadStoredVectorsWithMeta(config);
+  assertCompatibleIndex(vectors, meta, config);
 
   if (vectors.length > 0) {
     console.log(`Loaded ${vectors.length} embedded vectors from cache`);
   }
+
+  let expectedDim: number | null = vectors[0]?.embedding.length ?? null;
 
   return {
     async addDocuments(docs: Document[]) {
@@ -229,6 +342,17 @@ export async function createVectorStore(
         const batch = docs.slice(i, i + batchSize);
         const texts = batch.map((d) => d.pageContent);
         const embs = await embeddings.embedDocuments(texts);
+        if (embs.length > 0) {
+          if (expectedDim === null) {
+            expectedDim = embs[0].length;
+          } else if (embs[0].length !== expectedDim) {
+            throw new IndexFingerprintError(
+              `Tried to add vectors of dimension ${embs[0].length} to a store of dimension ${expectedDim}. ` +
+                `Embedding provider/model likely changed mid-session. ` +
+                `Delete ${config.dataDir} and re-index, or restore the previous embedding model.`,
+            );
+          }
+        }
         for (let j = 0; j < batch.length; j++) {
           vectors.push({
             embedding: embs[j],
@@ -249,6 +373,14 @@ export async function createVectorStore(
       if (vectors.length === 0) return [];
 
       const queryEmb = await embeddings.embedQuery(query);
+
+      if (expectedDim !== null && queryEmb.length !== expectedDim) {
+        throw new IndexFingerprintError(
+          `Query embedding has dimension ${queryEmb.length} but index vectors have ${expectedDim}. ` +
+            `Provider "${config.embeddingProvider}" model "${config.embeddingModel}" does not match the indexed corpus. ` +
+            `Delete ${config.dataDir} and re-index, or restore the previous embedding model.`,
+        );
+      }
 
       let candidates = vectors;
       if (filter) {
@@ -277,6 +409,9 @@ export async function createVectorStore(
 }
 
 export async function listIndexedRepos(config: Config): Promise<IndexedRepo[]> {
+  // Intentionally bypasses assertCompatibleIndex: listing repos is metadata-only
+  // and safe to expose even if the stored fingerprint does not match the current
+  // embedding config. Query/search paths do enforce the guard.
   return aggregateIndexedRepos(await loadStoredVectors(config));
 }
 

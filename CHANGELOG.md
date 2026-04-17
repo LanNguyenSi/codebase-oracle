@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Embedding fingerprint in `embeddings.jsonl` meta line (`embeddingProvider`,
+  `embeddingModel`, `dimension`). On load, the index is checked against
+  the active config and refuses to run on a mismatch with a clear
+  instruction to delete the data dir or revert the env change. Closes
+  the silent-corruption hole where swapping `ORACLE_EMBEDDING_MODEL`
+  produced garbage scores or `NaN` cosine values without warning.
+- Defense-in-depth dimension check in `similaritySearch`: catches
+  legacy indexes (no fingerprint) where the stored vectors and the
+  query embedding differ in dimension.
+- Legacy indexes without a fingerprint load with a warning pointing to
+  `npm run index` as the upgrade path.
+
 ## [0.1.0] - 2026-04-16
 
 Initial release. codebase-oracle is a shared semantic index over local
