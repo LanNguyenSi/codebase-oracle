@@ -58,7 +58,7 @@ function groupVectorsByFile(vectors: StoredVector[]): Map<string, { vectors: Sto
 program
   .name("codebase-oracle")
   .description("RAG-powered codebase Q&A for the your multi-repo codebase")
-  .version("0.1.0");
+  .version("0.2.0");
 
 program
   .command("index")

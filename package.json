@@ -1,6 +1,6 @@
 {
   "name": "codebase-oracle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "RAG-powered codebase Q&A for the multi-repo codebases — LangChain + MCP server",
   "type": "module",
   "bin": {

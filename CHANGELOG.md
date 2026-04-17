@@ -5,34 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-04-17
+
+Adds a safety net around model swaps, a watch mode that keeps the
+index fresh without manual re-runs, and opt-in auth for the HTTP
+MCP server so it can safely run outside of loopback. Also the first
+serious slug of unit tests on the retrieval path.
 
 ### Added
-- `npm run watch` — keep the index fresh without manual `npm run index`
-  runs. Debounced (default 3 s) chokidar watcher on the scan root:
-  file changes re-embed only the touched file, deletions drop their
-  vectors, vanished repo roots purge all their vectors. Save-storms
-  collapse into one re-embed. Does not hot-reload a running MCP server
-  — restart the server to pick up changes.
-- `ORACLE_HTTP_TOKEN` — optional bearer token for the HTTP MCP server.
-  When set, every `POST /mcp` request must carry
-  `Authorization: Bearer <token>`; compared in constant time.
-  `GET /health` stays open.
-- `ORACLE_HTTP_BIND` — override the bind address of the HTTP MCP server
-  (default `127.0.0.1`). Any off-loopback value requires
-  `ORACLE_HTTP_TOKEN`; the server refuses to start otherwise, so there
-  is no way to expose the server without auth by accident.
-- Embedding fingerprint in `embeddings.jsonl` meta line (`embeddingProvider`,
-  `embeddingModel`, `dimension`). On load, the index is checked against
-  the active config and refuses to run on a mismatch with a clear
-  instruction to delete the data dir or revert the env change. Closes
-  the silent-corruption hole where swapping `ORACLE_EMBEDDING_MODEL`
-  produced garbage scores or `NaN` cosine values without warning.
-- Defense-in-depth dimension check in `similaritySearch`: catches
-  legacy indexes (no fingerprint) where the stored vectors and the
-  query embedding differ in dimension.
-- Legacy indexes without a fingerprint load with a warning pointing to
-  `npm run index` as the upgrade path.
+
+#### Embedding fingerprint + load-time guard
+- `embeddings.jsonl` meta line now carries `embeddingProvider`,
+  `embeddingModel`, and `dimension`.
+- On load, the index is checked against the active config and refuses
+  to run on a mismatch with a clear instruction to delete the data
+  dir or revert the env change. Closes the silent-corruption hole
+  where swapping `ORACLE_EMBEDDING_MODEL` produced garbage scores or
+  `NaN` cosine values without warning.
+- Defense-in-depth dimension check in `similaritySearch` for legacy
+  indexes that pre-date the fingerprint.
+- `addDocuments` refuses to mix dimensions mid-session.
+- Legacy indexes load with a warning pointing to `npm run index` as
+  the upgrade path.
+- HTTP MCP server propagates `IndexFingerprintError.message` instead
+  of swallowing it as `"Internal error"`.
+- CLI exits cleanly (no stacktrace) on a fingerprint mismatch.
+
+#### Watch mode (`npm run watch`)
+- Debounced (default 3 s) chokidar watcher on the scan root.
+- File add/change → re-embed only the touched file; delete → drop
+  vectors; repo root removal → purge all of its vectors; a new
+  top-level directory containing `.git` is registered as a new repo
+  (back-fill it once with `npm run index`, subsequent edits flow
+  through watch).
+- Save-storms collapse into a single re-embed thanks to chokidar's
+  `awaitWriteFinish` + the debounce dedup.
+- Embed is atomic: new vectors are computed first, old vectors are
+  only swapped in on success.
+- Known limitation: running stdio / HTTP MCP servers do not hot-reload
+  the store — restart to pick up changes.
+
+#### HTTP MCP auth (opt-in)
+- `ORACLE_HTTP_TOKEN` — when set, every `POST /mcp` request must carry
+  `Authorization: Bearer <token>`; compared in constant time. `GET
+  /health` stays open.
+- `ORACLE_HTTP_BIND` — override the bind address (default
+  `127.0.0.1`). Any value outside `{127.0.0.1, localhost, ::1}`
+  requires `ORACLE_HTTP_TOKEN` or the server refuses to start, so
+  there is no accidental off-loopback exposure.
+
+#### Tests
+- 21 unit tests for `src/retrieval/chain.ts` helpers (`createLlm`,
+  `getLlmErrorDetails`, `extractSources`, `formatRawContextAnswer`).
+  Covers provider selection, error formatting, source dedup, and
+  raw-context rendering — no real API calls.
+- Fingerprint, HTTP auth, and watch-mode tests added. Suite grew from
+  26 to 92 tests.
+
+### Changed
+- `createVectorStore` now runs `assertCompatibleIndex` at
+  construction and exposes the fingerprint error to every caller
+  (CLI, stdio MCP, HTTP MCP).
+
+### Removed
+- `CLAUDE.md` — redundant with `README.md`; Claude Code falls back to
+  the README when `CLAUDE.md` is absent.
 
 ## [0.1.0] - 2026-04-16
 
