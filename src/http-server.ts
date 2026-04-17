@@ -54,7 +54,7 @@ function getStore(): Promise<VectorStoreWrapper> {
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 server.tool(
@@ -134,7 +134,7 @@ const httpServer = createHttpServer(async (req, res) => {
   // Health check
   if (req.method === "GET" && url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", version: "0.1.0" }));
+    res.end(JSON.stringify({ status: "ok", version: "0.2.0" }));
     return;
   }
 
