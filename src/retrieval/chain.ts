@@ -92,7 +92,7 @@ export async function queryCodebase(
   };
 }
 
-function formatRawContextAnswer(docs: Document[]): string {
+export function formatRawContextAnswer(docs: Document[]): string {
   return docs
     .map((doc) => {
       const { filePath } = doc.metadata as { filePath: string };
@@ -101,7 +101,7 @@ function formatRawContextAnswer(docs: Document[]): string {
     .join("\n\n");
 }
 
-function getLlmErrorDetails(err: unknown): string | null {
+export function getLlmErrorDetails(err: unknown): string | null {
   if (!err || typeof err !== "object") return null;
   const e = err as {
     status?: number;
@@ -156,7 +156,7 @@ function createOllamaLlm(config: Config) {
   });
 }
 
-function createLlm(config: Config) {
+export function createLlm(config: Config) {
   if (config.llmProvider === "anthropic") {
     if (!config.anthropicApiKey) {
       throw new Error("ORACLE_LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.");
@@ -186,7 +186,7 @@ function createLlm(config: Config) {
   return null;
 }
 
-function extractSources(docs: Document[]) {
+export function extractSources(docs: Document[]) {
   const seen = new Set<string>();
   return docs
     .map((doc) => {
