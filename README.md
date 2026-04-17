@@ -153,6 +153,20 @@ Scans all git repos under the root directory. By default loads JS/TS sources (`.
 
 Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
 
+### `watch` — Keep the index fresh in the background
+
+```bash
+npm run watch                            # ~/git (default scan root), 3s debounce
+npm run watch -- --path /path/to/repos   # custom root
+npm run watch -- --debounce 5000         # 5s debounce window
+```
+
+Runs a [chokidar](https://github.com/paulmillr/chokidar) watcher over the scan root. File add/change/delete events are accumulated and, after a quiet period (default 3 s), processed in one batch: changed files are re-embedded, deleted files drop their vectors, vanished repo roots purge all their vectors. Editor save-storms (e.g. VS Code's atomic-rename trick) collapse into a single re-embed thanks to chokidar's `awaitWriteFinish` + the debounce. Newly dropped `.git` roots are detected and logged; back-fill them with one explicit `npm run index` so the first-time ingestion is consistent, then watch picks up subsequent edits.
+
+Watch mode is additive — it does not replace `npm run index`, which remains the ground-truth bootstrap path.
+
+**Known limitation:** a running stdio or HTTP MCP server does not hot-reload the store. If watch mode updates `embeddings.jsonl` while the MCP server is running, the server will serve stale vectors until it's restarted. A future task will add store-file-change detection to the MCP server side.
+
 ## Environment variables
 
 | Variable | Required | Default | Description |

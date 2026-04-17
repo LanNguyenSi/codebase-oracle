@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `npm run watch` — keep the index fresh without manual `npm run index`
+  runs. Debounced (default 3 s) chokidar watcher on the scan root:
+  file changes re-embed only the touched file, deletions drop their
+  vectors, vanished repo roots purge all their vectors. Save-storms
+  collapse into one re-embed. Does not hot-reload a running MCP server
+  — restart the server to pick up changes.
 - `ORACLE_HTTP_TOKEN` — optional bearer token for the HTTP MCP server.
   When set, every `POST /mcp` request must carry
   `Authorization: Bearer <token>`; compared in constant time.
