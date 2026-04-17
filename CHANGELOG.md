@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `ORACLE_HTTP_TOKEN` — optional bearer token for the HTTP MCP server.
+  When set, every `POST /mcp` request must carry
+  `Authorization: Bearer <token>`; compared in constant time.
+  `GET /health` stays open.
+- `ORACLE_HTTP_BIND` — override the bind address of the HTTP MCP server
+  (default `127.0.0.1`). Any off-loopback value requires
+  `ORACLE_HTTP_TOKEN`; the server refuses to start otherwise, so there
+  is no way to expose the server without auth by accident.
 - Embedding fingerprint in `embeddings.jsonl` meta line (`embeddingProvider`,
   `embeddingModel`, `dimension`). On load, the index is checked against
   the active config and refuses to run on a mismatch with a clear
