@@ -23,8 +23,17 @@ import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore, IndexFingerprintError, type VectorStoreWrapper } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import { resolveHttpBindConfig, verifyBearer } from "./http-auth.js";
 
 loadEnvFromFile();
+
+let bindConfig;
+try {
+  bindConfig = resolveHttpBindConfig(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
 
 const config = loadConfig();
 const port = Number(process.env.ORACLE_HTTP_PORT ?? 3100);
@@ -131,6 +140,22 @@ const httpServer = createHttpServer(async (req, res) => {
 
   // MCP endpoint
   if (req.method === "POST" && url.pathname === "/mcp") {
+    const auth = verifyBearer(req.headers.authorization, bindConfig.token);
+    if (!auth.ok) {
+      res.writeHead(401, {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": 'Bearer realm="codebase-oracle"',
+      });
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          error: { code: -32001, message: `Unauthorized: ${auth.reason} bearer token` },
+          id: null,
+        }),
+      );
+      return;
+    }
+
     try {
       // Collect request body
       const chunks: Buffer[] = [];
@@ -185,7 +210,8 @@ const httpServer = createHttpServer(async (req, res) => {
   res.end(JSON.stringify({ error: "Not found. POST /mcp for MCP, GET /health for status." }));
 });
 
-httpServer.listen(port, "127.0.0.1", () => {
-  console.log(`[codebase-oracle] HTTP MCP server listening on http://127.0.0.1:${port}/mcp`);
-  console.log(`[codebase-oracle] Health check: http://127.0.0.1:${port}/health`);
+httpServer.listen(port, bindConfig.bind, () => {
+  const authNote = bindConfig.token ? "with bearer-token auth" : "(no auth; loopback only)";
+  console.log(`[codebase-oracle] HTTP MCP server listening on http://${bindConfig.bind}:${port}/mcp ${authNote}`);
+  console.log(`[codebase-oracle] Health check: http://${bindConfig.bind}:${port}/health`);
 });
