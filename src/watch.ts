@@ -12,11 +12,10 @@ import {
 } from "./ingest/scanner.js";
 import { splitFile } from "./ingest/splitter.js";
 import {
-  assertCompatibleIndex,
-  loadStoredVectorsWithMeta,
-  persistStoredVectors,
-  type StoredVector,
-} from "./store/vector-store.js";
+  openSqliteStore,
+  type SqliteStore,
+  type StoredEntry,
+} from "./store/sqlite-store.js";
 
 const WATCH_SKIP_DIRS = new Set([
   "node_modules",
@@ -46,6 +45,8 @@ export interface WatchOptions {
   debounceMs?: number;
   /** Inject a fake Embeddings implementation (tests). Defaults to createEmbeddings(config). */
   embeddings?: Embeddings;
+  /** Inject a store handle (tests). Defaults to openSqliteStore(config). */
+  store?: SqliteStore;
 }
 
 /** Pure helper: does this filename match the active extension filter? */
@@ -138,42 +139,18 @@ async function loadScannedFile(
   };
 }
 
-function removeVectorsForFile(
-  vectors: StoredVector[],
-  repo: string,
-  relativePath: string,
-): number {
-  const before = vectors.length;
-  for (let i = vectors.length - 1; i >= 0; i--) {
-    const m = vectors[i].doc.metadata as { repo?: string; filePath?: string };
-    if (m.repo === repo && m.filePath === relativePath) vectors.splice(i, 1);
-  }
-  return before - vectors.length;
-}
-
-function removeVectorsForRepo(vectors: StoredVector[], repo: string): number {
-  const before = vectors.length;
-  for (let i = vectors.length - 1; i >= 0; i--) {
-    const m = vectors[i].doc.metadata as { repo?: string };
-    if (m.repo === repo) vectors.splice(i, 1);
-  }
-  return before - vectors.length;
-}
-
 async function embedFile(
   embeddings: Embeddings,
   scanned: ScannedFile,
-): Promise<StoredVector[]> {
+): Promise<StoredEntry[]> {
   const chunks = await splitFile(scanned);
   if (chunks.length === 0) return [];
   const texts = chunks.map((c) => c.pageContent);
   const embs = await embeddings.embedDocuments(texts);
   return chunks.map((chunk, i) => ({
     embedding: embs[i],
-    doc: {
-      pageContent: chunk.pageContent,
-      metadata: chunk.metadata as Record<string, unknown>,
-    },
+    pageContent: chunk.pageContent,
+    metadata: chunk.metadata as Record<string, unknown>,
   }));
 }
 
@@ -183,9 +160,9 @@ export async function runWatchMode(
 ): Promise<RunningWatcher> {
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
 
-  const { vectors: initialVectors, meta } = await loadStoredVectorsWithMeta(config);
-  assertCompatibleIndex(initialVectors, meta, config);
-  const vectors: StoredVector[] = [...initialVectors];
+  const store = options.store ?? openSqliteStore(config);
+  const ownedStore = !options.store;
+  store.assertCompatibleWithConfig(config);
 
   const repos = await discoverRepos(config.scanRoot);
   const repoRoots = new Map<string, string>(repos.map((r) => [r.path, r.name]));
@@ -197,14 +174,29 @@ export async function runWatchMode(
   const embeddings = options.embeddings ?? createEmbeddings(config);
   const pending = new PendingEventMap();
 
+  const initialCount = store.count();
+  const meta = store.getMeta();
+  let expectedDim: number | null = meta?.dimension ?? null;
+
   console.log(
     `watch: scanRoot=${config.scanRoot} repos=${repos.length} debounce=${debounceMs}ms ` +
-      `vectors=${vectors.length}`,
+      `vectors=${initialCount}`,
   );
 
   let timer: NodeJS.Timeout | null = null;
   let processing = false;
   let inflight: Promise<void> | null = null;
+
+  const ensureDimInitialized = (dim: number) => {
+    if (expectedDim === null) {
+      store.initializeSchema({
+        embeddingProvider: config.embeddingProvider,
+        embeddingModel: config.embeddingModel,
+        dimension: dim,
+      });
+      expectedDim = dim;
+    }
+  };
 
   const scheduleFlush = () => {
     if (timer) clearTimeout(timer);
@@ -226,22 +218,18 @@ export async function runWatchMode(
       const { files, repos: droppedRepos } = pending.drain();
       if (files.length === 0 && droppedRepos.length === 0) return;
 
-      let modified = false;
-
       for (const repo of droppedRepos) {
-        const removed = removeVectorsForRepo(vectors, repo);
+        const removed = store.deleteByRepo(repo);
         if (removed > 0) {
           console.log(`watch: repo ${repo} gone (-${removed} vectors)`);
-          modified = true;
         }
       }
 
       for (const ev of files) {
         if (ev.kind === "delete") {
-          const removed = removeVectorsForFile(vectors, ev.repo, ev.relativePath);
+          const removed = store.deleteByFile(ev.repo, ev.relativePath);
           if (removed > 0) {
-            console.log(`watch: removed ${ev.repo}/${ev.relativePath} (-${removed} chunks)`);
-            modified = true;
+            console.log(`watch: removed ${ev.relativePath} (-${removed} chunks)`);
           }
           continue;
         }
@@ -253,44 +241,46 @@ export async function runWatchMode(
           scanned = await loadScannedFile(ev.absolutePath, ev.relativePath, ev.repo);
         } catch (err) {
           console.warn(
-            `watch: failed to read ${ev.repo}/${ev.relativePath}:`,
+            `watch: failed to read ${ev.relativePath}:`,
             err instanceof Error ? err.message : err,
           );
           continue;
         }
 
         if (!scanned) {
-          const removed = removeVectorsForFile(vectors, ev.repo, ev.relativePath);
+          const removed = store.deleteByFile(ev.repo, ev.relativePath);
           if (removed > 0) {
             console.log(
-              `watch: ${ev.repo}/${ev.relativePath} unindexed (empty / too large) (-${removed} chunks)`,
+              `watch: ${ev.relativePath} unindexed (empty / too large) (-${removed} chunks)`,
             );
-            modified = true;
           }
           continue;
         }
 
-        let newVectors: StoredVector[];
+        let newEntries: StoredEntry[];
         try {
-          newVectors = await embedFile(embeddings, scanned);
+          newEntries = await embedFile(embeddings, scanned);
         } catch (err) {
           console.warn(
-            `watch: failed to embed ${ev.repo}/${ev.relativePath}:`,
+            `watch: failed to embed ${ev.relativePath}:`,
             err instanceof Error ? err.message : err,
           );
           continue;
         }
 
-        const removed = removeVectorsForFile(vectors, ev.repo, ev.relativePath);
-        vectors.push(...newVectors);
-        console.log(
-          `watch: reembedded ${ev.repo}/${ev.relativePath} (+${newVectors.length} chunks, -${removed} chunks)`,
-        );
-        modified = true;
-      }
+        if (newEntries.length > 0) {
+          ensureDimInitialized(newEntries[0].embedding.length);
+        }
 
-      if (modified) {
-        await persistStoredVectors(vectors, config);
+        const { added, removed } = store.upsertFile(
+          ev.repo,
+          ev.relativePath,
+          scanned.contentHash,
+          newEntries,
+        );
+        console.log(
+          `watch: reembedded ${ev.relativePath} (+${added} chunks, -${removed} chunks)`,
+        );
       }
     } finally {
       processing = false;
@@ -368,9 +358,10 @@ export async function runWatchMode(
       }
       if (inflight) await inflight;
       await watcher.close();
+      if (ownedStore) store.close();
     },
     stats: () => ({
-      vectors: vectors.length,
+      vectors: store.count(),
       repos: repoRoots.size,
       pending: pending.size(),
     }),

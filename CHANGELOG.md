@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-04-17
+
+**Breaking:** on-disk format changed from `embeddings.jsonl` to a SQLite file
+(`store.db`) backed by [sqlite-vec](https://github.com/asg017/sqlite-vec).
+Either run `npm run migrate-store` to convert in place, or delete
+`~/.codebase-oracle/embeddings.jsonl` and re-index.
+
+### Added
+
+#### sqlite-vec vector store
+- New on-disk format at `~/.codebase-oracle/store.db`: SQLite tables `meta`,
+  `docs`, plus a vec0 virtual table `vectors` for cosine KNN search.
+- WAL mode enables concurrent reader + writer, so a running MCP server sees
+  watch-mode updates on its next query without a restart. The v0.2.0 known
+  limitation is gone.
+- Embedding fingerprint now lives in the `meta` table instead of a JSONL
+  header line; the load-time compatibility check has the same semantics.
+- `oracle_search` / `oracle_query` / `oracle_list_repos` are unchanged from
+  the agent's perspective.
+
+#### Incremental watch writes
+- `watch` mode now upserts per file directly against the store
+  (`DELETE FROM docs/vectors WHERE repo=? AND file_path=?; INSERT ...`) in
+  one transaction instead of rewriting the full index on every flush. No
+  more multi-second disk churn on heavy edit sessions.
+
+#### Migration
+- `npm run migrate-store` converts a v0.2.0 `embeddings.jsonl` into the new
+  format, preserves the embedding fingerprint, and moves the JSONL to
+  `.embeddings.jsonl.bak` on success. Refuses to run if a non-empty
+  `store.db` already exists.
+
+#### Tests
+- Unit tests for the raw SQLite store (CRUD, similarity, WAL concurrent
+  reader/writer) and the migration command. Suite grew from 92 to 101 tests.
+
+### Changed
+- `createVectorStore`, `listIndexedRepos`, and every ingest/watch path now
+  talk to a `SqliteStore` handle. Cold-start memory for an MCP instance
+  drops from ~1.5 GB (full in-memory index) to under 100 MB — the store
+  stays on disk and similarity search runs against the vec0 table.
+- `similaritySearch` is now a SQL KNN query, not a JS linear scan.
+- `watch` log lines no longer duplicate the repo segment (`fake-repo/fake-repo/a.ts`
+  → `fake-repo/a.ts`).
+
+### Removed
+- `embeddings.jsonl` / `embeddings.json` load, persist, append, and
+  initialize helpers. The JSONL code path is gone; use `migrate-store` or
+  re-index.
+
 ## [0.2.0] - 2026-04-17
 
 Adds a safety net around model swaps, a watch mode that keeps the

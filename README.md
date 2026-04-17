@@ -21,7 +21,7 @@ Powered by LangChain.js, with source citations.
   [Embeddings] ── OpenAI text-embedding-3-small
         |
         v
- [Vector Store] ── cosine similarity search (in-memory, persisted to disk)
+ [Vector Store] ── sqlite-vec (SQLite virtual table, cosine distance, WAL)
         |
         v
   [RAG Chain]  ── retrieved chunks + question → Claude/OpenAI/Ollama → cited answer
@@ -165,7 +165,7 @@ Runs a [chokidar](https://github.com/paulmillr/chokidar) watcher over the scan r
 
 Watch mode is additive — it does not replace `npm run index`, which remains the ground-truth bootstrap path.
 
-**Known limitation:** a running stdio or HTTP MCP server does not hot-reload the store. If watch mode updates `embeddings.jsonl` while the MCP server is running, the server will serve stale vectors until it's restarted. A future task will add store-file-change detection to the MCP server side.
+Since v0.3.0 the store lives in a single SQLite file (`store.db`) opened in WAL mode, so a running stdio or HTTP MCP server sees watch-mode writes on its next query without a restart. Writes and reads can safely happen from different processes on the same store.
 
 ## Environment variables
 
@@ -196,11 +196,24 @@ The built-in auth is intentionally minimal: one bearer token, constant-time comp
 
 ## Embedding fingerprint
 
-The index stores a fingerprint (`embeddingProvider`, `embeddingModel`, `dimension`) in a leading meta line of `embeddings.jsonl`. On load, codebase-oracle refuses to run the index against a different provider/model — you'd get silent garbage otherwise, because the query vector and the stored vectors would live in different embedding spaces (or differ in dimension, producing `NaN` scores).
+The store keeps a fingerprint (`embeddingProvider`, `embeddingModel`, `dimension`) in the `meta` table of `store.db`. On load, codebase-oracle refuses to run against a different provider/model — you'd get silent garbage otherwise, because the query vector and the stored vectors would live in different embedding spaces (or differ in dimension, producing `NaN` scores).
 
-If you change `ORACLE_EMBEDDING_PROVIDER` or `ORACLE_EMBEDDING_MODEL`, the next `npm run index` / `npm run query` / MCP call will fail fast with a clear message telling you to either delete `~/.codebase-oracle/` (to re-embed with the new model) or revert the env change. There is no automatic migration — the choice is yours.
+If you change `ORACLE_EMBEDDING_PROVIDER` or `ORACLE_EMBEDDING_MODEL`, the next `npm run index` / `npm run query` / MCP call will fail fast with a clear message telling you to either delete `~/.codebase-oracle/store.db` (to re-embed with the new model) or revert the env change. There is no automatic migration — the choice is yours.
 
-Indexes created before this check exist without a fingerprint; they load with a warning and should be re-built at your earliest convenience.
+## Upgrading from v0.2.0
+
+v0.3.0 moves the on-disk format from `embeddings.jsonl` to a SQLite file (`store.db`) backed by [sqlite-vec](https://github.com/asg017/sqlite-vec). Two upgrade paths:
+
+```bash
+# Option A — convert the existing JSONL in place (preserves the index):
+npm run migrate-store
+
+# Option B — fresh re-index:
+rm ~/.codebase-oracle/embeddings.jsonl
+npm run index
+```
+
+`migrate-store` reads the JSONL, writes the SQLite store with the same embedding fingerprint, and renames the JSONL to `.embeddings.jsonl.bak` on success. It refuses to run if a `store.db` already exists with data.
 
 ## Development
 

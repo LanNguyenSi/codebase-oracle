@@ -20,6 +20,12 @@ jobs:
 
       - run: npm ci
 
+      - name: Verify native store deps load
+        # Guard against silent ABI or postinstall failures in better-sqlite3
+        # or sqlite-vec — both ship loadable native binaries and a broken
+        # install would otherwise only surface late in the test suite.
+        run: node -e "const D=require('better-sqlite3');const v=require('sqlite-vec');const db=new D(':memory:');v.load(db);const {r}=db.prepare('SELECT vec_version() AS r').get();console.log('sqlite-vec',r);db.close();"
+
       - name: Type check
         run: npx tsc --noEmit
 

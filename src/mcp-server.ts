@@ -14,7 +14,7 @@ const config = loadConfig();
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 // Lazy-init store (expensive, only when first tool is called)
@@ -23,7 +23,12 @@ let storePromise: ReturnType<typeof createVectorStore> | null = null;
 function getStore() {
   if (!storePromise) {
     const embeddings = createEmbeddings(config);
-    storePromise = createVectorStore(embeddings, config);
+    storePromise = createVectorStore(embeddings, config).catch((err) => {
+      // Don't cache the rejection: a config fix on disk should be visible to
+      // the next tool call without restarting the server.
+      storePromise = null;
+      throw err;
+    });
   }
   return storePromise;
 }

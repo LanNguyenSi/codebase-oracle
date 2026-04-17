@@ -1,6 +1,6 @@
 {
   "name": "codebase-oracle",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "RAG-powered codebase Q&A for the multi-repo codebases — LangChain + MCP server",
   "type": "module",
   "bin": {
@@ -14,7 +14,8 @@
     "query": "tsx src/index.ts query",
     "watch": "tsx src/index.ts watch",
     "mcp": "tsx src/mcp-server.ts",
-    "serve": "tsx src/http-server.ts"
+    "serve": "tsx src/http-server.ts",
+    "migrate-store": "tsx src/index.ts migrate-store"
   },
   "repository": {
     "type": "git",
@@ -35,12 +36,15 @@
     "@langchain/openai": "^1.4.4",
     "@langchain/textsplitters": "^1.0.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.9.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "langchain": "^1.3.3",
+    "sqlite-vec": "^0.1.9",
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.6.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
