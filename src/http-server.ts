@@ -21,7 +21,7 @@ import { z } from "zod";
 import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
-import { createVectorStore, type VectorStoreWrapper } from "./store/vector-store.js";
+import { createVectorStore, IndexFingerprintError, type VectorStoreWrapper } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
 
 loadEnvFromFile();
@@ -172,7 +172,10 @@ const httpServer = createHttpServer(async (req, res) => {
       if (!res.headersSent) {
         res.writeHead(500, { "Content-Type": "application/json" });
       }
-      res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message: "Internal error" }, id: null }));
+      const message = err instanceof IndexFingerprintError
+        ? err.message
+        : "Internal error";
+      res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message }, id: null }));
     }
     return;
   }

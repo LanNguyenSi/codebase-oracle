@@ -7,10 +7,13 @@ import { splitFile } from "./ingest/splitter.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import {
   appendStoredVectors,
+  assertCompatibleIndex,
   createVectorStore,
+  IndexFingerprintError,
   initializeStoredVectors,
-  loadStoredVectors,
+  loadStoredVectorsWithMeta,
   persistIndex,
+  persistStoredVectors,
   type StoredVector,
 } from "./store/vector-store.js";
 import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
@@ -67,7 +70,8 @@ program
     const repos = await discoverRepos(config.scanRoot);
     console.log(`Found ${repos.length} repos`);
 
-    const persistedVectors = await loadStoredVectors(config);
+    const { vectors: persistedVectors, meta: persistedMeta } = await loadStoredVectorsWithMeta(config);
+    assertCompatibleIndex(persistedVectors, persistedMeta, config);
     const persistedByFile = groupVectorsByFile(persistedVectors);
     if (persistedVectors.length > 0) {
       console.log(`Loaded ${persistedVectors.length} existing vectors for incremental indexing`);
@@ -166,6 +170,13 @@ program
       if (docsToEmbed.length > batchSize) console.log();
     }
 
+    // If no reused vectors existed at init time, the initial meta line was
+    // written without a dimension (no vectors to sample from). Rewrite the
+    // store now that embeddings are complete so the fingerprint is canonical.
+    if (reusedVectors.length === 0 && newlyEmbeddedVectors.length > 0) {
+      await persistStoredVectors(newlyEmbeddedVectors, config);
+    }
+
     const allDocs = [...reusedVectors, ...newlyEmbeddedVectors].map(
       (v) => new Document({ pageContent: v.doc.pageContent, metadata: v.doc.metadata }),
     );
@@ -227,4 +238,10 @@ program
     }
   });
 
-program.parse();
+program.parseAsync().catch((err: unknown) => {
+  if (err instanceof IndexFingerprintError) {
+    console.error(err.message);
+    process.exit(1);
+  }
+  throw err;
+});

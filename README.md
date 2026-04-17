@@ -171,6 +171,14 @@ Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files ar
 | `ORACLE_VECTOR_STORE` | No | `directory` | `directory` (persisted) or `memory` (ephemeral) |
 | `ORACLE_INCLUDE_EXTENSIONS` | No | _see scanner defaults_ | Comma-separated extension allowlist, replaces defaults entirely (e.g. `.ts,.py,.rb`). Leading dot optional. If you include `.json`, the built-in manifest filter (only `package.json`/`tsconfig.json`) is bypassed — you'll get every matching JSON file. |
 
+## Embedding fingerprint
+
+The index stores a fingerprint (`embeddingProvider`, `embeddingModel`, `dimension`) in a leading meta line of `embeddings.jsonl`. On load, codebase-oracle refuses to run the index against a different provider/model — you'd get silent garbage otherwise, because the query vector and the stored vectors would live in different embedding spaces (or differ in dimension, producing `NaN` scores).
+
+If you change `ORACLE_EMBEDDING_PROVIDER` or `ORACLE_EMBEDDING_MODEL`, the next `npm run index` / `npm run query` / MCP call will fail fast with a clear message telling you to either delete `~/.codebase-oracle/` (to re-embed with the new model) or revert the env change. There is no automatic migration — the choice is yours.
+
+Indexes created before this check exist without a fingerprint; they load with a warning and should be re-built at your earliest convenience.
+
 ## Development
 
 ```bash
