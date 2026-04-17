@@ -39,13 +39,15 @@ Either run `npm run migrate-store` to convert in place, or delete
 
 #### Tests
 - Unit tests for the raw SQLite store (CRUD, similarity, WAL concurrent
-  reader/writer) and the migration command. Suite grew from 92 to 101 tests.
+  reader/writer incl. cross-process via `spawnSync`, `initializeSchema`
+  contention) and the migration command. Suite grew from 92 to 105 tests.
 
 ### Changed
 - `createVectorStore`, `listIndexedRepos`, and every ingest/watch path now
-  talk to a `SqliteStore` handle. Cold-start memory for an MCP instance
-  drops from ~1.5 GB (full in-memory index) to under 100 MB — the store
-  stays on disk and similarity search runs against the vec0 table.
+  talk to a `SqliteStore` handle. Cold-start RSS for the CLI drops from
+  ~1.5 GB (full in-memory index) to ~200 MB (measured on a 49,869-chunk /
+  dim-1536 corpus, including Node + tsx wrapper overhead). The store stays
+  on disk and similarity search runs against the vec0 table.
 - `similaritySearch` is now a SQL KNN query, not a JS linear scan.
 - `watch` log lines no longer duplicate the repo segment (`fake-repo/fake-repo/a.ts`
   → `fake-repo/a.ts`).
