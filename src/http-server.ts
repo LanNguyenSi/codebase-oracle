@@ -45,7 +45,12 @@ let storePromise: Promise<VectorStoreWrapper> | null = null;
 function getStore(): Promise<VectorStoreWrapper> {
   if (!storePromise) {
     const embeddings = createEmbeddings(config);
-    storePromise = createVectorStore(embeddings, config);
+    storePromise = createVectorStore(embeddings, config).catch((err) => {
+      // Don't cache the rejection: a config fix on disk should be visible to
+      // the next tool call without restarting the server.
+      storePromise = null;
+      throw err;
+    });
   }
   return storePromise;
 }
@@ -54,7 +59,7 @@ function getStore(): Promise<VectorStoreWrapper> {
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.2.0",
+  version: "0.3.0",
 });
 
 server.tool(
@@ -134,7 +139,7 @@ const httpServer = createHttpServer(async (req, res) => {
   // Health check
   if (req.method === "GET" && url.pathname === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", version: "0.2.0" }));
+    res.end(JSON.stringify({ status: "ok", version: "0.3.0" }));
     return;
   }
 
