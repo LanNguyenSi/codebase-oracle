@@ -29,7 +29,7 @@ function fileKey(repo: string, filePath: string): string {
 program
   .name("codebase-oracle")
   .description("RAG-powered codebase Q&A for your multi-repo codebase")
-  .version("0.3.0");
+  .version("0.4.0");
 
 program
   .command("index")
