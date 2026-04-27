@@ -205,7 +205,8 @@ describe("runWatchMode integration", () => {
       await watcher.flushOnce();
 
       const repos = await listIndexedRepos(config);
-      expect(repos).toEqual([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(repos[0].lastIndexedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     } finally {
       await watcher.close();
       logSpy.mockRestore();

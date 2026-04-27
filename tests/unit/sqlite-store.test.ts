@@ -212,6 +212,47 @@ describe("CRUD + similarity", () => {
     store.close();
   });
 
+  it("listRepos.lastIndexedAt is null on a fresh store, advances on writes, clears on deleteByRepo", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+
+    // No repos yet.
+    expect(store.listRepos()).toEqual([]);
+
+    // First write sets lastIndexedAt.
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+    const afterFirst = store.listRepos();
+    expect(afterFirst).toHaveLength(1);
+    const firstStamp = afterFirst[0].lastIndexedAt;
+    expect(firstStamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    // Second write advances lastIndexedAt strictly forward.
+    await new Promise((r) => setTimeout(r, 10)); // ensure ISO ms diff
+    store.upsertFile("r", "r/b.ts", null, [
+      { embedding: normalized([0, 1, 0]), pageContent: "y", metadata: { repo: "r", filePath: "r/b.ts" } },
+    ]);
+    const afterSecond = store.listRepos();
+    expect(afterSecond[0].lastIndexedAt).not.toBe(firstStamp);
+    expect(new Date(afterSecond[0].lastIndexedAt!).getTime()).toBeGreaterThanOrEqual(
+      new Date(firstStamp!).getTime(),
+    );
+
+    // deleteByFile bumps the timestamp (file removal IS an index update).
+    await new Promise((r) => setTimeout(r, 10));
+    const beforeDelete = afterSecond[0].lastIndexedAt!;
+    store.deleteByFile("r", "r/a.ts");
+    const afterDelete = store.listRepos();
+    expect(new Date(afterDelete[0].lastIndexedAt!).getTime()).toBeGreaterThan(
+      new Date(beforeDelete).getTime(),
+    );
+
+    // deleteByRepo drops both docs and the freshness row.
+    store.deleteByRepo("r");
+    expect(store.listRepos()).toEqual([]);
+    store.close();
+  });
+
   it("fileSignatures returns the latest per-file hash", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));

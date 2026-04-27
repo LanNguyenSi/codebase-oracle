@@ -19,6 +19,12 @@ export interface IndexedRepo {
   repo: string;
   chunkCount: number;
   fileCount: number;
+  /**
+   * ISO 8601 timestamp of the last successful upsert/delete affecting this
+   * repo. `null` for repos last touched before the freshness rollout — they
+   * pick up a value on their next re-index.
+   */
+  lastIndexedAt: string | null;
 }
 
 export interface StoredEntry {
@@ -122,6 +128,8 @@ interface CompiledStatements {
   selectFileSignatures: Database.Statement;
   selectEpoch: Database.Statement;
   upsertEpoch: Database.Statement;
+  touchRepo: Database.Statement<[string, string]>;
+  deleteRepoMeta: Database.Statement<[string]>;
 }
 
 /** Statements that depend on the vec0 virtual table existing. Compiled lazily. */
@@ -160,6 +168,10 @@ export function openSqliteStore(config: Config): SqliteStore {
     );
     CREATE INDEX IF NOT EXISTS docs_repo_file ON docs(repo, file_path);
     CREATE INDEX IF NOT EXISTS docs_file_hash ON docs(file_hash);
+    CREATE TABLE IF NOT EXISTS repo_meta (
+      repo TEXT PRIMARY KEY,
+      last_indexed_at TEXT NOT NULL
+    );
   `);
 
   // The vec0 virtual table is created lazily because its dimension is locked
@@ -222,8 +234,19 @@ export function openSqliteStore(config: Config): SqliteStore {
     ),
     countDocs: db.prepare("SELECT COUNT(*) AS c FROM docs"),
     listRepos: db.prepare(
-      "SELECT repo, COUNT(*) AS chunkCount, COUNT(DISTINCT file_path) AS fileCount FROM docs GROUP BY repo ORDER BY repo",
+      `SELECT d.repo AS repo,
+              COUNT(*) AS chunkCount,
+              COUNT(DISTINCT d.file_path) AS fileCount,
+              r.last_indexed_at AS lastIndexedAt
+       FROM docs d
+       LEFT JOIN repo_meta r ON r.repo = d.repo
+       GROUP BY d.repo
+       ORDER BY d.repo`,
     ),
+    touchRepo: db.prepare(
+      "INSERT INTO repo_meta(repo, last_indexed_at) VALUES(?, ?) ON CONFLICT(repo) DO UPDATE SET last_indexed_at=excluded.last_indexed_at",
+    ),
+    deleteRepoMeta: db.prepare("DELETE FROM repo_meta WHERE repo=?"),
     deleteDocsByFile: db.prepare("DELETE FROM docs WHERE repo=? AND file_path=? RETURNING rowid"),
     deleteDocsByRepo: db.prepare("DELETE FROM docs WHERE repo=? RETURNING rowid"),
     insertDoc: db.prepare(
@@ -428,8 +451,15 @@ export function openSqliteStore(config: Config): SqliteStore {
 
   function insertBatchInternal(entries: StoredEntry[]): void {
     if (entries.length === 0) return;
+    const now = new Date().toISOString();
+    const repos = new Set<string>();
+    for (const entry of entries) {
+      const repo = extractString(entry.metadata, "repo");
+      if (repo) repos.add(repo);
+    }
     const tx = db.transaction(() => {
       for (const entry of entries) insertEntry(entry);
+      for (const repo of repos) stmts.touchRepo.run(repo, now);
       bumpEpochInternal();
     });
     tx();
@@ -442,6 +472,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     entries: StoredEntry[],
   ): { added: number; removed: number } {
     let removed = 0;
+    const now = new Date().toISOString();
     const tx = db.transaction(() => {
       vec().deleteVecByFile.run(repo, filePath);
       const deleted = stmts.deleteDocsByFile.all(repo, filePath) as Array<{ rowid: number }>;
@@ -452,6 +483,7 @@ export function openSqliteStore(config: Config): SqliteStore {
         const metadata = { ...entry.metadata, repo, filePath };
         insertEntry({ ...entry, metadata });
       }
+      stmts.touchRepo.run(repo, now);
       bumpEpochInternal();
     });
     tx();
@@ -460,11 +492,17 @@ export function openSqliteStore(config: Config): SqliteStore {
 
   function deleteByFileInternal(repo: string, filePath: string): number {
     let removed = 0;
+    const now = new Date().toISOString();
     const tx = db.transaction(() => {
       vec().deleteVecByFile.run(repo, filePath);
       const deleted = stmts.deleteDocsByFile.all(repo, filePath) as Array<{ rowid: number }>;
       removed = deleted.length;
-      if (removed > 0) bumpEpochInternal();
+      if (removed > 0) {
+        // File-removal is still an index update — bump the repo's freshness
+        // timestamp so listRepos reflects the change.
+        stmts.touchRepo.run(repo, now);
+        bumpEpochInternal();
+      }
     });
     tx();
     return removed;
@@ -476,7 +514,12 @@ export function openSqliteStore(config: Config): SqliteStore {
       vec().deleteVecByRepo.run(repo);
       const deleted = stmts.deleteDocsByRepo.all(repo) as Array<{ rowid: number }>;
       removed = deleted.length;
-      if (removed > 0) bumpEpochInternal();
+      if (removed > 0) {
+        // Repo is gone — drop its freshness row too so listRepos doesn't
+        // surface a stale timestamp for an unindexed repo.
+        stmts.deleteRepoMeta.run(repo);
+        bumpEpochInternal();
+      }
     });
     tx();
     return removed;
