@@ -150,10 +150,16 @@ describe("createVectorStore", () => {
       new Document({ pageContent: "d", metadata: { repo: "billing", filePath: "billing/pay.ts" } }),
     ]);
 
-    expect(store.listRepos()).toEqual([
+    const repos = store.listRepos();
+    expect(repos).toMatchObject([
       { repo: "auth", chunkCount: 3, fileCount: 2 },
       { repo: "billing", chunkCount: 1, fileCount: 1 },
     ]);
+    // lastIndexedAt is set by the addDocuments call above; assert it's a
+    // valid ISO timestamp without binding to an exact wall-clock value.
+    for (const r of repos) {
+      expect(r.lastIndexedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    }
     store.close();
   });
 });
@@ -184,9 +190,11 @@ describe("listIndexedRepos", () => {
       embeddingProvider: "ollama",
       embeddingModel: "nomic-embed-text",
     });
-    expect(listIndexedRepos(readerConfig)).toEqual([
+    const repos = listIndexedRepos(readerConfig);
+    expect(repos).toMatchObject([
       { repo: "r", chunkCount: 1, fileCount: 1 },
     ]);
+    expect(repos[0].lastIndexedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
 

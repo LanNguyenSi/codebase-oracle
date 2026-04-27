@@ -7,6 +7,7 @@ import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore } from "./store/vector-store.js";
 import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import { formatRepoLine } from "./format-freshness.js";
 
 loadEnvFromFile();
 
@@ -95,9 +96,7 @@ server.tool(
       };
     }
 
-    const text = repos
-      .map((r) => `- ${r.repo} — ${r.chunkCount} chunks across ${r.fileCount} files`)
-      .join("\n");
+    const text = repos.map((r) => formatRepoLine(r)).join("\n");
 
     return {
       content: [{

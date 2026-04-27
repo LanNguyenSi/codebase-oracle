@@ -12,6 +12,7 @@ import {
 } from "./store/vector-store.js";
 import { openSqliteStore, type StoredEntry } from "./store/sqlite-store.js";
 import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import { formatRepoLine } from "./format-freshness.js";
 import { Document } from "@langchain/core/documents";
 import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
@@ -288,7 +289,7 @@ program
       return;
     }
     for (const r of repos) {
-      console.log(`  ${r.repo} — ${r.chunkCount} chunks across ${r.fileCount} files`);
+      console.log(formatRepoLine(r, { prefix: "  " }));
     }
   });
 
