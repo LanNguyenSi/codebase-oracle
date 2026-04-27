@@ -24,6 +24,7 @@ import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore, IndexFingerprintError, type VectorStoreWrapper } from "./store/vector-store.js";
 import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
+import { expandFile, formatExpandResult } from "./expand.js";
 import { resolveHttpBindConfig, verifyBearer } from "./http-auth.js";
 
 loadEnvFromFile();
@@ -128,6 +129,22 @@ server.tool(
     return {
       content: [{ type: "text" as const, text: `${repos.length} indexed repos:\n${text}` }],
     };
+  },
+);
+
+server.tool(
+  "oracle_expand",
+  "Read a window of lines around a specific position in an indexed file. Use after oracle_search to see the context around a chunk without leaving the oracle. Reads the file from disk via the indexed absolutePath; if the working copy has changed since indexing, the lines may not match what oracle_search returned — check oracle_list_repos for the indexed timestamp.",
+  {
+    repo: z.string().describe("Repo name (must be indexed; see oracle_list_repos)"),
+    path: z.string().describe("File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)"),
+    line: z.number().int().min(1).optional().describe("1-indexed line to center the window on (default 1, top of file)"),
+    window: z.number().int().min(1).max(200).optional().describe("Lines to include around `line` (default 30, capped at 200)"),
+  },
+  async ({ repo, path, line, window }) => {
+    const store = await getStore();
+    const result = await expandFile(store, { repo, path, line, window });
+    return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
   },
 );
 
