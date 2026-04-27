@@ -4,7 +4,7 @@ Semantic search across all your local repos, via MCP or CLI.
 
 [![CI](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml/badge.svg)](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml)
 
-codebase-oracle builds one semantic index over every git repo under a root directory, then exposes it to agents via MCP or to humans via CLI. Embeddings live on your machine (OpenAI or Ollama, configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
+codebase-oracle builds one semantic index over every git repo under a root directory, then exposes it to agents via MCP or to humans via CLI. The vector store lives on your machine; embeddings are computed by OpenAI by default, or fully local via Ollama (configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
 
 ## Try it in 60 seconds
 
@@ -55,8 +55,8 @@ export function requireToken(req, res, next) {
 `oracle_list_repos` shows what's indexed and how fresh each repo is:
 
 ```
-- agent-tasks — 1842 chunks across 287 files (indexed 2026-04-27T10:14:02Z, 14 minutes ago)
-- agent-tasks-cli — 421 chunks across 68 files (indexed 2026-04-27T10:14:18Z, 14 minutes ago)
+- agent-tasks — 1842 chunks across 287 files (indexed 2026-04-27T10:14:02Z, 14 min ago)
+- agent-tasks-cli — 421 chunks across 68 files (indexed 2026-04-27T10:14:18Z, 14 min ago)
 ```
 
 ## Next steps
