@@ -22,7 +22,7 @@ import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore, IndexFingerprintError, type VectorStoreWrapper } from "./store/vector-store.js";
-import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { resolveHttpBindConfig, verifyBearer } from "./http-auth.js";
 
 loadEnvFromFile();
@@ -95,8 +95,9 @@ server.tool(
 
     const text = docs
       .map((doc, i) => {
-        const { repo: r, filePath } = doc.metadata as { repo: string; filePath: string };
-        return `[${i + 1}] ${filePath} (${r}):\n${doc.pageContent}`;
+        const { repo: r } = doc.metadata as { repo: string };
+        const location = formatChunkLocation(doc.metadata);
+        return `[${i + 1}] ${location} (${r}):\n${doc.pageContent}`;
       })
       .join("\n\n---\n\n");
 

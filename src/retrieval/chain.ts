@@ -27,6 +27,21 @@ export interface QueryResult {
   sources: Array<{ repo: string; filePath: string; snippet: string }>;
 }
 
+// Format a chunk's path with line numbers when the splitter recorded them.
+// Older chunks indexed before the line-number rollout fall back to the bare
+// filePath.
+export function formatChunkLocation(metadata: Record<string, unknown>): string {
+  const filePath = typeof metadata.filePath === "string" ? metadata.filePath : "";
+  const lineStart = typeof metadata.lineStart === "number" ? metadata.lineStart : null;
+  const lineEnd = typeof metadata.lineEnd === "number" ? metadata.lineEnd : null;
+  if (lineStart !== null && lineEnd !== null) {
+    return lineStart === lineEnd
+      ? `${filePath}:${lineStart}`
+      : `${filePath}:${lineStart}-${lineEnd}`;
+  }
+  return filePath;
+}
+
 export async function queryCodebase(
   question: string,
   vectorStore: VectorStoreWrapper,
@@ -49,8 +64,9 @@ export async function queryCodebase(
   // Format context
   const context = docs
     .map((doc, i) => {
-      const { repo, filePath } = doc.metadata as { repo: string; filePath: string };
-      return `[${i + 1}] ${filePath} (${repo}):\n\`\`\`\n${doc.pageContent}\n\`\`\``;
+      const { repo } = doc.metadata as { repo: string };
+      const location = formatChunkLocation(doc.metadata);
+      return `[${i + 1}] ${location} (${repo}):\n\`\`\`\n${doc.pageContent}\n\`\`\``;
     })
     .join("\n\n");
 
@@ -95,8 +111,8 @@ export async function queryCodebase(
 export function formatRawContextAnswer(docs: Document[]): string {
   return docs
     .map((doc) => {
-      const { filePath } = doc.metadata as { filePath: string };
-      return `### ${filePath}\n\`\`\`\n${doc.pageContent.slice(0, 500)}\n\`\`\``;
+      const location = formatChunkLocation(doc.metadata);
+      return `### ${location}\n\`\`\`\n${doc.pageContent.slice(0, 500)}\n\`\`\``;
     })
     .join("\n\n");
 }

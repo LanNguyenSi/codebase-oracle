@@ -11,7 +11,7 @@ import {
   listIndexedRepos,
 } from "./store/vector-store.js";
 import { openSqliteStore, type StoredEntry } from "./store/sqlite-store.js";
-import { queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { Document } from "@langchain/core/documents";
 import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
@@ -267,8 +267,9 @@ program
         limit: parseInt(opts.limit, 10),
       });
       for (const doc of docs) {
-        const { repo, filePath } = doc.metadata as { repo: string; filePath: string };
-        console.log(`\n--- ${filePath} (${repo}) ---`);
+        const { repo } = doc.metadata as { repo: string };
+        const location = formatChunkLocation(doc.metadata);
+        console.log(`\n--- ${location} (${repo}) ---`);
         console.log(doc.pageContent.slice(0, 500));
       }
     } finally {

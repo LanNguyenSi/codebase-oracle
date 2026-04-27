@@ -3,6 +3,7 @@ import { Document } from "@langchain/core/documents";
 import {
   createLlm,
   extractSources,
+  formatChunkLocation,
   formatRawContextAnswer,
   getLlmErrorDetails,
 } from "../../src/retrieval/chain.js";
@@ -178,5 +179,37 @@ describe("formatRawContextAnswer", () => {
 
   it("returns empty string for empty input", () => {
     expect(formatRawContextAnswer([])).toBe("");
+  });
+
+  it("renders chunk locations with line numbers when present", () => {
+    const docs = [
+      new Document({
+        pageContent: "fn",
+        metadata: { filePath: "r/a.ts", repo: "r", lineStart: 12, lineEnd: 27 },
+      }),
+    ];
+    const out = formatRawContextAnswer(docs);
+    expect(out).toContain("### r/a.ts:12-27");
+  });
+});
+
+describe("formatChunkLocation", () => {
+  it("renders path:start-end when both line numbers are present", () => {
+    expect(formatChunkLocation({ filePath: "r/a.ts", lineStart: 1, lineEnd: 30 }))
+      .toBe("r/a.ts:1-30");
+  });
+
+  it("renders path:line when start equals end", () => {
+    expect(formatChunkLocation({ filePath: "r/a.ts", lineStart: 5, lineEnd: 5 }))
+      .toBe("r/a.ts:5");
+  });
+
+  it("falls back to bare filePath when line numbers are missing", () => {
+    expect(formatChunkLocation({ filePath: "r/a.ts" })).toBe("r/a.ts");
+  });
+
+  it("falls back when only one of the two line numbers is present", () => {
+    expect(formatChunkLocation({ filePath: "r/a.ts", lineStart: 5 })).toBe("r/a.ts");
+    expect(formatChunkLocation({ filePath: "r/a.ts", lineEnd: 9 })).toBe("r/a.ts");
   });
 });
