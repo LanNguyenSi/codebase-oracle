@@ -5,6 +5,77 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-04-27
+
+Agent-UX release. Three improvements pulled from a dogfood feedback
+session that asked "what would make Claude actually use codebase-oracle
+as the default for code lookup, instead of falling back to grep?". The
+three answers — line numbers in results, freshness signal per repo,
+and a way to expand context without leaving the oracle — all ship in
+this release.
+
+### Added
+
+#### Line numbers in chunk results
+
+- The splitter now records `lineStart` and `lineEnd` (1-indexed,
+  inclusive) on every chunk's metadata. All five rendering sites
+  (CLI `search` / `query`, MCP stdio, MCP HTTP, RAG context block,
+  raw-context fallback) emit the chunk location as
+  `path:lineStart-lineEnd` (or `path:line` for single-line chunks).
+- New `formatChunkLocation(metadata)` helper centralises the
+  rendering and gracefully falls back to bare `filePath` for chunks
+  indexed before this release. Older chunks pick up line numbers on
+  their next re-embed; no store migration required.
+- ([#16](https://github.com/LanNguyenSi/codebase-oracle/pull/16))
+
+#### Per-repo `last_indexed_at` on `oracle_list_repos`
+
+- New `repo_meta(repo, last_indexed_at)` SQLite table tracks when each
+  repo was last touched by `upsertFile` / `insertBatch` /
+  `deleteByFile`; `deleteByRepo` drops the row entirely so unindexed
+  repos don't surface stale timestamps. All bumps live inside the
+  existing `db.transaction` so rollback cleans up.
+- `oracle_list_repos` output gains an `(indexed <ISO>, <relative>)`
+  suffix per repo where present. Repos last touched before this
+  release render bare until their next re-embed.
+- New `formatRepoLine` / `formatRelativeFreshness` helpers in
+  `src/format-freshness.ts` own the rendering. Optional `prefix`
+  parameter so the CLI's two-space indent and the MCP's `- ` bullet
+  can share the same renderer.
+- ([#17](https://github.com/LanNguyenSi/codebase-oracle/pull/17))
+
+#### `oracle_expand` MCP tool
+
+- New tool reads a window of lines around a position in an indexed
+  file. Closes the **search → expand → edit** loop without leaving
+  the oracle: paste a `path:line` from `oracle_search` into
+  `oracle_expand` and get the surrounding 30 lines back in cat-n
+  format, ready to feed into another tool.
+- Window default 30 lines, capped at 200. Centered around the
+  requested line; clamps cleanly at start and end of file. Trailing
+  `\r` stripped so CRLF-encoded files render clean.
+- Four typed failure modes (`not_indexed`, `no_absolute_path`,
+  `file_missing`, `read_error`) with human-readable messages.
+- New `expand <repo> <path>` CLI command with `--line` and `--window`
+  options.
+- New `getFileMetadata(repo, filePath)` accessor on the SQLite store
+  + `VectorStoreWrapper` so the tool can recover the indexed
+  `absolutePath` without making the caller know it.
+- Honest disclosure in the tool description: reads from disk via the
+  indexed `absolutePath`, not from a stored snapshot. If the working
+  copy has changed since indexing, the lines may not match what
+  `oracle_search` returned. `oracle_list_repos` shows the indexed
+  timestamp.
+- ([#18](https://github.com/LanNguyenSi/codebase-oracle/pull/18))
+
+### Changed
+
+- `oracle_search` and `oracle_list_repos` output formats now include
+  the per-chunk line range and the per-repo indexed timestamp
+  respectively. Both changes are additive — clients that ignored
+  the suffixes still parse the leading `repo` / `path` cleanly.
+
 ## [0.3.0] - 2026-04-17
 
 **Breaking:** on-disk format changed from `embeddings.jsonl` to a SQLite file
