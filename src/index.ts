@@ -13,6 +13,7 @@ import {
 import { openSqliteStore, type StoredEntry } from "./store/sqlite-store.js";
 import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
+import { expandFile, formatExpandResult } from "./expand.js";
 import { Document } from "@langchain/core/documents";
 import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
@@ -290,6 +291,31 @@ program
     }
     for (const r of repos) {
       console.log(formatRepoLine(r, { prefix: "  " }));
+    }
+  });
+
+program
+  .command("expand")
+  .description("Read a window of lines around a position in an indexed file")
+  .argument("<repo>", "Repo name (must be indexed)")
+  .argument("<path>", "File path relative to the repo root")
+  .option("-l, --line <n>", "1-indexed line to center the window on", "1")
+  .option("-w, --window <n>", "Lines to include around the center (max 200)", "30")
+  .action(async (repo, path, opts) => {
+    const config = loadConfig();
+    const embeddings = createEmbeddings(config);
+    const store = await createVectorStore(embeddings, config);
+    try {
+      const result = await expandFile(store, {
+        repo,
+        path,
+        line: parseInt(opts.line, 10),
+        window: parseInt(opts.window, 10),
+      });
+      console.log(formatExpandResult(result));
+      if (!result.ok) process.exit(1);
+    } finally {
+      store.close();
     }
   });
 

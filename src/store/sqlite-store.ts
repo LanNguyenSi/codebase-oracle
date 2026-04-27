@@ -80,6 +80,12 @@ export interface SqliteStore {
   deleteByFile(repo: string, filePath: string): number;
   deleteByRepo(repo: string): number;
   fileSignatures(): Map<string, FileSignature>;
+  /**
+   * Returns the metadata payload from any one chunk for the given file, or
+   * `null` if no chunks are indexed for it. Used by oracle_expand to recover
+   * the absolutePath at query time without making the caller know it.
+   */
+  getFileMetadata(repo: string, filePath: string): Record<string, unknown> | null;
   insertBatch(entries: StoredEntry[]): void;
   close(): void;
   /**
@@ -126,6 +132,7 @@ interface CompiledStatements {
   deleteDocsByRepo: Database.Statement<[string]>;
   insertDoc: Database.Statement;
   selectFileSignatures: Database.Statement;
+  selectFileMetadata: Database.Statement<[string, string]>;
   selectEpoch: Database.Statement;
   upsertEpoch: Database.Statement;
   touchRepo: Database.Statement<[string, string]>;
@@ -254,6 +261,9 @@ export function openSqliteStore(config: Config): SqliteStore {
     ),
     selectFileSignatures: db.prepare(
       "SELECT repo, file_path AS filePath, file_hash AS fileHash FROM docs",
+    ),
+    selectFileMetadata: db.prepare(
+      "SELECT metadata FROM docs WHERE repo = ? AND file_path = ? LIMIT 1",
     ),
     selectEpoch: db.prepare("SELECT value FROM meta WHERE key = 'writeEpoch'"),
     upsertEpoch: db.prepare(
@@ -525,6 +535,17 @@ export function openSqliteStore(config: Config): SqliteStore {
     return removed;
   }
 
+  function getFileMetadataInternal(
+    repo: string,
+    filePath: string,
+  ): Record<string, unknown> | null {
+    const row = stmts.selectFileMetadata.get(repo, filePath) as
+      | { metadata: string }
+      | undefined;
+    if (!row) return null;
+    return JSON.parse(row.metadata) as Record<string, unknown>;
+  }
+
   function fileSignaturesInternal(): Map<string, FileSignature> {
     const rows = stmts.selectFileSignatures.all() as Array<{
       repo: string;
@@ -572,6 +593,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     deleteByFile: deleteByFileInternal,
     deleteByRepo: deleteByRepoInternal,
     fileSignatures: fileSignaturesInternal,
+    getFileMetadata: getFileMetadataInternal,
     insertBatch: insertBatchInternal,
     bumpWriteEpoch: bumpEpochInternal,
     getWriteEpoch: getWriteEpochInternal,

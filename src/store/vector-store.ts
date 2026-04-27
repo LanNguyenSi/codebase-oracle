@@ -20,6 +20,7 @@ export interface VectorStoreWrapper {
     filter?: Record<string, string>,
   ): Promise<Document[]>;
   listRepos(): IndexedRepo[];
+  getFileMetadata(repo: string, filePath: string): Record<string, unknown> | null;
   close(): void;
 }
 
@@ -131,6 +132,10 @@ export async function createVectorStore(
 
     listRepos() {
       return store.listRepos();
+    },
+
+    getFileMetadata(repo, filePath) {
+      return store.getFileMetadata(repo, filePath);
     },
 
     close() {
