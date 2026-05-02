@@ -79,6 +79,19 @@ export interface SqliteStore {
   ): { added: number; removed: number };
   deleteByFile(repo: string, filePath: string): number;
   deleteByRepo(repo: string): number;
+  /**
+   * Stamp `repo_meta.last_indexed_at` for `repo`. Called by upsertFile /
+   * insertBatch / deleteByFile whenever the index changes; the full-reindex
+   * command also calls it explicitly for repos that were scanned but produced
+   * no upserts (everything reused) so their freshness still advances.
+   */
+  touchRepo(repo: string, lastIndexedAt: string): void;
+  /**
+   * Drop `repo_meta` rows that no longer have any docs (orphans left over
+   * from earlier file-by-file pruning). Returns the number of rows removed.
+   * Idempotent — a no-op when there is nothing to prune.
+   */
+  pruneOrphanRepoMeta(): number;
   fileSignatures(): Map<string, FileSignature>;
   /**
    * Returns the metadata payload from any one chunk for the given file, or
@@ -500,6 +513,10 @@ export function openSqliteStore(config: Config): SqliteStore {
     return { added: entries.length, removed };
   }
 
+  const countDocsByRepoStmt = db.prepare(
+    "SELECT COUNT(*) AS c FROM docs WHERE repo=?",
+  ) as Database.Statement<[string]>;
+
   function deleteByFileInternal(repo: string, filePath: string): number {
     let removed = 0;
     const now = new Date().toISOString();
@@ -508,14 +525,53 @@ export function openSqliteStore(config: Config): SqliteStore {
       const deleted = stmts.deleteDocsByFile.all(repo, filePath) as Array<{ rowid: number }>;
       removed = deleted.length;
       if (removed > 0) {
-        // File-removal is still an index update — bump the repo's freshness
-        // timestamp so listRepos reflects the change.
-        stmts.touchRepo.run(repo, now);
+        const remaining = (countDocsByRepoStmt.get(repo) as { c: number }).c;
+        if (remaining === 0) {
+          // Last file of this repo just went away. Drop the freshness row too
+          // so listRepos doesn't surface a stale timestamp for an unindexed
+          // repo, and so re-deleted repos don't accumulate orphan rows.
+          stmts.deleteRepoMeta.run(repo);
+        } else {
+          // File-removal is still an index update — bump the repo's freshness
+          // timestamp so listRepos reflects the change.
+          stmts.touchRepo.run(repo, now);
+        }
         bumpEpochInternal();
       }
     });
     tx();
     return removed;
+  }
+
+  function touchRepoExternal(repo: string, lastIndexedAt: string): void {
+    const tx = db.transaction(() => {
+      stmts.touchRepo.run(repo, lastIndexedAt);
+      bumpEpochInternal();
+    });
+    tx();
+  }
+
+  const pruneOrphanRepoMetaStmt = db.prepare(
+    "DELETE FROM repo_meta WHERE repo NOT IN (SELECT DISTINCT repo FROM docs)",
+  );
+
+  function pruneOrphanRepoMetaInternal(): number {
+    // Repos whose docs were pruned file-by-file before the deleteByFile path
+    // learned to drop the freshness row leave orphan repo_meta rows behind.
+    // The full-reindex command sweeps these at startup so the table doesn't
+    // grow without bound.
+    let changes = 0;
+    const tx = db.transaction(() => {
+      const result = pruneOrphanRepoMetaStmt.run();
+      changes = result.changes;
+      if (changes > 0) {
+        // Match the convention used by the other meta mutators so any reader
+        // bound to writeEpoch sees an invalidation when orphans are swept.
+        bumpEpochInternal();
+      }
+    });
+    tx();
+    return changes;
   }
 
   function deleteByRepoInternal(repo: string): number {
@@ -592,6 +648,8 @@ export function openSqliteStore(config: Config): SqliteStore {
     upsertFile: upsertFileInternal,
     deleteByFile: deleteByFileInternal,
     deleteByRepo: deleteByRepoInternal,
+    touchRepo: touchRepoExternal,
+    pruneOrphanRepoMeta: pruneOrphanRepoMetaInternal,
     fileSignatures: fileSignaturesInternal,
     getFileMetadata: getFileMetadataInternal,
     insertBatch: insertBatchInternal,

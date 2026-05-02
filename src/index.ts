@@ -45,6 +45,12 @@ program
     const store = openSqliteStore(config);
     try {
       store.assertCompatibleWithConfig(config);
+      const orphanedMeta = store.pruneOrphanRepoMeta();
+      if (orphanedMeta > 0) {
+        console.log(
+          `Cleared ${orphanedMeta} orphan repo_meta row(s) left over from earlier prunes.`,
+        );
+      }
       const existingSignatures = store.fileSignatures();
       if (existingSignatures.size > 0) {
         console.log(
@@ -69,6 +75,7 @@ program
       let reusedChunks = 0;
 
       const seenKeys = new Set<string>();
+      const liveRepos = new Set<string>();
       const docsToEmbed: Document[] = [];
 
       for (const repo of repos) {
@@ -99,6 +106,8 @@ program
           totalChunks += chunks.length;
         }
 
+        if (repoFiles > 0) liveRepos.add(repo.name);
+
         console.log(` ${repoFiles} files, ${repoChunks} chunks (${repoReusedFiles} files reused)`);
       }
 
@@ -112,6 +121,22 @@ program
       }
       if (prunedFiles > 0) {
         console.log(`Pruned ${prunedFiles} files that vanished from disk.`);
+      }
+
+      // Stamp every repo that still has at least one file on disk so reused-
+      // only repos still advance last_indexed_at. upsertFile/insertBatch
+      // later in this run touch the same row again with a slightly newer
+      // timestamp for repos that did pick up changes — last write wins,
+      // which is what we want.
+      //
+      // We deliberately exclude repos that were discovered but yielded zero
+      // files in this scan (e.g. an entire repo was deleted between runs):
+      // the prune-by-file step above already dropped their repo_meta row
+      // when their last doc went away, and touching them here would
+      // immediately re-create an orphan entry that nothing reaches.
+      const scannedAt = new Date().toISOString();
+      for (const repoName of liveRepos) {
+        store.touchRepo(repoName, scannedAt);
       }
 
       const filesToEmbed = changedFiles + newFiles;
