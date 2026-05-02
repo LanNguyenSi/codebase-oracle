@@ -13,7 +13,7 @@ All configuration is via environment variables. The CLI and MCP server auto-load
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama` |
+| `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama`. `stub` exists for tests only (deterministic 8-dim vectors, no network) and is refused under `NODE_ENV=production` |
 | `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `ollama` |
 | `OPENAI_API_KEY` | Conditionally | — | Required when `ORACLE_EMBEDDING_PROVIDER=openai`; also used for OpenAI LLM |
 | `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |

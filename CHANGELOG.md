@@ -66,9 +66,10 @@ clone.
 ### Migration
 
 No action required. On the next `oracle index` run, the startup sweep
-silently cleans any legacy orphan `repo_meta` rows. The MCP server
-caches `storePromise` after its first tool call, so reconnect after
-upgrading and rebuilding `dist/`.
+cleans any legacy orphan `repo_meta` rows; you may see a one-time
+`Cleared N orphan repo_meta row(s)` log line — that is expected and
+not an error. The MCP server caches `storePromise` after its first
+tool call, so reconnect after upgrading and rebuilding `dist/`.
 
 ## [0.4.0] - 2026-04-27
 
