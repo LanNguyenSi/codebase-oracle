@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-05-02
+
+Patch release. Two table-hygiene leaks in the full-reindex path that
+caused `repo_meta` to drift away from `docs` over time, plus the
+infrastructure to keep that gap from regressing. Surfaces as no
+functional regression for queries, but `oracle_list_repos` was missing
+an `indexed` suffix for any repo last touched in a watcher-less
+workflow, and the `repo_meta` table grew unbounded with every deleted
+clone.
+
+### Fixed
+
+#### Index hygiene: orphan `repo_meta` rows + reused-only freshness
+
+- `deleteByFile` now drops the `repo_meta` row when the last file of
+  a repo is pruned, atomically in the same transaction. Previously it
+  always touched the freshness stamp regardless of whether anything
+  was left, leaving an orphan row whenever a clone disappeared from
+  disk.
+- The full reindex (`oracle index`) now stamps every repo that
+  yielded ≥1 file in this scan via the new `store.touchRepo(repo, ts)`
+  API — even if every file was hash-reused. Watcher-less workflows
+  were the only path that wrote to `repo_meta` through a successful
+  upsert, so reused-only repos used to render with `last_indexed_at = null`
+  forever.
+- The reindex command also calls `store.pruneOrphanRepoMeta()` once
+  at startup as a backfill sweep for stores that predate the
+  `deleteByFile` fix. Idempotent; logs `Cleared N orphan repo_meta
+  row(s)` when it actually does work.
+- ([#22](https://github.com/LanNguyenSi/codebase-oracle/pull/22))
+
+### Added
+
+#### Stub embedding provider for integration tests
+
+- New `ORACLE_EMBEDDING_PROVIDER=stub` returns deterministic 8-dim
+  vectors from `sha256(text)`. Documented test-only and refused under
+  `NODE_ENV=production`. Lets the new CLI integration test exercise
+  the full reindex pipeline without an OpenAI key.
+- New CLI-spawn integration test in `tests/integration/index-cli.test.ts`
+  drives `tsx src/index.ts index --path <tmp>` against a fixture
+  scanRoot through two scenarios: a reindex with vanished + partial +
+  fully-reused repos, and a legacy-store cleanup via the startup sweep.
+- ([#23](https://github.com/LanNguyenSi/codebase-oracle/pull/23))
+
+#### Documentation restructure
+
+- README rewritten to a 60-second hook with the rest of the prose
+  moved into `docs/`. Faster path to "should I install this".
+- ([#21](https://github.com/LanNguyenSi/codebase-oracle/pull/21))
+
+### Security
+
+- `uuid` overridden to `^14.0.0` to pull in the GHSA bounds-check fix
+  that surfaced through Dependabot. No direct dependency, but pulled
+  in transitively by `@langchain/*`.
+- ([#20](https://github.com/LanNguyenSi/codebase-oracle/pull/20))
+
+### Migration
+
+No action required. On the next `oracle index` run, the startup sweep
+silently cleans any legacy orphan `repo_meta` rows. The MCP server
+caches `storePromise` after its first tool call, so reconnect after
+upgrading and rebuilding `dist/`.
+
 ## [0.4.0] - 2026-04-27
 
 Agent-UX release. Three improvements pulled from a dogfood feedback
