@@ -551,17 +551,27 @@ export function openSqliteStore(config: Config): SqliteStore {
     tx();
   }
 
+  const pruneOrphanRepoMetaStmt = db.prepare(
+    "DELETE FROM repo_meta WHERE repo NOT IN (SELECT DISTINCT repo FROM docs)",
+  );
+
   function pruneOrphanRepoMetaInternal(): number {
     // Repos whose docs were pruned file-by-file before the deleteByFile path
     // learned to drop the freshness row leave orphan repo_meta rows behind.
     // The full-reindex command sweeps these at startup so the table doesn't
     // grow without bound.
-    const result = db
-      .prepare(
-        "DELETE FROM repo_meta WHERE repo NOT IN (SELECT DISTINCT repo FROM docs)",
-      )
-      .run();
-    return result.changes;
+    let changes = 0;
+    const tx = db.transaction(() => {
+      const result = pruneOrphanRepoMetaStmt.run();
+      changes = result.changes;
+      if (changes > 0) {
+        // Match the convention used by the other meta mutators so any reader
+        // bound to writeEpoch sees an invalidation when orphans are swept.
+        bumpEpochInternal();
+      }
+    });
+    tx();
+    return changes;
   }
 
   function deleteByRepoInternal(repo: string): number {

@@ -322,6 +322,45 @@ describe("CRUD + similarity", () => {
     store2.close();
   });
 
+  it("reindex sequence: prune-by-file + touchRepo(liveRepos) does not re-create orphan rows", async () => {
+    // End-to-end-ish regression for the index command's flow. Mirrors the
+    // post-walk sequence in src/index.ts: prune files no longer on disk
+    // through deleteByFile, then touchRepo only for repos that still have
+    // at least one live file. A repo whose entire content vanished must NOT
+    // get a touchRepo call — otherwise the repo_meta row that deleteByFile
+    // just dropped would be re-created as an orphan.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([
+      entry("kept", "kept/a.ts", normalized([1, 0, 0])),
+      entry("kept", "kept/b.ts", normalized([0, 1, 0])),
+      entry("vanished", "vanished/x.ts", normalized([0, 0, 1])),
+      entry("vanished", "vanished/y.ts", normalized([1, 1, 0])),
+    ]);
+
+    // Simulate the next reindex run finding `kept` intact but `vanished`
+    // gone from disk: walkRepo yields only kept's files, so seenKeys does
+    // not contain any of vanished's. liveRepos collects only kept.
+    const seenKeys = new Set(["kept::kept/a.ts", "kept::kept/b.ts"]);
+    const liveRepos = new Set(["kept"]);
+    const sigs = store.fileSignatures();
+    for (const [key, sig] of sigs) {
+      if (seenKeys.has(key)) continue;
+      store.deleteByFile(sig.repo, sig.filePath);
+    }
+    const scannedAt = new Date().toISOString();
+    for (const repo of liveRepos) store.touchRepo(repo, scannedAt);
+
+    const listed = store.listRepos();
+    expect(listed.map((r) => r.repo)).toEqual(["kept"]);
+    expect(listed[0].lastIndexedAt).toBe(scannedAt);
+    // The vanished repo must NOT have re-acquired a repo_meta row.
+    const orphans = store.pruneOrphanRepoMeta();
+    expect(orphans).toBe(0);
+    store.close();
+  });
+
   it("touchRepo stamps last_indexed_at without writing docs", async () => {
     // The full-reindex command calls store.touchRepo for every scanned repo
     // so that repos with zero changes (everything reused) still advance
