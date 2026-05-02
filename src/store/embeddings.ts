@@ -1,6 +1,34 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
-import type { Embeddings } from "@langchain/core/embeddings";
+import { Embeddings } from "@langchain/core/embeddings";
+import { createHash } from "node:crypto";
 import type { Config } from "../config.js";
+
+const STUB_DIMENSION = 8;
+
+class StubEmbeddings extends Embeddings {
+  constructor() {
+    super({});
+  }
+
+  async embedDocuments(texts: string[]): Promise<number[][]> {
+    return texts.map((t) => this.hashToVec(t));
+  }
+
+  async embedQuery(text: string): Promise<number[]> {
+    return this.hashToVec(text);
+  }
+
+  private hashToVec(text: string): number[] {
+    // 32 bytes from sha256 → first STUB_DIMENSION bytes folded to floats in
+    // [-1, 1]. Deterministic, cheap, no network. Not for production use.
+    const hash = createHash("sha256").update(text).digest();
+    const out = new Array<number>(STUB_DIMENSION);
+    for (let i = 0; i < STUB_DIMENSION; i++) {
+      out[i] = (hash[i] - 128) / 128;
+    }
+    return out;
+  }
+}
 
 function ensureV1BaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.replace(/\/+$/, "");
@@ -8,6 +36,11 @@ function ensureV1BaseUrl(baseUrl: string): string {
 }
 
 export function createEmbeddings(config: Config): Embeddings {
+  if (config.embeddingProvider === "stub") {
+    // Test-only path. Documented in tests/integration/index-cli.test.ts.
+    return new StubEmbeddings();
+  }
+
   if (config.embeddingProvider === "ollama") {
     return new OpenAIEmbeddings({
       apiKey: config.ollamaApiKey ?? config.openaiApiKey ?? "ollama",

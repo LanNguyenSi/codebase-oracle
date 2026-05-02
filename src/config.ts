@@ -6,7 +6,10 @@ const configSchema = z.object({
   dataDir: z.string().default(process.env.HOME + "/.codebase-oracle"),
 
   // Provider selection
-  embeddingProvider: z.enum(["openai", "ollama"]).default("openai"),
+  // "stub" produces deterministic vectors from a hash of the input text and
+  // is intended for integration tests only — it is documented in
+  // tests/integration/index-cli.test.ts.
+  embeddingProvider: z.enum(["openai", "ollama", "stub"]).default("openai"),
   llmProvider: z.enum(["auto", "anthropic", "openai", "ollama"]).default("auto"),
 
   // Embeddings
