@@ -253,6 +253,95 @@ describe("CRUD + similarity", () => {
     store.close();
   });
 
+  it("deleteByFile drops the repo_meta row when the last file of a repo is removed", async () => {
+    // Regression for orphan repo_meta rows: pruning the last doc of a repo
+    // through deleteByFile (the path the full-reindex command takes) used to
+    // leave a stale freshness row behind that nothing ever cleaned up.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([
+      entry("r", "r/a.ts", normalized([1, 0, 0])),
+      entry("r", "r/b.ts", normalized([0, 1, 0])),
+    ]);
+
+    // Two files, one deletion → repo still has a doc, freshness row stays.
+    store.deleteByFile("r", "r/a.ts");
+    let listed = store.listRepos();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].repo).toBe("r");
+    expect(listed[0].lastIndexedAt).not.toBeNull();
+
+    // Last file gone → repo disappears AND repo_meta row is dropped.
+    store.deleteByFile("r", "r/b.ts");
+    listed = store.listRepos();
+    expect(listed).toEqual([]);
+    // Re-inserting the repo after a full prune must produce a fresh, non-null
+    // freshness stamp — i.e. there is no orphan row to overwrite.
+    store.insertBatch([entry("r", "r/c.ts", normalized([0, 0, 1]))]);
+    listed = store.listRepos();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].lastIndexedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    store.close();
+  });
+
+  it("pruneOrphanRepoMeta clears repo_meta rows whose docs no longer exist", async () => {
+    // Backfill-cleanup for stores that predate the deleteByFile fix: orphan
+    // repo_meta rows should be removable in one sweep at re-index startup.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([
+      entry("kept", "kept/a.ts", normalized([1, 0, 0])),
+      entry("orphan-a", "orphan-a/x.ts", normalized([0, 1, 0])),
+      entry("orphan-b", "orphan-b/y.ts", normalized([0, 0, 1])),
+    ]);
+
+    // Simulate the legacy bug: docs+vectors of two repos are gone but their
+    // repo_meta rows survived. We can't reach that state through the public
+    // API anymore (deleteByFile now drops meta), so insert the situation by
+    // raw deletes — this mirrors what a pre-fix store looks like on disk.
+    const Database = (await import("better-sqlite3")).default;
+    const sqliteVec = await import("sqlite-vec");
+    const dbPath = store.dbPath;
+    store.close();
+    const raw = new Database(dbPath);
+    sqliteVec.load(raw);
+    raw
+      .prepare("DELETE FROM vectors WHERE rowid IN (SELECT rowid FROM docs WHERE repo LIKE 'orphan-%')")
+      .run();
+    raw.prepare("DELETE FROM docs WHERE repo LIKE 'orphan-%'").run();
+    raw.close();
+
+    const store2 = openSqliteStore(testConfig(dir));
+    expect(store2.pruneOrphanRepoMeta()).toBe(2);
+    expect(store2.pruneOrphanRepoMeta()).toBe(0); // idempotent
+    // The kept repo's freshness row stays.
+    expect(store2.listRepos().map((r) => r.repo)).toEqual(["kept"]);
+    expect(store2.listRepos()[0].lastIndexedAt).not.toBeNull();
+    store2.close();
+  });
+
+  it("touchRepo stamps last_indexed_at without writing docs", async () => {
+    // The full-reindex command calls store.touchRepo for every scanned repo
+    // so that repos with zero changes (everything reused) still advance
+    // their freshness timestamp. Without this, a watcher-less workflow
+    // leaves last_indexed_at = null forever.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    const before = store.listRepos()[0].lastIndexedAt!;
+    await new Promise((r) => setTimeout(r, 10));
+    const stamp = new Date().toISOString();
+    store.touchRepo("r", stamp);
+    const after = store.listRepos()[0].lastIndexedAt;
+    expect(after).toBe(stamp);
+    expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before).getTime());
+    store.close();
+  });
+
   it("fileSignatures returns the latest per-file hash", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));

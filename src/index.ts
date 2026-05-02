@@ -45,6 +45,12 @@ program
     const store = openSqliteStore(config);
     try {
       store.assertCompatibleWithConfig(config);
+      const orphanedMeta = store.pruneOrphanRepoMeta();
+      if (orphanedMeta > 0) {
+        console.log(
+          `Cleared ${orphanedMeta} orphan repo_meta row(s) left over from earlier prunes.`,
+        );
+      }
       const existingSignatures = store.fileSignatures();
       if (existingSignatures.size > 0) {
         console.log(
@@ -69,9 +75,11 @@ program
       let reusedChunks = 0;
 
       const seenKeys = new Set<string>();
+      const scannedRepos = new Set<string>();
       const docsToEmbed: Document[] = [];
 
       for (const repo of repos) {
+        scannedRepos.add(repo.name);
         let repoFiles = 0;
         let repoChunks = 0;
         let repoReusedFiles = 0;
@@ -112,6 +120,15 @@ program
       }
       if (prunedFiles > 0) {
         console.log(`Pruned ${prunedFiles} files that vanished from disk.`);
+      }
+
+      // Stamp every scanned repo so reused-only repos still advance
+      // last_indexed_at. upsertFile/insertBatch later in this run touch the
+      // same row again with a slightly newer timestamp for repos that did
+      // pick up changes — last write wins, which is what we want.
+      const scannedAt = new Date().toISOString();
+      for (const repoName of scannedRepos) {
+        store.touchRepo(repoName, scannedAt);
       }
 
       const filesToEmbed = changedFiles + newFiles;
