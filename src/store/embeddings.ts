@@ -37,7 +37,14 @@ function ensureV1BaseUrl(baseUrl: string): string {
 
 export function createEmbeddings(config: Config): Embeddings {
   if (config.embeddingProvider === "stub") {
-    // Test-only path. Documented in tests/integration/index-cli.test.ts.
+    // Test-only path. Refuse to produce a stub provider in production so a
+    // stray ORACLE_EMBEDDING_PROVIDER=stub export can't quietly populate a
+    // real index with hash vectors.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "ORACLE_EMBEDDING_PROVIDER=stub is for tests only and is refused when NODE_ENV=production.",
+      );
+    }
     return new StubEmbeddings();
   }
 

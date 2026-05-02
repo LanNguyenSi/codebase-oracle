@@ -49,6 +49,7 @@ interface MetaRow {
 function readStore(dataDir: string): {
   repos: Array<{ repo: string; chunks: number }>;
   meta: MetaRow[];
+  filesByRepo: Map<string, string[]>;
 } {
   const db = new Database(join(dataDir, "store.db"), { readonly: true });
   sqliteVec.load(db);
@@ -58,8 +59,17 @@ function readStore(dataDir: string): {
   const meta = db
     .prepare("SELECT repo, last_indexed_at FROM repo_meta ORDER BY repo")
     .all() as MetaRow[];
+  const fileRows = db
+    .prepare("SELECT DISTINCT repo, file_path FROM docs ORDER BY repo, file_path")
+    .all() as Array<{ repo: string; file_path: string }>;
+  const filesByRepo = new Map<string, string[]>();
+  for (const row of fileRows) {
+    const list = filesByRepo.get(row.repo) ?? [];
+    list.push(row.file_path);
+    filesByRepo.set(row.repo, list);
+  }
   db.close();
-  return { repos, meta };
+  return { repos, meta, filesByRepo };
 }
 
 function runIndex(scanRoot: string, dataDir: string): { stdout: string; stderr: string; status: number | null } {
@@ -127,7 +137,8 @@ describe("oracle index CLI integration", () => {
       const stamp2 = after2.meta.find((m) => m.repo === "kept")!.last_indexed_at!;
       expect(new Date(stamp2).getTime()).toBeGreaterThan(new Date(stamp1).getTime());
       // partial still has its surviving file; goes.ts is gone.
-      expect(after2.repos.find((r) => r.repo === "partial")!.chunks).toBeGreaterThan(0);
+      expect(after2.filesByRepo.get("partial")).toEqual(["partial/stays.ts"]);
+      expect(second.stdout).toMatch(/Pruned \d+ files? that vanished from disk\./);
     },
   );
 
