@@ -11,7 +11,6 @@ body:
         - oracle_query
         - oracle_expand
         - oracle_list_repos
-        - oracle_freshness
         - indexing pipeline
         - install / native deps
         - other / unsure

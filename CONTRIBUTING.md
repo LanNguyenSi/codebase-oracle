@@ -4,7 +4,7 @@ Thanks for your interest. codebase-oracle is a local-first MCP server that seman
 
 ## Issues
 
-- Bug reports: include repro steps, expected vs. actual, the verb (`oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`, `oracle_freshness`), Node version, and OS.
+- Bug reports: include repro steps, expected vs. actual, the verb (`oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`), Node version, and OS.
 - Feature requests: describe the use case before the proposed shape.
 
 ## Pull Requests
