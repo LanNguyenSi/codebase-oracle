@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a new MCP verb, filter, or capability
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - new MCP verb
+        - filter / query option
+        - indexing strategy
+        - storage / native deps
+        - other / unsure
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use case
+      description: What problem does this solve? Who feels the pain today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
