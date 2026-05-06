@@ -51,6 +51,7 @@
     "vitest": "^4.1.4"
   },
   "overrides": {
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "@anthropic-ai/sdk": "^0.91.1"
   }
 }
