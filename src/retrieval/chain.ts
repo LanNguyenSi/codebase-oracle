@@ -123,6 +123,8 @@ export function getLlmErrorDetails(err: unknown): string | null {
     status?: number;
     requestID?: string;
     message?: string;
+    code?: string;
+    cause?: { code?: string; message?: string };
   };
   const parts: string[] = [];
   if (typeof e.status === "number") {
@@ -131,9 +133,38 @@ export function getLlmErrorDetails(err: unknown): string | null {
   if (typeof e.requestID === "string" && e.requestID.length > 0) {
     parts.push(`request id ${e.requestID}`);
   }
-  if (parts.length > 0) return parts.join(", ");
-  if (typeof e.message === "string" && e.message.length > 0) return e.message;
-  return null;
+  // node:net / undici connect failures don't carry an HTTP status. Surfacing
+  // the underlying code (ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EAI_AGAIN, ...)
+  // tells the caller "the endpoint isn't reachable" instead of just "500".
+  const networkCode = typeof e.code === "string" && e.code.length > 0
+    ? e.code
+    : typeof e.cause?.code === "string" && e.cause.code.length > 0
+      ? e.cause.code
+      : null;
+  if (networkCode) {
+    parts.push(networkCode);
+  }
+  // The SDK message frequently carries the operator-actionable reason
+  // ("401 unauthorized", "model X not found", "context length exceeded").
+  // Previously we returned it only when status/requestID were absent, which
+  // hid the real cause behind an opaque "status 500". Always include it,
+  // trimmed and capped so the wrapper stays single-line-ish.
+  const message = pickShortMessage(e.message ?? e.cause?.message);
+  if (message) {
+    parts.push(message);
+  }
+  return parts.length > 0 ? parts.join(", ") : null;
+}
+
+function pickShortMessage(raw: string | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  // Take the first non-empty line and cap the length — SDK messages
+  // sometimes append multi-paragraph troubleshooting URLs that drown the
+  // useful first line.
+  const firstLine = raw.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+  if (!firstLine) return null;
+  const MAX = 240;
+  return firstLine.length > MAX ? firstLine.slice(0, MAX - 1) + "…" : firstLine;
 }
 
 function ensureV1BaseUrl(baseUrl: string): string {

@@ -7,7 +7,7 @@ describe("loadConfig", () => {
     expect(config.embeddingProvider).toBe("openai");
     expect(config.llmProvider).toBe("auto");
     expect(config.embeddingModel).toBe("text-embedding-3-small");
-    expect(config.llmModel).toBe("claude-sonnet-4-20250514");
+    expect(config.llmModel).toBe("claude-sonnet-4-6");
     expect(config.ollamaBaseUrl).toBe("http://localhost:11434/v1");
     expect(config.vectorStoreType).toBe("directory");
   });

@@ -21,7 +21,7 @@ const configSchema = z.object({
 
   // LLM for answer generation
   anthropicApiKey: z.string().optional(),
-  llmModel: z.string().default("claude-sonnet-4-20250514"),
+  llmModel: z.string().default("claude-sonnet-4-6"),
 
   // Vector store
   vectorStoreType: z.enum(["memory", "directory"]).default("directory"),
@@ -53,7 +53,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     ? "gpt-4o-mini"
     : llmProvider === "ollama"
       ? "llama3.1"
-      : "claude-sonnet-4-20250514";
+      : "claude-sonnet-4-6";
 
   return configSchema.parse({
     scanRoot: process.env.ORACLE_SCAN_ROOT,

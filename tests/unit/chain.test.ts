@@ -17,7 +17,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     llmProvider: "auto",
     ollamaBaseUrl: "http://localhost:11434/v1",
     embeddingModel: "text-embedding-3-small",
-    llmModel: "claude-sonnet-4-20250514",
+    llmModel: "claude-sonnet-4-6",
     vectorStoreType: "directory",
     ...overrides,
   };
@@ -55,7 +55,7 @@ describe("createLlm", () => {
     const config = baseConfig({
       llmProvider: "auto",
       openaiApiKey: "sk-test",
-      llmModel: "claude-sonnet-4-20250514",
+      llmModel: "claude-sonnet-4-6",
     });
     const llm = createLlm(config) as { constructor: { name: string }; model?: string; modelName?: string } | null;
     expect(llm?.constructor.name).toBe("ChatOpenAI");
@@ -79,12 +79,12 @@ describe("createLlm", () => {
 });
 
 describe("getLlmErrorDetails", () => {
-  it("formats status + request id together", () => {
+  it("formats status + request id + message together", () => {
     const err = { status: 500, requestID: "req_abc", message: "boom" };
-    expect(getLlmErrorDetails(err)).toBe("status 500, request id req_abc");
+    expect(getLlmErrorDetails(err)).toBe("status 500, request id req_abc, boom");
   });
 
-  it("returns just status when no request id", () => {
+  it("returns just status when no request id and no message", () => {
     expect(getLlmErrorDetails({ status: 429 })).toBe("status 429");
   });
 
@@ -92,7 +92,7 @@ describe("getLlmErrorDetails", () => {
     expect(getLlmErrorDetails({ requestID: "req_xyz" })).toBe("request id req_xyz");
   });
 
-  it("falls back to the message when no status or request id", () => {
+  it("includes the message when no status or request id", () => {
     expect(getLlmErrorDetails({ message: "connection reset" })).toBe("connection reset");
   });
 
@@ -107,8 +107,54 @@ describe("getLlmErrorDetails", () => {
     expect(getLlmErrorDetails({})).toBeNull();
   });
 
-  it("returns null when message is empty", () => {
+  it("returns null when message is empty and status is absent", () => {
     expect(getLlmErrorDetails({ message: "" })).toBeNull();
+  });
+
+  it("includes the SDK message even when status + requestID are also set", () => {
+    // Previously this dropped the actionable message ('401 unauthorized')
+    // behind 'status 401, request id ...'. The fix appends it instead.
+    const err = {
+      status: 401,
+      requestID: "req_auth",
+      message: "401 unauthorized",
+    };
+    expect(getLlmErrorDetails(err)).toBe("status 401, request id req_auth, 401 unauthorized");
+  });
+
+  it("trims the message to its first non-empty line", () => {
+    const err = {
+      status: 401,
+      message: "401 unauthorized\n\nTroubleshooting URL: https://example.com/auth",
+    };
+    expect(getLlmErrorDetails(err)).toBe("status 401, 401 unauthorized");
+  });
+
+  it("caps very long single-line messages", () => {
+    const longMessage = "model not found: " + "x".repeat(500);
+    const detail = getLlmErrorDetails({ status: 404, message: longMessage });
+    expect(detail).not.toBeNull();
+    // Status prefix + the cap (240 incl. ellipsis).
+    expect(detail!.length).toBeLessThan(longMessage.length);
+    expect(detail!.endsWith("…")).toBe(true);
+  });
+
+  it("surfaces ECONNREFUSED via error.code when no HTTP status is set", () => {
+    const err = {
+      code: "ECONNREFUSED",
+      message: "connect ECONNREFUSED 127.0.0.1:11434",
+    };
+    expect(getLlmErrorDetails(err)).toBe(
+      "ECONNREFUSED, connect ECONNREFUSED 127.0.0.1:11434",
+    );
+  });
+
+  it("falls back to cause.code when error.code is missing", () => {
+    const err = {
+      message: "fetch failed",
+      cause: { code: "ENOTFOUND", message: "getaddrinfo ENOTFOUND ollama.local" },
+    };
+    expect(getLlmErrorDetails(err)).toBe("ENOTFOUND, fetch failed");
   });
 });
 
