@@ -42,6 +42,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   vLLM, Ollama, and anything else that speaks the OpenAI chat shape.
   Keeps the LLM key isolated from the embedding key so two providers
   can coexist without leaking credentials across lanes.
+- New MCP tool `oracle_reindex`. Runs the same incremental pipeline as
+  `npm run index` from inside an agent session, closes the in-process
+  store handle first so the indexer doesn't fight itself for the
+  SQLite write lock, and returns a one-line summary of files scanned
+  / changed / pruned and chunks reused / embedded.
+- Systemd user-timer templates under `scripts/systemd/`. Drop into
+  `~/.config/systemd/user/`, edit the `WorkingDirectory` to point at
+  your checkout, and `systemctl --user enable --now
+  codebase-oracle-index.timer` for a daily background reindex. Default
+  schedule is `04:00` local with a 15-minute random delay and
+  `Persistent=true` so a missed window (asleep laptop) catches up on
+  next boot.
 
 ### Deprecated
 

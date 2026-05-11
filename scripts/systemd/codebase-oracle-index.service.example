@@ -1,0 +1,46 @@
+# codebase-oracle: scheduled reindex unit.
+#
+# Install as a user-level systemd unit so the indexer runs under your own
+# UID (with access to your repos, ~/.codebase-oracle, and the .env file).
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp scripts/systemd/codebase-oracle-index.service.example \
+#      ~/.config/systemd/user/codebase-oracle-index.service
+#   cp scripts/systemd/codebase-oracle-index.timer.example \
+#      ~/.config/systemd/user/codebase-oracle-index.timer
+#
+# Edit the paths below to match your checkout, then:
+#
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now codebase-oracle-index.timer
+#   systemctl --user list-timers codebase-oracle-index.timer
+#   journalctl --user -u codebase-oracle-index.service --since today
+#
+# Loads .env from the checkout directory via WorkingDirectory + the CLI's
+# own dotenv loader. No secrets are duplicated into the unit file.
+
+[Unit]
+Description=codebase-oracle: incremental reindex of all repos under ORACLE_SCAN_ROOT
+Documentation=https://github.com/LanNguyenSi/codebase-oracle
+# Don't run if the network is down; OpenAI / Anthropic / Groq endpoints
+# need to be reachable for the embed step.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# EDIT: absolute path to your codebase-oracle checkout.
+WorkingDirectory=/home/CHANGE_ME/git/codebase-oracle
+# EDIT: pick whichever Node entry point matches your install. `npm run
+# index` works for a source checkout; the dist binary is faster on a
+# release install.
+ExecStart=/usr/bin/env npm run index
+# Soft cap; a full first-time index of ~40 mid-size repos finishes well
+# under this on a laptop with the OpenAI embeddings provider.
+TimeoutStartSec=30min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=default.target
