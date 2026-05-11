@@ -58,7 +58,7 @@ Avoid leaking real proprietary content into the corpus. Add or extend a toy repo
 
 ## Adding a corpus repo
 
-Each fixture repo lives at `corpus/<name>/` and is treated as a real repo by the indexer because it ships a `.git` placeholder file (a regular file, not a directory; the scanner just stat-checks for its existence). Put a `README.md`, a few source files, and commit. The eval runner picks them up automatically on next `npm run eval`.
+Each fixture repo lives at `corpus/<name>/` and is treated as a real repo by the indexer because the eval runner materialises a `.git` placeholder file in each subdir before indexing. Git refuses to track paths literally named `.git`, so the placeholders are local-only (gitignored) and re-created on every `npm run eval`. To add a new fixture repo, create `corpus/<name>/` with a `README.md` plus source files, commit those, and the next `npm run eval` will mint the `.git` marker for you.
 
 ## Pre-release hook
 

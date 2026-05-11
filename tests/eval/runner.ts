@@ -75,8 +75,28 @@ function rankLimit(bucket: RankBucket): number {
   return n;
 }
 
+function ensureRepoMarkers(): void {
+  // Git refuses to track paths literally named `.git` even with --force,
+  // so the placeholder files that make discoverRepos recognise each toy
+  // corpus subdir as a repo cannot be committed. Re-materialise them
+  // locally before indexing. The files are listed in .gitignore so they
+  // don't show up as untracked noise.
+  for (const entry of fs.readdirSync(CORPUS_ROOT, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith(".")) continue;
+    const gitFile = path.join(CORPUS_ROOT, entry.name, ".git");
+    if (!fs.existsSync(gitFile)) {
+      fs.writeFileSync(
+        gitFile,
+        "fixture: codebase-oracle eval-corpus marker (not a real git dir).\n",
+      );
+    }
+  }
+}
+
 async function runEval(): Promise<{ results: QuestionResult[]; regressions: string[] }> {
   loadEnvFromFile();
+  ensureRepoMarkers();
 
   // Fresh state every run: nuke the eval cache so corpus + embedding
   // model changes always rebuild deterministically.
