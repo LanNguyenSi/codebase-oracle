@@ -31,6 +31,13 @@ Wants=network-online.target
 Type=oneshot
 # EDIT: absolute path to your codebase-oracle checkout.
 WorkingDirectory=/home/CHANGE_ME/git/codebase-oracle
+# User systemd units inherit a minimal PATH. If `npm` lives in nvm /
+# fnm / volta, the bare `npm run index` below will fail with "command
+# not found". Either uncomment and edit the line below with your real
+# node bin, or set ExecStart to the absolute path of node + the dist
+# entry point (e.g. /home/CHANGE_ME/.nvm/versions/node/v22/bin/node
+# /home/CHANGE_ME/git/codebase-oracle/dist/index.js index).
+# Environment=PATH=/home/CHANGE_ME/.nvm/versions/node/v22.22.0/bin:/usr/local/bin:/usr/bin
 # EDIT: pick whichever Node entry point matches your install. `npm run
 # index` works for a source checkout; the dist binary is faster on a
 # release install.
