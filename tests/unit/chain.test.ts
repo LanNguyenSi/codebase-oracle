@@ -476,6 +476,27 @@ describe("searchCodebase path-glob filter", () => {
     });
     expect(out).toEqual([]);
   });
+
+  it("finds matches that only surface in the over-fetch window", async () => {
+    // The vector store returns 40 noise docs first, then one true match
+    // at index 40. Even at limit=1, the over-fetch (4 * limit, clamped to
+    // a minimum of about 16 by picomatch overhead but we ask for 40 here)
+    // must reach far enough to surface the match. This pins down the
+    // over-fetch contract so a regression that drops the multiplier would
+    // fail loudly instead of silently shrinking recall.
+    const docs: Document[] = [];
+    for (let i = 0; i < 40; i++) {
+      docs.push(makeDoc(`src/noise-${i}.ts`));
+    }
+    docs.push(makeDoc("Dockerfile"));
+    const store = stubStore(docs);
+    const out = await searchCodebase("x", store as never, {
+      limit: 10,
+      pathGlob: "**/Dockerfile",
+    });
+    expect(out).toHaveLength(1);
+    expect((out[0].metadata as { filePath: string }).filePath).toBe("Dockerfile");
+  });
 });
 
 describe("formatChunkLocation", () => {

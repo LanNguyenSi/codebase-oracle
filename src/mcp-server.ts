@@ -65,7 +65,7 @@ server.tool(
     repo: z.string().optional().describe("Optional: filter to a specific repo"),
     limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
     path_glob: z.string().optional().describe(
-      "Optional glob on the chunk file path. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives. Example: `**/.github/workflows/*.yml`. AND-composes with `repo`.",
+      "Optional glob on the chunk file path. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives. Example: `**/.github/workflows/*.yml`. AND-composes with `repo`. Note: the result count may fall short of `limit` for highly selective globs because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
     ),
   },
   async ({ query, repo, limit, path_glob }) => {
