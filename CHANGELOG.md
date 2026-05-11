@@ -37,6 +37,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ORACLE_SKIP_DIRS`: comma-separated directory names appended to the
   default skip list. Append-only by design, so callers can't
   accidentally unset `node_modules` or `.git` by overriding this value.
+- New LLM provider `openai-compatible` plus `ORACLE_LLM_BASE_URL` and
+  `ORACLE_LLM_API_KEY`. One lane covers Groq, OpenRouter, Together,
+  vLLM, Ollama, and anything else that speaks the OpenAI chat shape.
+  Keeps the LLM key isolated from the embedding key so two providers
+  can coexist without leaking credentials across lanes.
+
+### Deprecated
+
+- `ORACLE_LLM_PROVIDER=ollama` plus `ORACLE_OLLAMA_BASE_URL` /
+  `OLLAMA_API_KEY` still resolve, but the first call against a legacy
+  config now logs a one-shot warning. Migrate to the
+  `openai-compatible` provider + `ORACLE_LLM_*` env pair; the legacy
+  vars will be removed in a future release.
+- The fallback in the LLM client that silently picked up
+  `OPENAI_API_KEY` when no Ollama key was set is gone. Embedding and
+  LLM keys are independent now; a missing LLM key surfaces an
+  endpoint-level 401 via the improved error wrapper instead of being
+  papered over.
 
 ## [0.4.1] - 2026-05-02
 

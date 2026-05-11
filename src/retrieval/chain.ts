@@ -192,15 +192,50 @@ function createOpenAILlm(config: Config, modelName: string) {
   });
 }
 
-function createOllamaLlm(config: Config) {
+// Both `openai-compatible` (preferred) and `ollama` (legacy alias) route here.
+// Resolution prefers the new ORACLE_LLM_* env pair and falls back to the
+// legacy ollama-named pair so existing setups keep working without edits.
+// We deliberately do NOT fall back to `openaiApiKey` — embedding-key reuse
+// for the LLM was the old footgun (PR for task 5e4eb1f3).
+function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
+  if (isLegacyOllama) {
+    warnOllamaProviderDeprecated();
+  }
+  const baseURL = ensureV1BaseUrl(
+    config.llmBaseUrl ?? config.ollamaBaseUrl,
+  );
+  // For local Ollama the conventional sentinel key is the literal "ollama"
+  // (the server ignores it). For openai-compatible we prefer to leave the
+  // key blank and let the SDK surface a clear 401 if the endpoint requires
+  // auth — the error-surfacing fix from task 7549a1ce now makes that
+  // legible.
+  const fallbackKey = isLegacyOllama ? "ollama" : "";
+  const apiKey = config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey;
   return new ChatOpenAI({
-    apiKey: config.ollamaApiKey ?? config.openaiApiKey ?? "ollama",
+    apiKey,
     modelName: config.llmModel,
     temperature: 0,
-    configuration: {
-      baseURL: ensureV1BaseUrl(config.ollamaBaseUrl),
-    },
+    configuration: { baseURL },
   });
+}
+
+let ollamaDeprecationWarned = false;
+function warnOllamaProviderDeprecated(): void {
+  if (ollamaDeprecationWarned) return;
+  ollamaDeprecationWarned = true;
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[codebase-oracle] ORACLE_LLM_PROVIDER=ollama is deprecated. " +
+      "Use ORACLE_LLM_PROVIDER=openai-compatible with ORACLE_LLM_BASE_URL + " +
+      "ORACLE_LLM_API_KEY instead. The legacy ORACLE_OLLAMA_BASE_URL / " +
+      "OLLAMA_API_KEY still resolve as fallbacks for now.",
+  );
+}
+
+// Test helper. Resets the once-only deprecation guard so unit tests can
+// assert the warning fires under fresh module state without a full reimport.
+export function resetOllamaDeprecationWarning(): void {
+  ollamaDeprecationWarned = false;
 }
 
 export function createLlm(config: Config) {
@@ -218,8 +253,17 @@ export function createLlm(config: Config) {
     return createOpenAILlm(config, config.llmModel);
   }
 
+  if (config.llmProvider === "openai-compatible") {
+    if (!config.llmBaseUrl && !config.ollamaBaseUrl) {
+      throw new Error(
+        "ORACLE_LLM_PROVIDER=openai-compatible requires ORACLE_LLM_BASE_URL.",
+      );
+    }
+    return createOpenAICompatibleLlm(config, false);
+  }
+
   if (config.llmProvider === "ollama") {
-    return createOllamaLlm(config);
+    return createOpenAICompatibleLlm(config, true);
   }
 
   if (config.anthropicApiKey) {
