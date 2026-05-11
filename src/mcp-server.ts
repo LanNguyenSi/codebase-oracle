@@ -9,6 +9,7 @@ import { createVectorStore } from "./store/vector-store.js";
 import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
 import { expandFile, formatExpandResult } from "./expand.js";
+import { formatIndexSummary, runIndex } from "./ingest/runner.js";
 
 loadEnvFromFile();
 
@@ -121,6 +122,47 @@ server.tool(
     const store = await getStore();
     const result = await expandFile(store, { repo, path, line, window });
     return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
+  },
+);
+
+// Serialises oracle_reindex calls. Two parallel invocations would both
+// null out storePromise and then race their own SQLite write locks.
+// MCP stdio typically serialises in practice, but a one-line mutex turns
+// a possible BUSY error into a clear "already running" message.
+let reindexInFlight = false;
+
+server.tool(
+  "oracle_reindex",
+  "Run the indexing pipeline against the configured scan root. Incremental: only changed and new files are re-embedded, deleted files are pruned from the store. Use this after merging a PR you want the oracle to see immediately, instead of waiting for the next scheduled reindex.",
+  {},
+  async () => {
+    if (reindexInFlight) {
+      return {
+        content: [{
+          type: "text" as const,
+          text: "Another oracle_reindex is already running. Wait for it to finish before triggering a new one.",
+        }],
+      };
+    }
+    reindexInFlight = true;
+    try {
+      // Drop the cached store handle so the indexer (which opens its own
+      // SQLite connection) doesn't fight us for the write lock. Next
+      // oracle_search / oracle_query call re-opens via getStore().
+      if (storePromise) {
+        try {
+          const handle = await storePromise;
+          handle.close();
+        } catch {
+          // Already closed or never opened cleanly; getStore() will handle it.
+        }
+        storePromise = null;
+      }
+      const summary = await runIndex(config);
+      return { content: [{ type: "text" as const, text: formatIndexSummary(summary) }] };
+    } finally {
+      reindexInFlight = false;
+    }
   },
 );
 

@@ -1,0 +1,28 @@
+# codebase-oracle: timer that drives the reindex service.
+#
+# Default schedule: once a day at 04:00 local time, with a small randomised
+# delay so multiple machines on the same account don't hammer the embedder
+# endpoint simultaneously. Persistent=true means a missed run (laptop was
+# asleep) fires on next boot.
+#
+# Override the schedule by editing OnCalendar=. Examples:
+#   OnCalendar=hourly                    once an hour
+#   OnCalendar=*-*-* 04:00:00            daily at 04:00 (default)
+#   OnCalendar=Mon..Fri 18:00:00         weekdays at 18:00
+#   OnCalendar=*-*-* 06,12,18:00:00      three times a day
+#
+# After editing, run:
+#   systemctl --user daemon-reload
+#   systemctl --user restart codebase-oracle-index.timer
+
+[Unit]
+Description=Run codebase-oracle reindex on a schedule
+
+[Timer]
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=codebase-oracle-index.service
+
+[Install]
+WantedBy=timers.target

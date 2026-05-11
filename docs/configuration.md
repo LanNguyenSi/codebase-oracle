@@ -77,6 +77,31 @@ export ORACLE_LLM_MODEL=anthropic/claude-sonnet-4-6
 
 The embedding lane stays independent. With `ORACLE_EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY=sk-…`, embeddings still hit OpenAI; only the LLM step routes through `ORACLE_LLM_*`. Setting both to point at Ollama keeps the entire pipeline local.
 
+## Keeping the index fresh
+
+The store is incremental: only changed and new files re-embed on each run, deleted files prune. Two ways to keep it current without manual `npm run index` calls:
+
+### Scheduled reindex (systemd user timer)
+
+Ship templates live under `scripts/systemd/`. Copy them into `~/.config/systemd/user/`, edit the `WorkingDirectory` path to your checkout, then:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp scripts/systemd/codebase-oracle-index.service.example \
+   ~/.config/systemd/user/codebase-oracle-index.service
+cp scripts/systemd/codebase-oracle-index.timer.example \
+   ~/.config/systemd/user/codebase-oracle-index.timer
+# edit the WorkingDirectory in the .service file
+systemctl --user daemon-reload
+systemctl --user enable --now codebase-oracle-index.timer
+```
+
+Inspect with `systemctl --user list-timers codebase-oracle-index.timer` and `journalctl --user -u codebase-oracle-index.service --since today`. The default schedule is daily at 04:00 local with a 15-minute random delay; `Persistent=true` catches up after a missed window (laptop asleep).
+
+### On-demand from an agent (MCP `oracle_reindex`)
+
+The MCP server exposes `oracle_reindex` (no arguments). Agents can call it after merging a relevant PR so the new chunks land in the index without waiting for the next scheduled run. The verb closes the live store handle, runs the same incremental pipeline as `npm run index`, and returns a one-line summary (`Reindex complete in 8.7s. Repos: 39, files: …`). Subsequent `oracle_search` / `oracle_query` calls reopen the store transparently.
+
 ### Legacy ollama variables
 
 `ORACLE_LLM_PROVIDER=ollama` plus `ORACLE_OLLAMA_BASE_URL` and `OLLAMA_API_KEY` still work and resolve to the same lane. The first call against a legacy config logs a one-shot deprecation warning. New env names (`ORACLE_LLM_BASE_URL`, `ORACLE_LLM_API_KEY`) take precedence when both are set, so you can migrate without an outage.
