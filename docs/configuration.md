@@ -16,7 +16,7 @@ All configuration is via environment variables. The CLI and MCP server auto-load
 | `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama`. `stub` exists for tests only (deterministic 8-dim vectors, no network) and is refused under `NODE_ENV=production` |
 | `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `openai-compatible`, `ollama`. `openai-compatible` is the generic lane for Groq, OpenRouter, Together, vLLM, etc.; `ollama` is kept as a deprecated alias for the same lane (prints a one-shot warning) |
 | `ORACLE_LLM_BASE_URL` | Conditionally | — | Required when `ORACLE_LLM_PROVIDER=openai-compatible`. The provider's OpenAI-compatible `/v1` endpoint (e.g. `https://api.groq.com/openai/v1`) |
-| `ORACLE_LLM_API_KEY` | Conditionally | — | API key for the `openai-compatible` lane. Kept separate from `OPENAI_API_KEY` so embedding and LLM keys never cross-leak |
+| `ORACLE_LLM_API_KEY` | No | — | API key for the `openai-compatible` lane. Leave unset for endpoints that don't require auth (local Ollama, some vLLM setups); the SDK surfaces a 401 if one is required. Kept separate from `OPENAI_API_KEY` so embedding and LLM keys never cross-leak |
 | `OPENAI_API_KEY` | Conditionally | — | Required when `ORACLE_EMBEDDING_PROVIDER=openai`; also used for OpenAI LLM |
 | `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |

@@ -128,8 +128,28 @@ describe("createLlm", () => {
       | { openAIApiKey?: string; apiKey?: string }
       | null;
     const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
-    // Should be empty string (fallback), NOT sk-embedding-only.
-    expect(resolvedKey).not.toBe("sk-embedding-only");
+    // Strict: must be the documented empty-string fallback, not the
+    // embedding-lane key. Future regressions that reintroduce ANY other
+    // fallback (openaiApiKey, env, etc.) would change this and fail loudly.
+    expect(resolvedKey).toBe("");
+  });
+
+  it("new llmBaseUrl takes precedence over legacy ollamaBaseUrl", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: "https://api.groq.com/openai/v1",
+      ollamaBaseUrl: "http://localhost:11434/v1",
+      llmApiKey: "k",
+    });
+    const llm = createLlm(config) as
+      | { clientConfig?: { baseURL?: string }; configuration?: { baseURL?: string } }
+      | null;
+    // ChatOpenAI exposes the resolved baseURL via `clientConfig.baseURL`
+    // on recent SDK versions and `configuration.baseURL` historically;
+    // accept either, but the value must be the new var, not the legacy.
+    const baseUrl = llm?.clientConfig?.baseURL ?? llm?.configuration?.baseURL;
+    expect(baseUrl).toBe("https://api.groq.com/openai/v1");
   });
 
   it("legacy provider=ollama still picks up ollamaApiKey + ollamaBaseUrl", () => {
