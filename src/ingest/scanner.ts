@@ -3,6 +3,11 @@ import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
 import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 
+// Sentinel filename. Any directory containing this file (anywhere in the
+// scan tree) is treated as "do not index this subtree". Documented in
+// docs/configuration.md.
+export const SKIP_SENTINEL = ".codebase-oracle-skip";
+
 export const DEFAULT_INCLUDE_EXTENSIONS: ReadonlySet<string> = new Set([
   // JS / TS ecosystem
   ".ts", ".tsx", ".js", ".jsx", ".md", ".prisma", ".json",
@@ -71,6 +76,15 @@ export async function* walkRepo(
 
   async function* walk(dir: string): AsyncGenerator<ScannedFile> {
     const entries = await readdir(dir, { withFileTypes: true });
+
+    // Tree-level opt-out. A directory that contains a `.codebase-oracle-skip`
+    // sentinel file is pruned wholesale, regardless of name. Lets vendored
+    // fixtures (tests/eval/corpus/) and other "documentation that lives in
+    // the source tree but should not enter the index" subtrees stay
+    // co-located with the code that owns them without polluting queries.
+    if (entries.some((e) => e.name === SKIP_SENTINEL && e.isFile())) {
+      return;
+    }
 
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);

@@ -15,7 +15,8 @@
     "watch": "tsx src/index.ts watch",
     "mcp": "tsx src/mcp-server.ts",
     "serve": "tsx src/http-server.ts",
-    "migrate-store": "tsx src/index.ts migrate-store"
+    "migrate-store": "tsx src/index.ts migrate-store",
+    "eval": "tsx tests/eval/runner.ts"
   },
   "repository": {
     "type": "git",

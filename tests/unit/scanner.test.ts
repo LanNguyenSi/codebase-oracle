@@ -216,6 +216,30 @@ describe("walkRepo", () => {
     }
   });
 
+  it("prunes any subtree containing a .codebase-oracle-skip sentinel", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "skip-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, "src"), { recursive: true });
+      await mkdir(join(repo, "vendored-fixtures", "sample"), { recursive: true });
+
+      await writeFile(join(repo, "src", "real.ts"), "export const real = 1;");
+      await writeFile(join(repo, "vendored-fixtures", ".codebase-oracle-skip"), "skip");
+      await writeFile(join(repo, "vendored-fixtures", "ignored.ts"), "// skipped");
+      await writeFile(join(repo, "vendored-fixtures", "sample", "deep.ts"), "// also skipped");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "skip-repo", root)) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["skip-repo/src/real.ts"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("includes metadata in scanned files", async () => {
     const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
     const repo = join(root, "my-repo");

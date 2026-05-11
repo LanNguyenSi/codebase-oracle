@@ -2,3 +2,6 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
+
+# Eval runner's private SQLite cache. Rebuilt on every `npm run eval`.
+tests/eval/.cache/
