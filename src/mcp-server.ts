@@ -17,7 +17,7 @@ const config = loadConfig();
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.4.1",
+  version: "0.5.0",
 });
 
 // Lazy-init store (expensive, only when first tool is called)

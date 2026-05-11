@@ -22,7 +22,7 @@ const program = new Command();
 program
   .name("codebase-oracle")
   .description("RAG-powered codebase Q&A for your multi-repo codebase")
-  .version("0.4.1");
+  .version("0.5.0");
 
 program
   .command("index")
