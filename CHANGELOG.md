@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-11
+
+Minor release. Substantial new agent-facing surface: a generic
+`openai-compatible` LLM provider lane (Groq, OpenRouter, Together,
+vLLM, local Ollama, all through one set of env vars), an
+`oracle_reindex` MCP verb so agents can make freshly-merged code
+visible without waiting on the scheduled background reindex, a
+`path_glob` filter on `oracle_search` to express structural
+cross-repo queries like "every release.yml workflow", and a vendored
+eval framework that catches retrieval-quality regressions per
+release. Plus the boring cleanup that makes the rest land cleanly:
+the LLM error wrapper now surfaces the real SDK reason instead of
+opaque `status 500`, the scanner prunes vendored package caches by
+default, and the legacy ollama-named env vars are kept as a
+deprecated alias.
+
 ### Changed
 
 - Default skip-dir list now prunes vendored package caches and IDE
