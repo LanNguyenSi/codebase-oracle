@@ -2,3 +2,10 @@ node_modules/
 dist/
 *.tsbuildinfo
 .env
+
+# Eval runner's private SQLite cache. Rebuilt on every `npm run eval`.
+tests/eval/.cache/
+
+# Per-corpus-repo .git placeholders. Re-created by the eval runner; can't
+# be tracked because git refuses to commit paths named `.git` even with -f.
+tests/eval/corpus/*/.git

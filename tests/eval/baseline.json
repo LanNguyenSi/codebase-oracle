@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-05-11T17:44:50.976Z",
+  "results": [
+    {
+      "id": "auth-jwt-signing-key",
+      "pass": true
+    },
+    {
+      "id": "auth-bearer-middleware",
+      "pass": true
+    },
+    {
+      "id": "cli-subcommand-dispatch",
+      "pass": true
+    },
+    {
+      "id": "config-env-validation",
+      "pass": true
+    }
+  ]
+}

@@ -54,6 +54,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   schedule is `04:00` local with a 15-minute random delay and
   `Persistent=true` so a missed window (asleep laptop) catches up on
   next boot.
+- Retrieval-quality eval framework under `tests/eval/`: a vendored
+  3-repo fixture corpus (`auth-toy`, `cli-toy`, `config-toy`), four
+  hand-labelled Q&A pairs in `questions.json`, a `npm run eval`
+  runner that indexes the corpus, runs each question through
+  `oracle_search`, compares the per-question pass set against
+  `baseline.json`, and exits non-zero on regressions. Use
+  `npm run eval -- --update` to bake in an intentional improvement.
+- Scanner now respects a `.codebase-oracle-skip` sentinel file:
+  any directory containing one is pruned wholesale, regardless of
+  name. Lets vendored fixtures (`tests/eval/corpus/`) and other
+  "lives in the source tree but should never enter the index"
+  subtrees stay co-located with the code that owns them. Documented
+  in `docs/configuration.md`.
 
 ### Deprecated
 

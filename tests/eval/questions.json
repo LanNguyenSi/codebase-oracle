@@ -1,0 +1,30 @@
+[
+  {
+    "id": "auth-jwt-signing-key",
+    "question": "where is the JWT signing key configured for issuing access tokens?",
+    "expectedFilePaths": [
+      { "path": "auth-toy/src/token.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "auth-bearer-middleware",
+    "question": "show me the auth middleware that checks bearer tokens on incoming requests",
+    "expectedFilePaths": [
+      { "path": "auth-toy/src/middleware.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "cli-subcommand-dispatch",
+    "question": "how does the CLI parse subcommands and dispatch to per-command handlers?",
+    "expectedFilePaths": [
+      { "path": "cli-toy/src/index.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "config-env-validation",
+    "question": "where are environment variables validated against a schema at startup?",
+    "expectedFilePaths": [
+      { "path": "config-toy/src/config.ts", "atRank": "top-3" }
+    ]
+  }
+]

@@ -48,6 +48,10 @@ The scanner prunes these directory names at any depth so vendored package caches
 
 Override the extension allowlist with `ORACLE_INCLUDE_EXTENSIONS`. Add repo-specific directory names to the skip list with `ORACLE_SKIP_DIRS` (appended to the defaults above).
 
+### Per-subtree opt-out: `.codebase-oracle-skip`
+
+For "lives in the source tree but must not enter the index" subtrees (vendored fixtures, generated golden files, sample apps shipped for documentation purposes), drop a `.codebase-oracle-skip` file into the directory. The scanner prunes any subtree that contains this sentinel, regardless of the directory name. The eval-set fixture corpus under `tests/eval/corpus/` uses this so the toy repos never pollute the user's main index.
+
 ## OpenAI-compatible providers (Groq, OpenRouter, Together, vLLM, Ollama…)
 
 Any inference endpoint that speaks the OpenAI `chat/completions` shape can serve the LLM step. Set the provider to `openai-compatible` and point the new env vars at the endpoint:

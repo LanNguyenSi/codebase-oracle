@@ -1,0 +1,6 @@
+This sentinel marks the eval-fixture corpus as "do not index this subtree".
+codebase-oracle's main scanner respects it so the toy auth/cli/config repos
+beneath this directory never enter the user's primary index.
+
+The eval runner sidesteps it by setting its scanRoot to this directory and
+walking each per-repo subdir individually.
