@@ -478,24 +478,31 @@ describe("searchCodebase path-glob filter", () => {
   });
 
   it("finds matches that only surface in the over-fetch window", async () => {
-    // The vector store returns 40 noise docs first, then one true match
-    // at index 40. Even at limit=1, the over-fetch (4 * limit, clamped to
-    // a minimum of about 16 by picomatch overhead but we ask for 40 here)
-    // must reach far enough to surface the match. This pins down the
-    // over-fetch contract so a regression that drops the multiplier would
-    // fail loudly instead of silently shrinking recall.
+    // Vector store returns 30 noise docs ahead of one true match. With
+    // limit=5 the over-fetch is 5 * 4 = 20 — NOT enough to reach the
+    // match — which would (correctly) miss it. With limit=10 the over-
+    // fetch is 40, well past the match's index of 30, and the result
+    // must include it. This pins the multiplier-vs-recall contract so
+    // a regression that drops the over-fetch would fail loudly.
     const docs: Document[] = [];
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 30; i++) {
       docs.push(makeDoc(`src/noise-${i}.ts`));
     }
     docs.push(makeDoc("Dockerfile"));
     const store = stubStore(docs);
-    const out = await searchCodebase("x", store as never, {
+
+    const tooNarrow = await searchCodebase("x", store as never, {
+      limit: 5,
+      pathGlob: "**/Dockerfile",
+    });
+    expect(tooNarrow).toEqual([]);
+
+    const wide = await searchCodebase("x", store as never, {
       limit: 10,
       pathGlob: "**/Dockerfile",
     });
-    expect(out).toHaveLength(1);
-    expect((out[0].metadata as { filePath: string }).filePath).toBe("Dockerfile");
+    expect(wide).toHaveLength(1);
+    expect((wide[0].metadata as { filePath: string }).filePath).toBe("Dockerfile");
   });
 });
 
