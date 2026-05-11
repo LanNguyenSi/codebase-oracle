@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- Default skip-dir list now prunes vendored package caches and IDE
+  workspaces (`.bun`, `.cache`, `.husky`, `.idea`, `.opencode-home`,
+  `.pnpm-store`, `.vscode`, `.yarn`) on top of the prior `node_modules`,
+  `dist`, `.next`, etc. Repos that vendored a Bun install cache under
+  `.opencode-home/.bun/install/cache` were polluting cross-repo
+  auth/token queries with thousands of cached third-party chunks; those
+  no longer reach the embedder.
+
+### Added
+
+- `ORACLE_SKIP_DIRS`: comma-separated directory names appended to the
+  default skip list. Append-only by design, so callers can't
+  accidentally unset `node_modules` or `.git` by overriding this value.
+
 ## [0.4.1] - 2026-05-02
 
 Patch release. Two table-hygiene leaks in the full-reindex path that

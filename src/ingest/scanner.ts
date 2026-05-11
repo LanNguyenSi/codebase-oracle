@@ -1,11 +1,7 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
 import { createHash } from "node:crypto";
-
-const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", ".next", ".turbo",
-  "coverage", ".nyc_output", "__pycache__", ".venv", "vendor",
-]);
+import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 
 export const DEFAULT_INCLUDE_EXTENSIONS: ReadonlySet<string> = new Set([
   // JS / TS ecosystem
@@ -57,6 +53,7 @@ export async function discoverRepos(scanRoot: string): Promise<RepoInfo[]> {
 
 export interface WalkRepoOptions {
   extensions?: ReadonlySet<string>;
+  skipDirs?: ReadonlySet<string>;
 }
 
 export async function* walkRepo(
@@ -66,6 +63,7 @@ export async function* walkRepo(
   options?: WalkRepoOptions,
 ): AsyncGenerator<ScannedFile> {
   const extensions = options?.extensions ?? DEFAULT_INCLUDE_EXTENSIONS;
+  const skipDirs = options?.skipDirs ?? DEFAULT_SKIP_DIRS;
   // Lockfiles + per-package manifests explode the index, so we only whitelist
   // a couple by name when the user hasn't taken control of the extension list.
   // An explicit override means the user knows what they're asking for.
@@ -78,7 +76,7 @@ export async function* walkRepo(
       const fullPath = join(dir, entry.name);
 
       if (entry.isDirectory()) {
-        if (SKIP_DIRS.has(entry.name)) continue;
+        if (skipDirs.has(entry.name)) continue;
         yield* walk(fullPath);
         continue;
       }
