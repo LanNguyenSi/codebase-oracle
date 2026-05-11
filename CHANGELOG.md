@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `.opencode-home/.bun/install/cache` were polluting cross-repo
   auth/token queries with thousands of cached third-party chunks; those
   no longer reach the embedder.
+- Default `ORACLE_LLM_MODEL` for the Anthropic provider bumped from
+  `claude-sonnet-4-20250514` to `claude-sonnet-4-6`. The previous id
+  pointed at the May-2025 Sonnet 4 release which has been superseded by
+  the Sonnet 4.x line; new installs were hitting opaque LLM failures
+  against a retired model.
+
+### Fixed
+
+- `oracle_query` now reports the SDK error reason instead of swallowing
+  it behind `status 500`. The wrapper appends the message body (capped
+  to the first non-empty line, 240 chars) and any network code
+  (`ECONNREFUSED`, `ENOTFOUND`, etc.) to the formatted detail string,
+  so callers see `status 401, request id req_abc, 401 unauthorized`
+  rather than a bare status that hides whether the failure was auth,
+  model retirement, or context overflow.
 
 ### Added
 
