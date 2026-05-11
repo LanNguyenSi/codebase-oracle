@@ -216,6 +216,54 @@ describe("walkRepo", () => {
     }
   });
 
+  it("does NOT prune when .codebase-oracle-skip is a directory, not a file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "weird-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      // Sentinel name as a directory should be ignored (the predicate
+      // requires entry.isFile()).
+      await mkdir(join(repo, ".codebase-oracle-skip", "inner"), { recursive: true });
+      await writeFile(join(repo, "src.ts"), "export const x = 1;");
+      await writeFile(join(repo, ".codebase-oracle-skip", "inner", "ignored.ts"), "// inside the dot-dir");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "weird-repo", root)) {
+        files.push(file.relativePath);
+      }
+      // src.ts is yielded; the dot-prefixed dir is not in SKIP_DIRS but
+      // its name starts with `.` which is not a special filter inside
+      // walk(); however its NAME is `.codebase-oracle-skip` and we deliberately
+      // only check file-shaped sentinels, so the subtree walks. The inner .ts
+      // file IS yielded because nothing prunes the directory.
+      expect(files.sort()).toEqual([
+        "weird-repo/.codebase-oracle-skip/inner/ignored.ts",
+        "weird-repo/src.ts",
+      ]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("prunes the entire repo when the sentinel is at the repo root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "skip-everything");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, "src"), { recursive: true });
+      await writeFile(join(repo, ".codebase-oracle-skip"), "skip");
+      await writeFile(join(repo, "src", "would-be-indexed.ts"), "export const x = 1;");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "skip-everything", root)) {
+        files.push(file.relativePath);
+      }
+      expect(files).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("prunes any subtree containing a .codebase-oracle-skip sentinel", async () => {
     const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
     const repo = join(root, "skip-repo");
