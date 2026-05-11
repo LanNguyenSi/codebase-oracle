@@ -7,6 +7,7 @@ import {
   formatRawContextAnswer,
   getLlmErrorDetails,
   resetOllamaDeprecationWarning,
+  searchCodebase,
 } from "../../src/retrieval/chain.js";
 import type { Config } from "../../src/config.js";
 
@@ -356,6 +357,124 @@ describe("formatRawContextAnswer", () => {
     ];
     const out = formatRawContextAnswer(docs);
     expect(out).toContain("### r/a.ts:12-27");
+  });
+});
+
+describe("searchCodebase path-glob filter", () => {
+  // Hand-rolled stub store: similaritySearch returns the fixed doc list
+  // in the order given, regardless of query. Lets us assert the glob
+  // filter independently of the embedder.
+  function stubStore(docs: Document[]) {
+    return {
+      similaritySearch: async (
+        _query: string,
+        k: number,
+        filter?: Record<string, string>,
+      ): Promise<Document[]> => {
+        const scoped = filter?.repo
+          ? docs.filter((d) => (d.metadata as { repo?: string }).repo === filter.repo)
+          : docs;
+        return scoped.slice(0, k);
+      },
+    };
+  }
+
+  function makeDoc(filePath: string, repo = "demo"): Document {
+    return new Document({ pageContent: `// ${filePath}`, metadata: { filePath, repo } });
+  }
+
+  it("returns unfiltered results when pathGlob is absent", async () => {
+    const store = stubStore([
+      makeDoc("src/a.ts"),
+      makeDoc("docs/b.md"),
+      makeDoc(".github/workflows/release.yml"),
+    ]);
+    const out = await searchCodebase("x", store as never, { limit: 3 });
+    expect(out.map((d) => (d.metadata as { filePath: string }).filePath)).toEqual([
+      "src/a.ts",
+      "docs/b.md",
+      ".github/workflows/release.yml",
+    ]);
+  });
+
+  it("filters by `**/.github/workflows/*.yml` and keeps only matches", async () => {
+    const store = stubStore([
+      makeDoc("src/a.ts"),
+      makeDoc(".github/workflows/release.yml"),
+      makeDoc("docs/b.md"),
+      makeDoc("foo/.github/workflows/ci.yml"),
+      makeDoc(".github/workflows/build.yaml"),
+    ]);
+    const out = await searchCodebase("x", store as never, {
+      limit: 10,
+      pathGlob: "**/.github/workflows/*.yml",
+    });
+    expect(out.map((d) => (d.metadata as { filePath: string }).filePath)).toEqual([
+      ".github/workflows/release.yml",
+      "foo/.github/workflows/ci.yml",
+    ]);
+  });
+
+  it("composes pathGlob AND repo filter", async () => {
+    const store = stubStore([
+      makeDoc("src/a.ts", "alpha"),
+      makeDoc("src/a.ts", "beta"),
+      makeDoc(".github/workflows/release.yml", "alpha"),
+      makeDoc(".github/workflows/release.yml", "beta"),
+    ]);
+    const out = await searchCodebase("x", store as never, {
+      limit: 10,
+      repo: "alpha",
+      pathGlob: "**/release.yml",
+    });
+    expect(out).toHaveLength(1);
+    expect((out[0].metadata as { repo: string; filePath: string }).repo).toBe("alpha");
+    expect((out[0].metadata as { filePath: string }).filePath).toBe(
+      ".github/workflows/release.yml",
+    );
+  });
+
+  it("respects limit after the filter", async () => {
+    const store = stubStore([
+      makeDoc(".github/workflows/a.yml"),
+      makeDoc(".github/workflows/b.yml"),
+      makeDoc(".github/workflows/c.yml"),
+      makeDoc("src/x.ts"),
+    ]);
+    const out = await searchCodebase("x", store as never, {
+      limit: 2,
+      pathGlob: "**/.github/workflows/*.yml",
+    });
+    expect(out).toHaveLength(2);
+  });
+
+  it("supports brace alternatives", async () => {
+    const store = stubStore([
+      makeDoc("src/a.ts"),
+      makeDoc("src/a.tsx"),
+      makeDoc("src/a.js"),
+      makeDoc("docs/a.md"),
+    ]);
+    const out = await searchCodebase("x", store as never, {
+      limit: 10,
+      pathGlob: "**/*.{ts,tsx}",
+    });
+    expect(out.map((d) => (d.metadata as { filePath: string }).filePath)).toEqual([
+      "src/a.ts",
+      "src/a.tsx",
+    ]);
+  });
+
+  it("returns empty when nothing matches the glob", async () => {
+    const store = stubStore([
+      makeDoc("src/a.ts"),
+      makeDoc("src/b.ts"),
+    ]);
+    const out = await searchCodebase("x", store as never, {
+      limit: 10,
+      pathGlob: "**/Dockerfile",
+    });
+    expect(out).toEqual([]);
   });
 });
 

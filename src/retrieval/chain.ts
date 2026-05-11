@@ -3,6 +3,7 @@ import { ChatOpenAI } from "@langchain/openai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import type { Document } from "@langchain/core/documents";
+import picomatch from "picomatch";
 import type { Config } from "../config.js";
 import type { VectorStoreWrapper } from "../store/vector-store.js";
 
@@ -290,12 +291,43 @@ export function extractSources(docs: Document[]) {
     .filter((s): s is NonNullable<typeof s> => s !== null);
 }
 
+export interface SearchCodebaseOptions {
+  repo?: string;
+  limit?: number;
+  // Glob filter on the chunk's filePath metadata. Standard picomatch
+  // semantics: `*` within a segment, `**` across segments, `?` for a
+  // single character, `{a,b}` for alternatives. AND-composed with `repo`.
+  pathGlob?: string;
+}
+
 export async function searchCodebase(
   query: string,
   vectorStore: VectorStoreWrapper,
-  options?: { repo?: string; limit?: number },
+  options?: SearchCodebaseOptions,
 ): Promise<Document[]> {
   const k = options?.limit ?? 10;
   const filter = options?.repo ? { repo: options.repo } : undefined;
-  return vectorStore.similaritySearch(query, k, filter);
+
+  if (!options?.pathGlob) {
+    return vectorStore.similaritySearch(query, k, filter);
+  }
+
+  // Over-fetch so the post-filter still has a chance of returning k
+  // results when the glob is narrow. Cap to keep the SQLite scan
+  // bounded for pathological cases (e.g. limit=50 → 200 fetched).
+  const FETCH_MULTIPLIER = 4;
+  const FETCH_MAX = 200;
+  const overFetch = Math.min(k * FETCH_MULTIPLIER, FETCH_MAX);
+
+  const matchesPath = picomatch(options.pathGlob, { dot: true });
+  const raw = await vectorStore.similaritySearch(query, overFetch, filter);
+  const filtered: Document[] = [];
+  for (const doc of raw) {
+    const filePath = (doc.metadata as { filePath?: string }).filePath ?? "";
+    if (matchesPath(filePath)) {
+      filtered.push(doc);
+      if (filtered.length >= k) break;
+    }
+  }
+  return filtered;
 }

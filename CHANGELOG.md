@@ -61,6 +61,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `oracle_search`, compares the per-question pass set against
   `baseline.json`, and exits non-zero on regressions. Use
   `npm run eval -- --update` to bake in an intentional improvement.
+- `oracle_search` accepts an optional `path_glob` argument. picomatch
+  semantics: `*` within a segment, `**` recursive, `?` single char,
+  `{a,b}` alternatives. AND-composes with the existing `repo` filter.
+  Closes the loop on structural cross-repo queries: `query="release"`,
+  `path_glob="**/.github/workflows/*.yml"` returns only workflow files.
+  Also wired into the CLI as `--path-glob`.
 - Scanner now respects a `.codebase-oracle-skip` sentinel file:
   any directory containing one is pruned wholesale, regardless of
   name. Lets vendored fixtures (`tests/eval/corpus/`) and other

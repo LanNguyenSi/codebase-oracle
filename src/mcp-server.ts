@@ -64,10 +64,13 @@ server.tool(
     query: z.string().describe("Search query (natural language or code pattern)"),
     repo: z.string().optional().describe("Optional: filter to a specific repo"),
     limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
+    path_glob: z.string().optional().describe(
+      "Optional glob on the chunk file path. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives. Example: `**/.github/workflows/*.yml`. AND-composes with `repo`.",
+    ),
   },
-  async ({ query, repo, limit }) => {
+  async ({ query, repo, limit, path_glob }) => {
     const store = await getStore();
-    const docs = await searchCodebase(query, store, { repo, limit });
+    const docs = await searchCodebase(query, store, { repo, limit, pathGlob: path_glob });
 
     const text = docs
       .map((doc, i) => {

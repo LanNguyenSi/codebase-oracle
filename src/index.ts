@@ -70,6 +70,10 @@ program
   .argument("<query>", "Search query")
   .option("-r, --repo <repo>", "Filter to a specific repo")
   .option("-k, --limit <limit>", "Number of results", "10")
+  .option(
+    "-g, --path-glob <glob>",
+    "Filter results by file path glob (e.g. **/.github/workflows/*.yml)",
+  )
   .action(async (query: string, opts) => {
     const config = loadConfig();
     const embeddings = createEmbeddings(config);
@@ -79,6 +83,7 @@ program
       const docs = await searchCodebase(query, store, {
         repo: opts.repo,
         limit: parseInt(opts.limit, 10),
+        pathGlob: opts.pathGlob,
       });
       for (const doc of docs) {
         const { repo } = doc.metadata as { repo: string };

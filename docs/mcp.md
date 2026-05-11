@@ -21,18 +21,22 @@ From that point on, any Claude Code session on the same machine can call the too
 | Tool | Description |
 |------|-------------|
 | `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
-| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers |
+| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts an optional `path_glob` filter |
 | `oracle_expand` | Read a window of lines around a position in an indexed file (use after `oracle_search` for more context) |
 | `oracle_list_repos` | List repos present in the index with chunk counts, file counts, and the indexed timestamp |
+| `oracle_reindex` | Rebuild the incremental index from disk; new chunks visible to the next `oracle_search` / `oracle_query` call |
 
 ## Example agent prompts
 
-Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo`.
+Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus a `path_glob` for `oracle_search`.
 
 - `oracle_search` with `query="AGENT_TASKS_TOKEN"`: find every repo that reads the token, across all indexed repos.
+- `oracle_search` with `query="tag-driven release"`, `path_glob="**/.github/workflows/*.yml"`: scoped to GitHub Actions workflow files only. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives.
+- `oracle_search` with `query="dockerfile builder stage"`, `path_glob="**/Dockerfile*"`: every Dockerfile or `Dockerfile.prod` across the org.
 - `oracle_query` with `question="how does the audit system work?"`: cross-repo answer with citations.
 - `oracle_query` with `question="where is the embedding provider chosen?"`, `repo="codebase-oracle"`: scoped to a single repo.
 - `oracle_list_repos`: inventory of what the index actually covers, with freshness per repo.
+- `oracle_reindex`: when you have just merged a PR and want its new chunks visible to the next query without waiting for the scheduled reindex.
 
 The returned chunks include file path plus repo name, so the agent can read the full file only when it actually needs to.
 
