@@ -10,26 +10,13 @@ import {
   discoverRepos,
   type ScannedFile,
 } from "./ingest/scanner.js";
+import { mergeSkipDirs } from "./ingest/skip-dirs.js";
 import { splitFile } from "./ingest/splitter.js";
 import {
   openSqliteStore,
   type SqliteStore,
   type StoredEntry,
 } from "./store/sqlite-store.js";
-
-const WATCH_SKIP_DIRS = new Set([
-  "node_modules",
-  ".git",
-  "dist",
-  "build",
-  ".next",
-  ".turbo",
-  "coverage",
-  ".nyc_output",
-  "__pycache__",
-  ".venv",
-  "vendor",
-]);
 const JSON_ALLOWLIST = new Set(["package.json", "tsconfig.json"]);
 const MAX_FILE_BYTES = 200_000;
 const DEFAULT_DEBOUNCE_MS = 3000;
@@ -171,6 +158,7 @@ export async function runWatchMode(
     ? new Set(config.includeExtensions)
     : DEFAULT_INCLUDE_EXTENSIONS;
   const applyJsonAllowlist = !config.includeExtensions;
+  const skipDirs = mergeSkipDirs(config.skipDirs);
   const embeddings = options.embeddings ?? createEmbeddings(config);
   const pending = new PendingEventMap();
 
@@ -305,7 +293,7 @@ export async function runWatchMode(
   const watcher = chokidar.watch(config.scanRoot, {
     ignored: (p) => {
       const parts = p.split(sep);
-      return parts.some((part) => WATCH_SKIP_DIRS.has(part));
+      return parts.some((part) => skipDirs.has(part));
     },
     ignoreInitial: true,
     persistent: true,

@@ -2,7 +2,8 @@
 import { Command } from "commander";
 import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
-import { discoverRepos, walkRepo } from "./ingest/scanner.js";
+import { discoverRepos, walkRepo, type WalkRepoOptions } from "./ingest/scanner.js";
+import { mergeSkipDirs } from "./ingest/skip-dirs.js";
 import { splitFile } from "./ingest/splitter.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import {
@@ -58,12 +59,17 @@ program
         );
       }
 
-      const walkOptions = config.includeExtensions
-        ? { extensions: new Set(config.includeExtensions) }
-        : undefined;
-      if (walkOptions) {
+      const skipDirs = mergeSkipDirs(config.skipDirs);
+      const walkOptions: WalkRepoOptions = { skipDirs };
+      if (config.includeExtensions) {
+        walkOptions.extensions = new Set(config.includeExtensions);
         console.log(
-          `Using ORACLE_INCLUDE_EXTENSIONS override: ${config.includeExtensions!.join(", ")}`,
+          `Using ORACLE_INCLUDE_EXTENSIONS override: ${config.includeExtensions.join(", ")}`,
+        );
+      }
+      if (config.skipDirs && config.skipDirs.length > 0) {
+        console.log(
+          `Adding ORACLE_SKIP_DIRS to defaults: ${config.skipDirs.join(", ")}`,
         );
       }
 

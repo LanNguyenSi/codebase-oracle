@@ -156,6 +156,66 @@ describe("walkRepo", () => {
     }
   });
 
+  it("skips vendor caches (.bun, .opencode-home, .cache, .yarn) by default", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "vendor-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, "src"), { recursive: true });
+      await mkdir(join(repo, ".bun", "install", "cache"), { recursive: true });
+      await mkdir(join(repo, ".opencode-home", ".bun", "install", "cache"), { recursive: true });
+      await mkdir(join(repo, ".cache", "tsc"), { recursive: true });
+      await mkdir(join(repo, ".yarn", "cache"), { recursive: true });
+
+      await writeFile(join(repo, "src", "real.ts"), "export const real = 1;");
+      await writeFile(join(repo, ".bun", "install", "cache", "vendored.ts"), "// should be skipped");
+      await writeFile(join(repo, ".opencode-home", ".bun", "install", "cache", "vendored.ts"), "// should be skipped");
+      await writeFile(join(repo, ".cache", "tsc", "cached.ts"), "// should be skipped");
+      await writeFile(join(repo, ".yarn", "cache", "pkg.ts"), "// should be skipped");
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "vendor-repo", root)) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["vendor-repo/src/real.ts"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("honours the skipDirs override (additional names skipped)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "custom-skip-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await mkdir(join(repo, "src"), { recursive: true });
+      await mkdir(join(repo, "generated"), { recursive: true });
+
+      await writeFile(join(repo, "src", "real.ts"), "export const real = 1;");
+      await writeFile(join(repo, "generated", "auto.ts"), "// caller-skipped");
+
+      const filesWithoutOverride: string[] = [];
+      for await (const file of walkRepo(repo, "custom-skip-repo", root)) {
+        filesWithoutOverride.push(file.relativePath);
+      }
+      expect(filesWithoutOverride.sort()).toEqual([
+        "custom-skip-repo/generated/auto.ts",
+        "custom-skip-repo/src/real.ts",
+      ]);
+
+      const filesWithOverride: string[] = [];
+      for await (const file of walkRepo(repo, "custom-skip-repo", root, {
+        skipDirs: new Set(["node_modules", ".git", "generated"]),
+      })) {
+        filesWithOverride.push(file.relativePath);
+      }
+      expect(filesWithOverride).toEqual(["custom-skip-repo/src/real.ts"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("includes metadata in scanned files", async () => {
     const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
     const repo = join(root, "my-repo");

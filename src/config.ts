@@ -28,6 +28,12 @@ const configSchema = z.object({
 
   // Ingest — optional override of the file-extension allowlist
   includeExtensions: z.array(z.string().startsWith(".")).optional(),
+
+  // Ingest — extra directory names to skip on top of the built-in defaults
+  // (node_modules, .git, dist, .bun, .opencode-home, etc). Append-only:
+  // never replaces the defaults, so forgetting `node_modules` here can't
+  // explode the index.
+  skipDirs: z.array(z.string().min(1)).optional(),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -63,6 +69,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     llmModel: process.env.ORACLE_LLM_MODEL ?? defaultLlmModel,
     vectorStoreType: process.env.ORACLE_VECTOR_STORE,
     includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),
+    skipDirs: parseCsvList(process.env.ORACLE_SKIP_DIRS),
     ...overrides,
   });
 }
@@ -75,5 +82,11 @@ function parseExtensionsList(raw: string | undefined): string[] | undefined {
     .filter(Boolean)
     .map((s) => (s.startsWith(".") ? s : `.${s}`))
     .filter((s) => s.length > 1);
+  return parts.length > 0 ? parts : undefined;
+}
+
+function parseCsvList(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined;
+  const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
   return parts.length > 0 ? parts : undefined;
 }
