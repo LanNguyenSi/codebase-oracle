@@ -10,7 +10,13 @@ const configSchema = z.object({
   // is intended for integration tests only — it is documented in
   // tests/integration/index-cli.test.ts.
   embeddingProvider: z.enum(["openai", "ollama", "stub"]).default("openai"),
-  llmProvider: z.enum(["auto", "anthropic", "openai", "ollama"]).default("auto"),
+  llmProvider: z.enum([
+    "auto",
+    "anthropic",
+    "openai",
+    "openai-compatible",
+    "ollama",
+  ]).default("auto"),
 
   // Embeddings
   openaiApiKey: z.string().optional(),
@@ -21,6 +27,12 @@ const configSchema = z.object({
 
   // LLM for answer generation
   anthropicApiKey: z.string().optional(),
+  // Generic OpenAI-compatible LLM endpoint (Groq, Together, OpenRouter,
+  // local/cloud Ollama, vLLM, etc.). Keeping these separate from
+  // `openaiApiKey`/`openaiBaseUrl` lets embedding and LLM live on different
+  // providers without leaking keys across lanes.
+  llmBaseUrl: z.string().optional(),
+  llmApiKey: z.string().optional(),
   llmModel: z.string().default("claude-sonnet-4-6"),
 
   // Vector store
@@ -68,6 +80,8 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     llmModel: process.env.ORACLE_LLM_MODEL ?? defaultLlmModel,
     vectorStoreType: process.env.ORACLE_VECTOR_STORE,
+    llmBaseUrl: process.env.ORACLE_LLM_BASE_URL,
+    llmApiKey: process.env.ORACLE_LLM_API_KEY,
     includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),
     skipDirs: parseCsvList(process.env.ORACLE_SKIP_DIRS),
     ...overrides,

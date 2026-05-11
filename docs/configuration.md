@@ -14,7 +14,9 @@ All configuration is via environment variables. The CLI and MCP server auto-load
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama`. `stub` exists for tests only (deterministic 8-dim vectors, no network) and is refused under `NODE_ENV=production` |
-| `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `ollama` |
+| `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `openai-compatible`, `ollama`. `openai-compatible` is the generic lane for Groq, OpenRouter, Together, vLLM, etc.; `ollama` is kept as a deprecated alias for the same lane (prints a one-shot warning) |
+| `ORACLE_LLM_BASE_URL` | Conditionally | — | Required when `ORACLE_LLM_PROVIDER=openai-compatible`. The provider's OpenAI-compatible `/v1` endpoint (e.g. `https://api.groq.com/openai/v1`) |
+| `ORACLE_LLM_API_KEY` | No | — | API key for the `openai-compatible` lane. Leave unset for endpoints that don't require auth (local Ollama, some vLLM setups); the SDK surfaces a 401 if one is required. Kept separate from `OPENAI_API_KEY` so embedding and LLM keys never cross-leak |
 | `OPENAI_API_KEY` | Conditionally | — | Required when `ORACLE_EMBEDDING_PROVIDER=openai`; also used for OpenAI LLM |
 | `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |
@@ -46,19 +48,35 @@ The scanner prunes these directory names at any depth so vendored package caches
 
 Override the extension allowlist with `ORACLE_INCLUDE_EXTENSIONS`. Add repo-specific directory names to the skip list with `ORACLE_SKIP_DIRS` (appended to the defaults above).
 
-## Ollama provider
+## OpenAI-compatible providers (Groq, OpenRouter, Together, vLLM, Ollama…)
 
-Route embeddings and LLM through Ollama's OpenAI-compatible API:
+Any inference endpoint that speaks the OpenAI `chat/completions` shape can serve the LLM step. Set the provider to `openai-compatible` and point the new env vars at the endpoint:
 
 ```bash
-export ORACLE_EMBEDDING_PROVIDER=ollama
-export ORACLE_LLM_PROVIDER=ollama
-export ORACLE_OLLAMA_BASE_URL=http://localhost:11434/v1
-export OLLAMA_API_KEY=ollama
+# Groq (fast hosted llama / kimi / gpt-oss)
+export ORACLE_LLM_PROVIDER=openai-compatible
+export ORACLE_LLM_BASE_URL=https://api.groq.com/openai/v1
+export ORACLE_LLM_API_KEY=gsk_...
+export ORACLE_LLM_MODEL=llama-3.3-70b-versatile
+```
 
-# Pick local models available in your Ollama instance
-export ORACLE_EMBEDDING_MODEL=nomic-embed-text
+```bash
+# Local Ollama (no key needed)
+export ORACLE_LLM_PROVIDER=openai-compatible
+export ORACLE_LLM_BASE_URL=http://localhost:11434/v1
 export ORACLE_LLM_MODEL=llama3.1
 ```
 
-Embeddings stay local; nothing leaves your machine.
+```bash
+# OpenRouter (aggregates many models behind one endpoint)
+export ORACLE_LLM_PROVIDER=openai-compatible
+export ORACLE_LLM_BASE_URL=https://openrouter.ai/api/v1
+export ORACLE_LLM_API_KEY=sk-or-...
+export ORACLE_LLM_MODEL=anthropic/claude-sonnet-4-6
+```
+
+The embedding lane stays independent. With `ORACLE_EMBEDDING_PROVIDER=openai` and `OPENAI_API_KEY=sk-…`, embeddings still hit OpenAI; only the LLM step routes through `ORACLE_LLM_*`. Setting both to point at Ollama keeps the entire pipeline local.
+
+### Legacy ollama variables
+
+`ORACLE_LLM_PROVIDER=ollama` plus `ORACLE_OLLAMA_BASE_URL` and `OLLAMA_API_KEY` still work and resolve to the same lane. The first call against a legacy config logs a one-shot deprecation warning. New env names (`ORACLE_LLM_BASE_URL`, `ORACLE_LLM_API_KEY`) take precedence when both are set, so you can migrate without an outage.

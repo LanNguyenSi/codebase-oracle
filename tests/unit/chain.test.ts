@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import { Document } from "@langchain/core/documents";
 import {
   createLlm,
@@ -6,6 +6,7 @@ import {
   formatChunkLocation,
   formatRawContextAnswer,
   getLlmErrorDetails,
+  resetOllamaDeprecationWarning,
 } from "../../src/retrieval/chain.js";
 import type { Config } from "../../src/config.js";
 
@@ -75,6 +76,125 @@ describe("createLlm", () => {
     });
     const llm = createLlm(config);
     expect(llm?.constructor.name).toBe("ChatAnthropic");
+  });
+
+  // The next block exercises provider=openai-compatible and the legacy
+  // ollama alias. They share state (the one-shot deprecation warning),
+  // so reset between tests.
+  beforeEach(() => {
+    resetOllamaDeprecationWarning();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("provider=openai-compatible requires llmBaseUrl", () => {
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmApiKey: "gsk-test",
+      llmModel: "llama-3.3-70b-versatile",
+      // Override the ollamaBaseUrl default to undefined to exercise the
+      // missing-baseUrl path. (Zod normally fills the default; we strip it.)
+    });
+    (config as Partial<Config>).ollamaBaseUrl = undefined;
+    expect(() => createLlm(config)).toThrow(/ORACLE_LLM_BASE_URL/);
+  });
+
+  it("provider=openai-compatible builds a ChatOpenAI with llmBaseUrl + llmApiKey", () => {
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: "https://api.groq.com/openai/v1",
+      llmApiKey: "gsk-test",
+      llmModel: "llama-3.3-70b-versatile",
+    });
+    const llm = createLlm(config) as
+      | { constructor: { name: string }; openAIApiKey?: string; apiKey?: string }
+      | null;
+    expect(llm?.constructor.name).toBe("ChatOpenAI");
+    // The SDK exposes the resolved key on either openAIApiKey or apiKey
+    // depending on version; either way the value must not be empty.
+    const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
+    expect(typeof resolvedKey === "string" ? resolvedKey : undefined).toBe("gsk-test");
+  });
+
+  it("provider=openai-compatible does NOT consume openaiApiKey from the embedding lane", () => {
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: "https://api.example.com/v1",
+      openaiApiKey: "sk-embedding-only",
+      // No llmApiKey, no ollamaApiKey
+    });
+    const llm = createLlm(config) as
+      | { openAIApiKey?: string; apiKey?: string }
+      | null;
+    const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
+    // Strict: must be the documented empty-string fallback, not the
+    // embedding-lane key. Future regressions that reintroduce ANY other
+    // fallback (openaiApiKey, env, etc.) would change this and fail loudly.
+    expect(resolvedKey).toBe("");
+  });
+
+  it("new llmBaseUrl takes precedence over legacy ollamaBaseUrl", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: "https://api.groq.com/openai/v1",
+      ollamaBaseUrl: "http://localhost:11434/v1",
+      llmApiKey: "k",
+    });
+    const llm = createLlm(config) as
+      | { clientConfig?: { baseURL?: string }; configuration?: { baseURL?: string } }
+      | null;
+    // ChatOpenAI exposes the resolved baseURL via `clientConfig.baseURL`
+    // on recent SDK versions and `configuration.baseURL` historically;
+    // accept either, but the value must be the new var, not the legacy.
+    const baseUrl = llm?.clientConfig?.baseURL ?? llm?.configuration?.baseURL;
+    expect(baseUrl).toBe("https://api.groq.com/openai/v1");
+  });
+
+  it("legacy provider=ollama still picks up ollamaApiKey + ollamaBaseUrl", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const config = baseConfig({
+      llmProvider: "ollama",
+      ollamaApiKey: "legacy-key",
+      ollamaBaseUrl: "http://localhost:11434/v1",
+      llmModel: "llama3.1",
+    });
+    const llm = createLlm(config) as
+      | { openAIApiKey?: string; apiKey?: string }
+      | null;
+    const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
+    expect(resolvedKey).toBe("legacy-key");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatch(/ORACLE_LLM_PROVIDER=ollama is deprecated/);
+  });
+
+  it("new llmApiKey takes precedence over legacy ollamaApiKey", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const config = baseConfig({
+      llmProvider: "ollama",
+      llmApiKey: "new-key",
+      ollamaApiKey: "legacy-key",
+      ollamaBaseUrl: "http://localhost:11434/v1",
+    });
+    const llm = createLlm(config) as
+      | { openAIApiKey?: string; apiKey?: string }
+      | null;
+    const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
+    expect(resolvedKey).toBe("new-key");
+  });
+
+  it("deprecation warning is emitted at most once across calls", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const config = baseConfig({
+      llmProvider: "ollama",
+      ollamaApiKey: "k",
+      ollamaBaseUrl: "http://localhost:11434/v1",
+    });
+    createLlm(config);
+    createLlm(config);
+    createLlm(config);
+    expect(warn).toHaveBeenCalledTimes(1);
   });
 });
 
