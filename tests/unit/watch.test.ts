@@ -275,6 +275,88 @@ describe("runWatchMode integration", () => {
     }
   }, 15000);
 
+  it("does not embed files under a default-skipped directory (.bun)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      // Create a default-skipped vendored cache tree before a "real" source
+      // file. chokidar with ignoreInitial:true plus the skip-dir filter must
+      // emit zero events for the cache file and exactly one for real.ts.
+      const vendored = join(repoDir, ".bun", "install", "cache");
+      await mkdir(vendored, { recursive: true });
+      await writeFile(
+        join(vendored, "vendored.ts"),
+        "export const x = 'cached';",
+        "utf8",
+      );
+      await writeFile(join(repoDir, "real.ts"), "export const y = 1;", "utf8");
+
+      await waitForPending(watcher, 1);
+      // Brief settle window so a late event from the cache tree (if the
+      // filter were broken) would race in and bump pending past 1.
+      await new Promise((r) => setTimeout(r, 150));
+      expect(watcher.stats().pending).toBe(1);
+
+      await watcher.flushOnce();
+
+      const repos = await listIndexedRepos(config);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
+
+  it("honours an extra skipDirs entry from config (ORACLE_SKIP_DIRS path)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config: Config = { ...testConfig(scanRoot, dataDir), skipDirs: ["generated"] };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      await mkdir(join(repoDir, "generated"), { recursive: true });
+      await writeFile(
+        join(repoDir, "generated", "auto.ts"),
+        "export const generated = true;",
+        "utf8",
+      );
+      await writeFile(join(repoDir, "hand.ts"), "export const hand = 2;", "utf8");
+
+      await waitForPending(watcher, 1);
+      await new Promise((r) => setTimeout(r, 150));
+      expect(watcher.stats().pending).toBe(1);
+
+      await watcher.flushOnce();
+
+      const repos = await listIndexedRepos(config);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
+
   it("collapses a save-storm into a single re-embed", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
     const config = testConfig(scanRoot, dataDir);
