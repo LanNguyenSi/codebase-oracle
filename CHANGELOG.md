@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-16
+
+Packaging release: the project is now published to npm as
+`@lannguyensi/codebase-oracle`. The unscoped name on npm belongs to an
+unrelated CLI, which made `npm i -g codebase-oracle` resolve to the wrong
+package and blocked the harness Full template from listing this MCP
+server as a default dependency. The scoped name fixes that, and the CLI
+gains an explicit `mcp` subcommand so a manifest entry like
+`command: [codebase-oracle, mcp]` boots the MCP server end-to-end.
+
+### Added
+
+- `codebase-oracle mcp` subcommand on the CLI. Starts the MCP server
+  over stdio by delegating to `src/mcp-server.ts`. Equivalent to the
+  existing `npm run mcp` developer flow, but reachable from a
+  globally-installed binary so harness manifests and other MCP clients
+  can wire it in without a local source checkout.
+- `.github/workflows/release.yml` now publishes the npm package on `v*`
+  tag push, with npm provenance and a guard that fails the job if the
+  tag does not match `package.json` `version`. Requires the `NPM_TOKEN`
+  repo secret.
+- `package.json` `files` allowlist (`dist`, `README.md`, `LICENSE`,
+  `CHANGELOG.md`) and `prepublishOnly: npm run build` so the published
+  tarball ships a clean, freshly-built `dist/` and nothing else.
+
+### Changed
+
+- `package.json` `name` is now `@lannguyensi/codebase-oracle`; the bin
+  name stays `codebase-oracle`. The previously-published unscoped
+  `codebase-oracle` package on npm is an unrelated CLI whose bin is
+  named `oracle`, so the two can coexist when installed globally.
+- `src/mcp-server.ts` now exports `startMcpServer()`; the legacy
+  self-start path (`node dist/mcp-server.js`, `npm run mcp`) keeps
+  working via an `import.meta.url === process.argv[1]` guard.
+
 ## [0.5.0] - 2026-05-11
 
 Minor release. Substantial new agent-facing surface: a generic

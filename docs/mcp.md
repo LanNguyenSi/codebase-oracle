@@ -4,6 +4,14 @@ codebase-oracle ships an MCP (Model Context Protocol) server so any local Claude
 
 ## Register with Claude Code
 
+After `npm i -g @lannguyensi/codebase-oracle`:
+
+```bash
+claude mcp add codebase-oracle -- codebase-oracle mcp
+```
+
+From a local source checkout (no global install):
+
 ```bash
 claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
 ```

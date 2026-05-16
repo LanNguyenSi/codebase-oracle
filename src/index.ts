@@ -22,7 +22,17 @@ const program = new Command();
 program
   .name("codebase-oracle")
   .description("RAG-powered codebase Q&A for your multi-repo codebase")
-  .version("0.5.0");
+  .version("0.6.0");
+
+program
+  .command("mcp")
+  .description("Start the Model Context Protocol server over stdio")
+  .action(async () => {
+    // Dynamic import so loadConfig() inside mcp-server doesn't run for other
+    // subcommands that handle their own config loading.
+    const { startMcpServer } = await import("./mcp-server.js");
+    await startMcpServer();
+  });
 
 program
   .command("index")

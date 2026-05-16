@@ -1,10 +1,19 @@
 {
-  "name": "codebase-oracle",
-  "version": "0.5.0",
-  "description": "RAG-powered codebase Q&A for the multi-repo codebases — LangChain + MCP server",
+  "name": "@lannguyensi/codebase-oracle",
+  "version": "0.6.0",
+  "description": "RAG-powered codebase Q&A for multi-repo codebases, with LangChain and MCP server",
   "type": "module",
   "bin": {
     "codebase-oracle": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "test": "vitest run",
@@ -16,7 +25,8 @@
     "mcp": "tsx src/mcp-server.ts",
     "serve": "tsx src/http-server.ts",
     "migrate-store": "tsx src/index.ts migrate-store",
-    "eval": "tsx tests/eval/runner.ts"
+    "eval": "tsx tests/eval/runner.ts",
+    "prepublishOnly": "npm run build"
   },
   "repository": {
     "type": "git",

@@ -6,26 +6,40 @@ Semantic search across all your local repos, via MCP or CLI.
 
 codebase-oracle builds one semantic index over every git repo under a root directory, then exposes it to agents via MCP or to humans via CLI. The vector store lives on your machine; embeddings are computed by OpenAI by default, or fully local via Ollama (configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
 
-## Try it in 60 seconds
+## Install
+
+From npm (recommended for MCP-only use):
+
+```bash
+npm i -g @lannguyensi/codebase-oracle
+```
+
+This puts a `codebase-oracle` binary on your PATH. Use it as a CLI or as the entry for an MCP client.
+
+From source (for development, or to run `npm run index` over a custom scan root):
 
 ```bash
 git clone https://github.com/LanNguyenSi/codebase-oracle.git
 cd codebase-oracle
 npm install && npm run build
+```
 
+## Try it in 60 seconds
+
+```bash
 # point at the directory holding your git repos, set your key
 export ORACLE_SCAN_ROOT=~/code
 export OPENAI_API_KEY=sk-...
 
 # build the index, then ask a question
-npm run index
-npm run query -- "where do we handle auth?"
+codebase-oracle index
+codebase-oracle query "where do we handle auth?"
 ```
 
 Or wire it into Claude Code as an MCP server:
 
 ```bash
-claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
+claude mcp add codebase-oracle -- codebase-oracle mcp
 ```
 
 From any Claude Code session on the same machine you can now call `oracle_search`, `oracle_query`, `oracle_expand`, and `oracle_list_repos` against the shared index.
