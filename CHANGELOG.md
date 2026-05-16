@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-05-16
+
+Hotfix for 0.6.0. The tag-driven publish workflow for 0.6.0 was rejected
+by npm with `Error verifying sigstore provenance bundle: Failed to
+validate repository information: package.json: "repository.url" is
+"git@github2:LanNguyenSi/codebase-oracle.git", expected to match
+"https://github.com/LanNguyenSi/codebase-oracle" from provenance`. The
+local SSH host alias `github2` could not be matched against the
+GitHub-Actions provenance attestation, which records the canonical
+`https://github.com/LanNguyenSi/codebase-oracle` repo URL. Switching
+`repository.url` to the canonical `git+https://github.com/...` form
+satisfies the provenance check.
+
+### Changed
+
+- `package.json` `repository.url` now uses the canonical
+  `git+https://github.com/LanNguyenSi/codebase-oracle.git` form
+  instead of the local SSH host alias. Required for npm
+  publish-with-provenance to validate. Local `git push` keeps working
+  because Git remote URLs are configured per-clone, independent of
+  `package.json`.
+
 ## [0.6.0] - 2026-05-16
 
 Packaging release: the project is now published to npm as
