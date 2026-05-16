@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { fileURLToPath } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -17,7 +18,7 @@ const config = loadConfig();
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.5.0",
+  version: "0.6.0",
 });
 
 // Lazy-init store (expensive, only when first tool is called)
@@ -171,12 +172,20 @@ server.tool(
 
 // ── Start ──────────────────────────────────────────────────────────────────
 
-async function main() {
+export async function startMcpServer(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-main().catch((err) => {
-  console.error("MCP server failed:", err);
-  process.exit(1);
-});
+// Only auto-start when invoked directly (e.g. `npm run mcp`, `node dist/mcp-server.js`).
+// When imported by the CLI's `mcp` subcommand, the CLI calls startMcpServer() itself.
+const invokedDirectly = process.argv[1]
+  ? fileURLToPath(import.meta.url) === process.argv[1]
+  : false;
+
+if (invokedDirectly) {
+  startMcpServer().catch((err) => {
+    console.error("MCP server failed:", err);
+    process.exit(1);
+  });
+}
