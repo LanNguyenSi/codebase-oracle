@@ -126,6 +126,9 @@ export function getLlmErrorDetails(err: unknown): string | null {
     message?: string;
     code?: string;
     cause?: { code?: string; message?: string };
+    // undici wraps dual-stack connect failures as AggregateError with the
+    // per-address attempts in `errors[]` and `code` undefined at the top.
+    errors?: Array<{ code?: string; message?: string }>;
   };
   const parts: string[] = [];
   if (typeof e.status === "number") {
@@ -137,11 +140,20 @@ export function getLlmErrorDetails(err: unknown): string | null {
   // node:net / undici connect failures don't carry an HTTP status. Surfacing
   // the underlying code (ECONNREFUSED, ENOTFOUND, ETIMEDOUT, EAI_AGAIN, ...)
   // tells the caller "the endpoint isn't reachable" instead of just "500".
+  const aggregateChild = Array.isArray(e.errors)
+    ? e.errors.find(
+        (child) =>
+          child &&
+          typeof child === "object" &&
+          typeof child.code === "string" &&
+          child.code.length > 0,
+      )
+    : undefined;
   const networkCode = typeof e.code === "string" && e.code.length > 0
     ? e.code
     : typeof e.cause?.code === "string" && e.cause.code.length > 0
       ? e.cause.code
-      : null;
+      : aggregateChild?.code ?? null;
   if (networkCode) {
     parts.push(networkCode);
   }
@@ -150,7 +162,11 @@ export function getLlmErrorDetails(err: unknown): string | null {
   // Previously we returned it only when status/requestID were absent, which
   // hid the real cause behind an opaque "status 500". Always include it,
   // trimmed and capped so the wrapper stays single-line-ish.
-  const message = pickShortMessage(e.message ?? e.cause?.message);
+  // Use `||` so an empty top-level message falls through to cause / aggregate
+  // children instead of short-circuiting at the empty string.
+  const message = pickShortMessage(
+    e.message || e.cause?.message || aggregateChild?.message,
+  );
   if (message) {
     parts.push(message);
   }
