@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-05-24
+
+### Fixed
+
+- `getLlmErrorDetails` now walks `err.errors[]` when neither `err.code`
+  nor `err.cause?.code` is present, surfacing the network code for
+  undici dual-stack `AggregateError` wrappers (e.g. `ECONNREFUSED` on
+  both IPv4 + IPv6 connect attempts). Previously these wrappers landed
+  in the agent-facing error as a bare `fetch failed` with no code,
+  which made it hard to distinguish a misconfigured base URL from a
+  briefly-down service. Aggregate child `.message` is also folded into
+  the message picker as a fallback, and the `??` chain on `message`
+  is now `||` so an empty top-level `message: ""` falls through to
+  cause / aggregate children. Verified with three new unit tests in
+  `tests/unit/chain.test.ts` (happy path, top-level code beats
+  aggregate, child without code is skipped); the existing
+  `{ message: "" }` → `null` test confirms the chain change doesn't
+  regress the no-fallback path.
+
+  PR #40, agent-tasks `a97d35a3`.
+
 ## [0.6.1] - 2026-05-16
 
 Hotfix for 0.6.0. The tag-driven publish workflow for 0.6.0 was rejected
