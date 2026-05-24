@@ -277,6 +277,43 @@ describe("getLlmErrorDetails", () => {
     };
     expect(getLlmErrorDetails(err)).toBe("ENOTFOUND, fetch failed");
   });
+
+  it("walks AggregateError.errors[] when code is missing at the top and cause levels", () => {
+    const err = {
+      name: "AggregateError",
+      message: "",
+      errors: [
+        { code: "ECONNREFUSED", message: "connect ECONNREFUSED 127.0.0.1:11434" },
+        { code: "ECONNREFUSED", message: "connect ECONNREFUSED ::1:11434" },
+      ],
+    };
+    expect(getLlmErrorDetails(err)).toBe(
+      "ECONNREFUSED, connect ECONNREFUSED 127.0.0.1:11434",
+    );
+  });
+
+  it("prefers top-level code over AggregateError.errors[]", () => {
+    const err = {
+      code: "ETIMEDOUT",
+      message: "connect timeout",
+      errors: [{ code: "ECONNREFUSED", message: "fallback child" }],
+    };
+    expect(getLlmErrorDetails(err)).toBe("ETIMEDOUT, connect timeout");
+  });
+
+  it("skips AggregateError children without a code", () => {
+    const err = {
+      name: "AggregateError",
+      message: "",
+      errors: [
+        { message: "no code here" },
+        { code: "ECONNREFUSED", message: "second child has the code" },
+      ],
+    };
+    expect(getLlmErrorDetails(err)).toBe(
+      "ECONNREFUSED, second child has the code",
+    );
+  });
 });
 
 describe("extractSources", () => {
