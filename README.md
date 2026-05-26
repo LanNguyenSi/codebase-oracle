@@ -42,7 +42,7 @@ Or wire it into Claude Code as an MCP server:
 claude mcp add codebase-oracle -- codebase-oracle mcp
 ```
 
-From any Claude Code session on the same machine you can now call `oracle_search`, `oracle_query`, `oracle_expand`, and `oracle_list_repos` against the shared index.
+From any Claude Code session on the same machine you can now call `oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`, and `oracle_reindex` against the shared index. `oracle_reindex` triggers an incremental re-index on demand (only changed and new files are re-embedded); use it after merging code you want the oracle to see immediately, instead of waiting for the next scheduled scan.
 
 ## What a search looks like
 
@@ -77,7 +77,7 @@ export function requireToken(req, res, next) {
 
 | If you want to... | Read |
 |------|------|
-| Wire it into Claude Code (MCP setup, the four tools, HTTP MCP auth) | [docs/mcp.md](docs/mcp.md) |
+| Wire it into Claude Code (MCP setup, the five tools, HTTP MCP auth) | [docs/mcp.md](docs/mcp.md) |
 | Switch to Ollama, change embedding models, customise scan filters | [docs/configuration.md](docs/configuration.md) |
 | Understand how the index is built (chunking, embeddings, sqlite-vec) | [docs/architecture.md](docs/architecture.md) |
 | Migrate from v0.2 (JSONL) or pick up v0.4 line numbers | [docs/upgrades.md](docs/upgrades.md) |
@@ -105,7 +105,7 @@ Watch mode runs a chokidar watcher over the scan root and re-embeds changed file
 
 ## Two use cases
 
-**For agents (primary).** A local Claude Code or other MCP client talks to the oracle's MCP server over stdio. The agent runs `oracle_search` / `oracle_query` / `oracle_expand` / `oracle_list_repos` against a shared, pre-built index: it never has to scan the filesystem, embed anything, or burn its own context on grep output. One scan for everyone, semantic instead of regex, no duplicate embeddings, MCP-first design.
+**For agents (primary).** A local Claude Code or other MCP client talks to the oracle's MCP server over stdio. The agent runs `oracle_search` / `oracle_query` / `oracle_expand` / `oracle_list_repos` / `oracle_reindex` against a shared, pre-built index: it never has to scan the filesystem, embed anything, or burn its own context on grep output. One scan for everyone, semantic instead of regex, no duplicate embeddings, MCP-first design.
 
 **For humans.** The CLI is useful for spot checks, debugging the index, or terminal-driven answers without going through an agent.
 
