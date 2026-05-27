@@ -188,6 +188,22 @@ describe("runWatchMode integration", () => {
     );
   }
 
+  async function waitForCondition(
+    predicate: () => boolean,
+    description: string,
+    timeoutMs = 10000,
+    intervalMs = 50,
+  ): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      if (predicate()) return;
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+    throw new Error(
+      `timed out after ${timeoutMs}ms waiting for: ${description}`,
+    );
+  }
+
   it("embeds a newly created file within one debounce window", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
     const config = testConfig(scanRoot, dataDir);
@@ -262,12 +278,14 @@ describe("runWatchMode integration", () => {
       await mkdir(join(newRepo, ".git"), { recursive: true });
 
       // Wait for the detection log line (chokidar addDir -> async stat -> log).
-      const start = Date.now();
-      while (Date.now() - start < 5000) {
-        if (logs.some((l) => l.includes('new repo "fresh"'))) break;
-        await new Promise((r) => setTimeout(r, 40));
-      }
-      expect(logs.some((l) => l.includes('new repo "fresh"'))).toBe(true);
+      // Past flake (2026-05-24, PR #41 CI run 26358122041): the prior 5s
+      // deadline was sometimes too tight on shared CI runners. waitForCondition
+      // bumps the budget to 10s (still well inside the 15s test timeout) and
+      // throws a useful diagnostic if it does time out.
+      await waitForCondition(
+        () => logs.some((l) => l.includes('new repo "fresh"')),
+        'log line `new repo "fresh"` from the chokidar addDir handler',
+      );
     } finally {
       await watcher.close();
       logSpy.mockRestore();
