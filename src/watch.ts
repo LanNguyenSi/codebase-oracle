@@ -3,7 +3,7 @@ import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import type { Embeddings } from "@langchain/core/embeddings";
-import type { Config } from "./config.js";
+import { assertScanRoot, type Config } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import {
   DEFAULT_INCLUDE_EXTENSIONS,
@@ -145,6 +145,7 @@ export async function runWatchMode(
   config: Config,
   options: WatchOptions = {},
 ): Promise<RunningWatcher> {
+  assertScanRoot(config);
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
 
   const store = options.store ?? openSqliteStore(config);

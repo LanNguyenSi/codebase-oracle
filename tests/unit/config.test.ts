@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadConfig } from "../../src/config.js";
+import { assertScanRoot, loadConfig } from "../../src/config.js";
 
 describe("loadConfig", () => {
   it("applies defaults for optional fields", () => {
@@ -12,8 +12,16 @@ describe("loadConfig", () => {
     expect(config.vectorStoreType).toBe("directory");
   });
 
-  it("throws when scanRoot is not provided", () => {
-    expect(() => loadConfig()).toThrow();
+  it("loads without scanRoot for read-only commands", () => {
+    const prev = process.env.ORACLE_SCAN_ROOT;
+    delete process.env.ORACLE_SCAN_ROOT;
+    try {
+      const config = loadConfig();
+      expect(config.scanRoot).toBeUndefined();
+      expect(config.embeddingProvider).toBe("openai");
+    } finally {
+      if (prev !== undefined) process.env.ORACLE_SCAN_ROOT = prev;
+    }
   });
 
   it("accepts overrides", () => {
@@ -56,5 +64,23 @@ describe("loadConfig", () => {
     expect(typeof config.openaiBaseUrl === "string" || config.openaiBaseUrl === undefined).toBe(true);
     expect(typeof config.anthropicApiKey === "string" || config.anthropicApiKey === undefined).toBe(true);
     expect(typeof config.ollamaApiKey === "string" || config.ollamaApiKey === undefined).toBe(true);
+  });
+});
+
+describe("assertScanRoot", () => {
+  it("throws a friendly error when scanRoot is undefined", () => {
+    const prev = process.env.ORACLE_SCAN_ROOT;
+    delete process.env.ORACLE_SCAN_ROOT;
+    try {
+      const config = loadConfig();
+      expect(() => assertScanRoot(config)).toThrow(/ORACLE_SCAN_ROOT is required/);
+    } finally {
+      if (prev !== undefined) process.env.ORACLE_SCAN_ROOT = prev;
+    }
+  });
+
+  it("passes through when scanRoot is set", () => {
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(() => assertScanRoot(config)).not.toThrow();
   });
 });

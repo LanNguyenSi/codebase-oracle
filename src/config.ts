@@ -2,7 +2,11 @@ import { z } from "zod";
 
 const configSchema = z.object({
   // Paths
-  scanRoot: z.string().min(1, "ORACLE_SCAN_ROOT is required — set it to the directory containing your git repos"),
+  // scanRoot is only consumed by the writer commands (index, watch).
+  // Read-only commands (query, search, list-repos, mcp) never touch it,
+  // so it stays optional in the schema and is enforced via assertScanRoot
+  // at the entry of the writer code paths instead.
+  scanRoot: z.string().min(1).optional(),
   dataDir: z.string().default(process.env.HOME + "/.codebase-oracle"),
 
   // Provider selection
@@ -49,6 +53,19 @@ const configSchema = z.object({
 });
 
 export type Config = z.infer<typeof configSchema>;
+
+// Narrows Config so the writer paths can rely on scanRoot being a string.
+// Called at the top of runIndex / runWatchMode; throws the same friendly
+// message the schema used to emit when scanRoot was strictly required.
+export function assertScanRoot(
+  config: Config,
+): asserts config is Config & { scanRoot: string } {
+  if (!config.scanRoot) {
+    throw new Error(
+      "ORACLE_SCAN_ROOT is required — set it to the directory containing your git repos",
+    );
+  }
+}
 
 export function loadConfig(overrides: Partial<Config> = {}): Config {
   const embeddingProvider = overrides.embeddingProvider

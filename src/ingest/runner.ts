@@ -6,7 +6,7 @@
 // repo_meta pruning, deleted-file vector cleanup, atomic per-file upsert).
 
 import { Document } from "@langchain/core/documents";
-import type { Config } from "../config.js";
+import { assertScanRoot, type Config } from "../config.js";
 import { discoverRepos, walkRepo, type WalkRepoOptions } from "./scanner.js";
 import { mergeSkipDirs } from "./skip-dirs.js";
 import { splitFile } from "./splitter.js";
@@ -40,6 +40,7 @@ export async function runIndex(
   config: Config,
   options: RunIndexOptions = {},
 ): Promise<IndexSummary> {
+  assertScanRoot(config);
   const log = options.logger ?? (() => {});
   const startedAt = Date.now();
 
