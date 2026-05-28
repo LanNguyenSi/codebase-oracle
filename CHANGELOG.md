@@ -22,8 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   directory containing your git repos" message via a new
   `assertScanRoot()` helper that runs at the top of `runIndex` and
   `runWatchMode`. PR #45, agent-tasks `d8df9a5f`.
-- CLI `--version` now reports `0.6.3` instead of the stale `0.6.1`
-  literal that had drifted out of sync with `package.json`.
+- CLI `--version` and the MCP server handshake now both report
+  `0.6.3` instead of the stale `0.6.1` literal that had drifted out
+  of sync with `package.json` since v0.6.0.
 
 ## [0.6.2] - 2026-05-24
 
