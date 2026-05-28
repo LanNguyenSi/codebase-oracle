@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-05-28
+
+### Fixed
+
+- CLI commands `query`, `search`, `list-repos`, and `mcp` no longer
+  crash with a raw `ZodError: scanRoot is required` when
+  `ORACLE_SCAN_ROOT` is not set in the environment. Commit `4827b3d`
+  (v0.6.0 release prep) tightened the Zod schema so `loadConfig()`
+  refused to start without `ORACLE_SCAN_ROOT`, but only `index` and
+  `watch` actually consume `config.scanRoot`. Read-only commands now
+  load config without requiring the env var; `index` and `watch` get
+  the same friendly "ORACLE_SCAN_ROOT is required, set it to the
+  directory containing your git repos" message via a new
+  `assertScanRoot()` helper that runs at the top of `runIndex` and
+  `runWatchMode`. PR #45, agent-tasks `d8df9a5f`.
+- CLI `--version` now reports `0.6.3` instead of the stale `0.6.1`
+  literal that had drifted out of sync with `package.json`.
+
 ## [0.6.2] - 2026-05-24
 
 ### Fixed
