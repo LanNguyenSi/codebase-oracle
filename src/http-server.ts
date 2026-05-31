@@ -57,96 +57,105 @@ function getStore(): Promise<VectorStoreWrapper> {
   return storePromise;
 }
 
-// ── MCP server (singleton) ────────────────────────────────────────────────────
+// ── MCP server factory ────────────────────────────────────────────────────────
 
-const server = new McpServer({
-  name: "codebase-oracle",
-  version: "0.5.0",
-});
+// One McpServer cannot be connected to more than one transport at a time: the
+// SDK's Protocol.connect throws "Already connected to a transport" once
+// server._transport is set, and a stateless POST never clears it. So we build a
+// fresh McpServer per request. Tools close over the shared lazy getStore()/config,
+// so there is no per-request store rebuild.
+function buildServer(): McpServer {
+  const server = new McpServer({
+    name: "codebase-oracle",
+    version: "0.5.0",
+  });
 
-server.tool(
-  "oracle_query",
-  "Ask a natural-language question about the indexed codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
-  {
-    question: z.string().describe("Natural language question about the codebase"),
-    repo: z.string().optional().describe("Optional: filter to a specific repo name (e.g. 'agent-tasks')"),
-  },
-  async ({ question, repo }) => {
-    const store = await getStore();
-    const result = await queryCodebase(question, store, config, { repo });
+  server.tool(
+    "oracle_query",
+    "Ask a natural-language question about the indexed codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
+    {
+      question: z.string().describe("Natural language question about the codebase"),
+      repo: z.string().optional().describe("Optional: filter to a specific repo name (e.g. 'agent-tasks')"),
+    },
+    async ({ question, repo }) => {
+      const store = await getStore();
+      const result = await queryCodebase(question, store, config, { repo });
 
-    const sourcesText = result.sources.length > 0
-      ? "\n\nSources:\n" + result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
-      : "";
+      const sourcesText = result.sources.length > 0
+        ? "\n\nSources:\n" + result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
+        : "";
 
-    return { content: [{ type: "text" as const, text: result.answer + sourcesText }] };
-  },
-);
+      return { content: [{ type: "text" as const, text: result.answer + sourcesText }] };
+    },
+  );
 
-server.tool(
-  "oracle_search",
-  "Raw vector similarity search over the indexed codebase. Returns matching code/doc chunks with metadata. Use this when you need specific code snippets rather than an interpreted answer. No LLM involved — pure embedding retrieval.",
-  {
-    query: z.string().describe("Search query (natural language or code pattern)"),
-    repo: z.string().optional().describe("Optional: filter to a specific repo"),
-    limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
-  },
-  async ({ query, repo, limit }) => {
-    const store = await getStore();
-    const docs = await searchCodebase(query, store, { repo, limit });
+  server.tool(
+    "oracle_search",
+    "Raw vector similarity search over the indexed codebase. Returns matching code/doc chunks with metadata. Use this when you need specific code snippets rather than an interpreted answer. No LLM involved — pure embedding retrieval.",
+    {
+      query: z.string().describe("Search query (natural language or code pattern)"),
+      repo: z.string().optional().describe("Optional: filter to a specific repo"),
+      limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
+    },
+    async ({ query, repo, limit }) => {
+      const store = await getStore();
+      const docs = await searchCodebase(query, store, { repo, limit });
 
-    const text = docs
-      .map((doc, i) => {
-        const { repo: r } = doc.metadata as { repo: string };
-        const location = formatChunkLocation(doc.metadata);
-        return `[${i + 1}] ${location} (${r}):\n${doc.pageContent}`;
-      })
-      .join("\n\n---\n\n");
+      const text = docs
+        .map((doc, i) => {
+          const { repo: r } = doc.metadata as { repo: string };
+          const location = formatChunkLocation(doc.metadata);
+          return `[${i + 1}] ${location} (${r}):\n${doc.pageContent}`;
+        })
+        .join("\n\n---\n\n");
 
-    return { content: [{ type: "text" as const, text: text || "No results found." }] };
-  },
-);
+      return { content: [{ type: "text" as const, text: text || "No results found." }] };
+    },
+  );
 
-server.tool(
-  "oracle_list_repos",
-  "List repos actually present in the vector index, with chunk and file counts. Reflects what oracle_search / oracle_query can answer over — not just what exists on disk.",
-  {},
-  async () => {
-    const store = await getStore();
-    const repos = store.listRepos();
+  server.tool(
+    "oracle_list_repos",
+    "List repos actually present in the vector index, with chunk and file counts. Reflects what oracle_search / oracle_query can answer over — not just what exists on disk.",
+    {},
+    async () => {
+      const store = await getStore();
+      const repos = store.listRepos();
 
-    if (repos.length === 0) {
+      if (repos.length === 0) {
+        return {
+          content: [{
+            type: "text" as const,
+            text: "No repos in the index yet. Run `npm run index` to build it.",
+          }],
+        };
+      }
+
+      const text = repos.map((r) => formatRepoLine(r)).join("\n");
+
       return {
-        content: [{
-          type: "text" as const,
-          text: "No repos in the index yet. Run `npm run index` to build it.",
-        }],
+        content: [{ type: "text" as const, text: `${repos.length} indexed repos:\n${text}` }],
       };
-    }
+    },
+  );
 
-    const text = repos.map((r) => formatRepoLine(r)).join("\n");
+  server.tool(
+    "oracle_expand",
+    "Read a window of lines around a specific position in an indexed file. Use after oracle_search to see the context around a chunk without leaving the oracle. Reads the file from disk via the indexed absolutePath; if the working copy has changed since indexing, the lines may not match what oracle_search returned — check oracle_list_repos for the indexed timestamp.",
+    {
+      repo: z.string().describe("Repo name (must be indexed; see oracle_list_repos)"),
+      path: z.string().describe("File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)"),
+      line: z.number().int().min(1).optional().describe("1-indexed line to center the window on (default 1, top of file)"),
+      window: z.number().int().min(1).max(200).optional().describe("Lines to include around `line` (default 30, capped at 200)"),
+    },
+    async ({ repo, path, line, window }) => {
+      const store = await getStore();
+      const result = await expandFile(store, { repo, path, line, window });
+      return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
+    },
+  );
 
-    return {
-      content: [{ type: "text" as const, text: `${repos.length} indexed repos:\n${text}` }],
-    };
-  },
-);
-
-server.tool(
-  "oracle_expand",
-  "Read a window of lines around a specific position in an indexed file. Use after oracle_search to see the context around a chunk without leaving the oracle. Reads the file from disk via the indexed absolutePath; if the working copy has changed since indexing, the lines may not match what oracle_search returned — check oracle_list_repos for the indexed timestamp.",
-  {
-    repo: z.string().describe("Repo name (must be indexed; see oracle_list_repos)"),
-    path: z.string().describe("File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)"),
-    line: z.number().int().min(1).optional().describe("1-indexed line to center the window on (default 1, top of file)"),
-    window: z.number().int().min(1).max(200).optional().describe("Lines to include around `line` (default 30, capped at 200)"),
-  },
-  async ({ repo, path, line, window }) => {
-    const store = await getStore();
-    const result = await expandFile(store, { repo, path, line, window });
-    return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
-  },
-);
+  return server;
+}
 
 // ── Node HTTP server ──────────────────────────────────────────────────────────
 
@@ -196,7 +205,11 @@ const httpServer = createHttpServer(async (req, res) => {
         body,
       });
 
-      // Stateless transport — one per request, server is shared
+      // Stateless: a fresh server + transport per request. Reusing one McpServer
+      // across requests fails on the second POST ("Already connected to a
+      // transport") because the SDK never clears server._transport on a normal
+      // stateless POST.
+      const server = buildServer();
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
       });
@@ -204,14 +217,25 @@ const httpServer = createHttpServer(async (req, res) => {
       await server.connect(transport);
       const response = await transport.handleRequest(request);
 
+      // Release the per-request server/transport once the body has been fully
+      // streamed (or immediately when there is no body), so we don't leak a
+      // connected transport per request.
+      const releasePair = () => {
+        void transport.close().catch(() => {});
+        void server.close().catch(() => {});
+      };
+
       // Forward response headers
       res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
 
       // Stream the response body (supports SSE)
       if (response.body) {
         const nodeStream = Readable.fromWeb(response.body as any);
+        nodeStream.on("close", releasePair);
+        nodeStream.on("error", releasePair);
         nodeStream.pipe(res);
       } else {
+        releasePair();
         res.end();
       }
     } catch (err) {
