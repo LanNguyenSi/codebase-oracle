@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-06-09
+
+Security release closing a HIGH audit finding and a CVE sweep.
+
+### Security
+
+- **HIGH: the HTTP MCP server now builds a fresh server per request** (PR #47). The `POST /mcp` handler shared one singleton `McpServer` across all requests: the first request set `server._transport` via `connect()`, a stateless POST never clears it (the SDK only resets it in `_onclose`, which a normal POST does not trigger), so every subsequent request threw "Already connected to a transport" and was returned as a generic `-32603` error. The server served exactly one request before failing for all clients. A `buildServer()` factory now constructs a new `McpServer` (plus transport) per request, matching the SDK's stateless pattern; tools still close over the shared lazy `getStore()` / config so there is no per-request store rebuild, and the per-request server and transport are closed once the response is fully streamed.
+- **hono advanced to `4.12.23`** (4 MEDIUM CVEs: CVE-2026-47673 / 47674 / 47675 / 47676, PR #48). Patched in hono 4.12.21.
+
 ## [0.6.3] - 2026-05-28
 
 ### Fixed
