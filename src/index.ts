@@ -14,6 +14,7 @@ import { expandFile, formatExpandResult } from "./expand.js";
 import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
 import { runIndex } from "./ingest/runner.js";
+import { VERSION } from "./version.js";
 
 loadEnvFromFile();
 
@@ -22,7 +23,7 @@ const program = new Command();
 program
   .name("codebase-oracle")
   .description("RAG-powered codebase Q&A for your multi-repo codebase")
-  .version("0.6.3");
+  .version(VERSION);
 
 program
   .command("mcp")
