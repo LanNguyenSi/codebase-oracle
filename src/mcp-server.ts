@@ -11,6 +11,7 @@ import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/
 import { formatRepoLine } from "./format-freshness.js";
 import { expandFile, formatExpandResult } from "./expand.js";
 import { formatIndexSummary, runIndex } from "./ingest/runner.js";
+import { VERSION } from "./version.js";
 
 loadEnvFromFile();
 
@@ -18,7 +19,7 @@ const config = loadConfig();
 
 const server = new McpServer({
   name: "codebase-oracle",
-  version: "0.6.3",
+  version: VERSION,
 });
 
 // Lazy-init store (expensive, only when first tool is called)
