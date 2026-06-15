@@ -14,7 +14,11 @@ tests/eval/
     ├── .codebase-oracle-skip  // sentinel; the main scanner prunes this tree
     ├── auth-toy/              // toy JWT auth surface
     ├── cli-toy/               // toy commander CLI
-    └── config-toy/            // toy zod-based env validation
+    ├── config-toy/            // toy zod-based env validation
+    ├── server-toy/            // toy Fastify server (app bootstrap + route defs)
+    ├── queue-toy/             // toy BullMQ job runner (queue setup + worker)
+    ├── form-toy/              // toy React contact form + validation hook
+    └── db-toy/                // toy Prisma DB layer (schema + query helpers)
 ```
 
 The `.codebase-oracle-skip` sentinel at `corpus/` is what stops the user's primary index from absorbing fixture content when it walks this repo. The eval runner sets its `scanRoot` to `corpus/` and walks each per-repo subdir, so it never trips on the sentinel itself.
@@ -33,7 +37,7 @@ npm run eval
 npm run eval -- --update
 ```
 
-Cost is small: ~10 documents to embed for a full corpus rebuild, plus one embed per question. Under a cent against `text-embedding-3-small`.
+Cost is small: ~25 documents to embed for a full corpus rebuild, plus one embed per question. Under a cent against `text-embedding-3-small`.
 
 ## Adding a question
 
