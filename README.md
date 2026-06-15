@@ -117,6 +117,23 @@ npm test               # vitest run
 npx tsc --noEmit       # type check only
 ```
 
+## Releasing
+
+Retrieval quality is guarded by a hand-labelled eval set rather than by CI. The
+eval needs an embedding provider (`OPENAI_API_KEY`, or an OpenAI-compatible
+endpoint such as Ollama) and costs under a cent per run, so it runs as a
+**manual pre-release gate**, not on every PR:
+
+```bash
+npm run eval           # compares retrieval against tests/eval/baseline.json
+```
+
+Run it before tagging a release and paste the final line into the release PR. A
+regression vs. baseline blocks the release until the cause is fixed or the
+baseline is updated with a documented reason. See
+[tests/eval/README.md](tests/eval/README.md) for the full workflow, including
+how to add questions and corpus repos.
+
 ## License
 
 MIT. See [docs/architecture.md#credits](docs/architecture.md#credits) for inspiration and prior art.
