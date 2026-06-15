@@ -26,5 +26,117 @@
     "expectedFilePaths": [
       { "path": "config-toy/src/config.ts", "atRank": "top-3" }
     ]
+  },
+  {
+    "id": "server-app-bootstrap",
+    "question": "where is the Fastify app created, plugins registered, and the server started?",
+    "expectedFilePaths": [
+      { "path": "server-toy/src/app.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "server-route-definitions",
+    "question": "where are the REST route handlers for the items resource defined?",
+    "expectedFilePaths": [
+      { "path": "server-toy/src/routes.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "server-health-endpoint",
+    "question": "which file registers the health check endpoint for the HTTP server?",
+    "expectedFilePaths": [
+      { "path": "server-toy/src/app.ts", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "server-post-route-body-schema",
+    "question": "where is the JSON body schema for the POST /items route validated?",
+    "expectedFilePaths": [
+      { "path": "server-toy/src/routes.ts", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "queue-setup-connection",
+    "question": "where is the BullMQ queue created and the Redis connection configured?",
+    "expectedFilePaths": [
+      { "path": "queue-toy/src/queue.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "queue-worker-handler",
+    "question": "where does the worker pick up jobs from the queue and dispatch them by type?",
+    "expectedFilePaths": [
+      { "path": "queue-toy/src/worker.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "queue-job-retry-policy",
+    "question": "what are the retry attempts and backoff settings for failed jobs?",
+    "expectedFilePaths": [
+      { "path": "queue-toy/src/queue.ts", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "queue-worker-concurrency",
+    "question": "how many jobs can the worker process concurrently?",
+    "expectedFilePaths": [
+      { "path": "queue-toy/src/worker.ts", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "form-contact-component",
+    "question": "where is the React contact form component with its submit handler defined?",
+    "expectedFilePaths": [
+      { "path": "form-toy/src/ContactForm.tsx", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "form-validation-hook",
+    "question": "where is the custom hook that validates form fields before submission?",
+    "expectedFilePaths": [
+      { "path": "form-toy/src/useFormValidation.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "form-email-validation-rule",
+    "question": "where is the email field validated with a regex pattern in the form?",
+    "expectedFilePaths": [
+      { "path": "form-toy/src/useFormValidation.ts", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "form-inline-error-display",
+    "question": "which component renders inline error messages next to form fields?",
+    "expectedFilePaths": [
+      { "path": "form-toy/src/ContactForm.tsx", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "db-prisma-schema",
+    "question": "where are the Prisma data models and database connection URL defined?",
+    "expectedFilePaths": [
+      { "path": "db-toy/src/schema.prisma", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "db-query-helpers",
+    "question": "where are the typed query helper functions for the User and Post models?",
+    "expectedFilePaths": [
+      { "path": "db-toy/src/queries.ts", "atRank": "top-3" }
+    ]
+  },
+  {
+    "id": "db-user-model-fields",
+    "question": "what fields and relations does the User model have in the database schema?",
+    "expectedFilePaths": [
+      { "path": "db-toy/src/schema.prisma", "atRank": "top-5" }
+    ]
+  },
+  {
+    "id": "db-publish-post-query",
+    "question": "which function marks a post as published and sets its publication timestamp?",
+    "expectedFilePaths": [
+      { "path": "db-toy/src/queries.ts", "atRank": "top-5" }
+    ]
   }
 ]

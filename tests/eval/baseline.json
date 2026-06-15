@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-11T17:44:50.976Z",
+  "generatedAt": "2026-06-15T17:31:02.183Z",
   "results": [
     {
       "id": "auth-jwt-signing-key",
@@ -15,6 +15,70 @@
     },
     {
       "id": "config-env-validation",
+      "pass": true
+    },
+    {
+      "id": "server-app-bootstrap",
+      "pass": true
+    },
+    {
+      "id": "server-route-definitions",
+      "pass": true
+    },
+    {
+      "id": "server-health-endpoint",
+      "pass": true
+    },
+    {
+      "id": "server-post-route-body-schema",
+      "pass": true
+    },
+    {
+      "id": "queue-setup-connection",
+      "pass": true
+    },
+    {
+      "id": "queue-worker-handler",
+      "pass": true
+    },
+    {
+      "id": "queue-job-retry-policy",
+      "pass": true
+    },
+    {
+      "id": "queue-worker-concurrency",
+      "pass": true
+    },
+    {
+      "id": "form-contact-component",
+      "pass": true
+    },
+    {
+      "id": "form-validation-hook",
+      "pass": true
+    },
+    {
+      "id": "form-email-validation-rule",
+      "pass": true
+    },
+    {
+      "id": "form-inline-error-display",
+      "pass": true
+    },
+    {
+      "id": "db-prisma-schema",
+      "pass": true
+    },
+    {
+      "id": "db-query-helpers",
+      "pass": true
+    },
+    {
+      "id": "db-user-model-fields",
+      "pass": true
+    },
+    {
+      "id": "db-publish-post-query",
       "pass": true
     }
   ]
