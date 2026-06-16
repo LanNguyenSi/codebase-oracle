@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-06-16
+
+Patch release. Security bump for esbuild advisories via tsx, an expanded eval set for retrieval quality, and internal housekeeping.
+
+### Security
+
+- **Bump tsx to ^4.22.4** clearing two esbuild advisories: GHSA-gv7w-rqvm-qjhr and GHSA-g7r4-m6w7-qqqr (PR #51).
+
+### Changed
+
+- **Version is now read from package.json** as the single source of truth; the hardcoded literal that had drifted out of sync is gone (PR #50).
+- **Eval set expanded from 4 to 20 hand-labelled Q&A pairs** across four new toy-corpus fixtures (`db-toy`, `form-toy`, `queue-toy`, `server-toy`). The baseline is updated to match; regressions still fail the run (PR #53).
+- **README now surfaces the manual pre-release eval gate**: the required `npm run eval` check before cutting a release is documented with a description of what a passing run means (PR #52).
+
 ## [0.6.4] - 2026-06-09
 
 Security release closing a HIGH audit finding and a CVE sweep.
