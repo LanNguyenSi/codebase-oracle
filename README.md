@@ -93,7 +93,10 @@ npm run query -- "what is the audit system?"
 npm run query -- -r my-repo "where is the schema defined?"
 npm run query -- -k 20 "list all API endpoints"
 npm run dev -- search "evaluateTransitionRules"
+npm run dev -- list-repos                # indexed repos with chunk/file counts + freshness
+npm run dev -- expand my-repo path/to/file.ts -l 42   # read a window of lines around a position
 npm run watch                            # keep the index fresh in the background
+npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to the SQLite store
 ```
 
 | Flag | Description |

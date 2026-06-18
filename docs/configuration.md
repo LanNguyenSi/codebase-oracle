@@ -21,8 +21,8 @@ All configuration is via environment variables. The CLI and MCP server auto-load
 | `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |
 | `OLLAMA_API_KEY` | No | — | Optional API key for Ollama provider (defaults to `ollama`) |
-| `ORACLE_OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible base URL |
-| `ORACLE_SCAN_ROOT` | No | `~/git` | Root directory to scan for git repos |
+| `ORACLE_OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible base URL. The plain `OLLAMA_BASE_URL` env var is honored as a fallback alias when `ORACLE_OLLAMA_BASE_URL` is unset |
+| `ORACLE_SCAN_ROOT` | Yes (for `index` / `watch`) | — (none) | Root directory to scan for git repos. There is no default: the writer commands (`index`, `watch`) exit with `ORACLE_SCAN_ROOT is required` when it is unset. Read-only commands (`query`, `search`, `list-repos`) never read it; the stdio `mcp` server reads it only when its `oracle_reindex` tool is invoked (which runs the indexer and so requires it) |
 | `ORACLE_DATA_DIR` | No | `~/.codebase-oracle` | Directory for persisted index data |
 | `ORACLE_EMBEDDING_MODEL` | No | `text-embedding-3-small` (OpenAI) / `nomic-embed-text` (Ollama) | Embedding model name for selected provider |
 | `ORACLE_LLM_MODEL` | No | `claude-sonnet-4-6` (`auto`/Anthropic), `gpt-4o-mini` (OpenAI), `llama3.1` (Ollama) | LLM model name for selected provider |
