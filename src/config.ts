@@ -2,10 +2,12 @@ import { z } from "zod";
 
 const configSchema = z.object({
   // Paths
-  // scanRoot is only consumed by the writer commands (index, watch).
-  // Read-only commands (query, search, list-repos, mcp) never touch it,
-  // so it stays optional in the schema and is enforced via assertScanRoot
-  // at the entry of the writer code paths instead.
+  // scanRoot is only consumed by the indexer code path: the `index` and
+  // `watch` commands, plus the MCP `oracle_reindex` tool, which all run
+  // runIndex -> assertScanRoot. Read-only commands (query, search,
+  // list-repos) never touch it, so it stays optional in the schema and is
+  // enforced via assertScanRoot at the entry of the writer code paths
+  // instead.
   scanRoot: z.string().min(1).optional(),
   dataDir: z.string().default(process.env.HOME + "/.codebase-oracle"),
 

@@ -2,9 +2,10 @@
 /**
  * HTTP-based MCP server for codebase-oracle.
  *
- * Exposes the same 3 tools as the stdio MCP server (oracle_query,
- * oracle_search, oracle_list_repos) over Streamable HTTP so that
- * local agents can connect without stdio.
+ * Exposes four of the five stdio MCP tools (oracle_query, oracle_search,
+ * oracle_list_repos, oracle_expand) over Streamable HTTP so that local
+ * agents can connect without stdio. oracle_reindex and oracle_search's
+ * path_glob filter are intentionally stdio-only and not registered here.
  *
  * Usage:
  *   npm run serve                         # default port 3100

@@ -5,7 +5,7 @@ How codebase-oracle turns a directory of git repos into a queryable semantic ind
 ## Pipeline
 
 ```
-~/git/**/*.ts,md,prisma
+$ORACLE_SCAN_ROOT/**/*.ts,md,prisma
         |
         v
    [Scanner]  ── walk repos, filter files
