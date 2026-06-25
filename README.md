@@ -6,6 +6,35 @@ Semantic search across all your local repos, via MCP or CLI.
 
 codebase-oracle builds one semantic index over every git repo under a root directory, then exposes it to agents via MCP or to humans via CLI. The vector store lives on your machine; embeddings are computed by OpenAI by default, or fully local via Ollama (configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
 
+## How it works
+
+One incremental index over every repo under `ORACLE_SCAN_ROOT`, reachable by agents over MCP and by humans over the CLI, both served from a shared sqlite-vec store.
+
+```mermaid
+flowchart LR
+    subgraph access["Access"]
+        direction TB
+        agent["Claude Code / MCP client"]
+        human["Human · CLI"]
+    end
+
+    agent -->|"oracle_search · oracle_query · oracle_expand · oracle_list_repos<br/>oracle_reindex (stdio only)"| mcp["mcp-server.ts · stdio · all 5 tools<br/>http-server.ts · :3100 · 4 tools"]
+    human -->|"index · search · query · expand · list-repos"| cli["index.ts · CLI"]
+
+    subgraph indexing["Indexing pipeline · incremental"]
+        direction LR
+        scan["ingest/scanner.ts"] --> split["ingest/splitter.ts"] --> embed["store/embeddings.ts<br/>OpenAI / Ollama"]
+    end
+
+    root[("ORACLE_SCAN_ROOT<br/>local git repos")] --> scan
+    embed --> store[("store/sqlite-store.ts<br/>sqlite-vec")]
+
+    mcp --> retr["retrieval/chain.ts"]
+    cli --> retr
+    retr --> store
+    retr --> answer["cited chunks / LLM answer"]
+```
+
 ## Install
 
 From npm (recommended for MCP-only use):
