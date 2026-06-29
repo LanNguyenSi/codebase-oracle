@@ -48,6 +48,7 @@ export async function queryCodebase(
   vectorStore: VectorStoreWrapper,
   config: Config,
   options?: { repo?: string; limit?: number },
+  deps: { createLlm?: typeof createLlm } = {},
 ): Promise<QueryResult> {
   const k = options?.limit ?? 12;
   const filter = options?.repo ? { repo: options.repo } : undefined;
@@ -72,7 +73,7 @@ export async function queryCodebase(
     .join("\n\n");
 
   // Build LLM
-  const llm = createLlm(config);
+  const llm = (deps.createLlm ?? createLlm)(config);
 
   if (!llm) {
     // No LLM available — return raw chunks
