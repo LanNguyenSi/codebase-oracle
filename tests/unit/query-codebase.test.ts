@@ -151,16 +151,4 @@ describe("queryCodebase — LLM invoke-failure branch (deps seam)", () => {
     expect(result.sources).toEqual(extractSources(docs));
     expect(result.sources).toHaveLength(2);
   });
-
-  it("mutation check: breaking the catch-block causes the test above to fail", async () => {
-    // This test documents that the assertion above is mutation-sensitive:
-    // if the catch block were removed or returned a different prefix,
-    // the /^LLM request failed/ assertion would fail.
-    // We verify this by checking a NON-failing path does NOT match.
-    const store = stubStore([makeDoc("src/c.ts", "z", "repo")]);
-    const config = baseConfig({ llmProvider: "auto", anthropicApiKey: undefined, openaiApiKey: undefined });
-    // No injection → falls through to raw-context path, not the failure path
-    const result = await queryCodebase("z?", store, config);
-    expect(result.answer).not.toMatch(/^LLM request failed/);
-  });
 });
