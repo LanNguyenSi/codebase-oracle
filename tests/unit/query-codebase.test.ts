@@ -231,3 +231,52 @@ describe("queryCodebase — LLM invoke-failure branch (deps seam)", () => {
     expect(result.pointers).toEqual(["src1"]);
   });
 });
+
+// ── LLM invoke-SUCCESS branch (via the same deps injection seam) ─────────────
+//
+// The empty-docs, no-LLM-raw, and invoke-failure branches all had pointer
+// coverage, but a mutation that returned `pointers: []` specifically in the
+// final (LLM answered successfully) return statement would have escaped the
+// suite. This exercises that exact branch: the injected function RESOLVES
+// (instead of throwing), so chain.invoke() succeeds and queryCodebase reaches
+// its final `return { answer, sources, pointers }`.
+
+describe("queryCodebase, LLM invoke-SUCCESS branch (deps seam)", () => {
+  it("propagates pointers from fmSources alongside a real LLM answer", async () => {
+    const docs = [
+      new Document({
+        pageContent: "a",
+        metadata: {
+          filePath: "docs/a.md",
+          repo: "docs",
+          fmSources: ["src2", "src1"],
+        },
+      }),
+      new Document({
+        pageContent: "b",
+        metadata: { filePath: "docs/b.md", repo: "docs", fmSources: ["src1"] },
+      }),
+    ];
+    const store = stubStore(docs);
+    const config = baseConfig({
+      llmProvider: "anthropic",
+      anthropicApiKey: "sk-ant-test",
+    });
+
+    // A plain async function resolving to a string: LangChain's pipe()
+    // coerces it to a RunnableLambda, and the subsequent StringOutputParser
+    // step passes a string chunk straight through, so chain.invoke()
+    // resolves to exactly this string.
+    const resolvingFn = async (_input: unknown): Promise<string> =>
+      "the LLM answer";
+    const fakeLlmFactory = (_cfg: Config) =>
+      resolvingFn as unknown as ReturnType<typeof createLlm>;
+
+    const result = await queryCodebase("what is x?", store, config, undefined, {
+      createLlm: fakeLlmFactory as typeof createLlm,
+    });
+
+    expect(result.answer).toBe("the LLM answer");
+    expect(result.pointers).toEqual(["src2", "src1"]);
+  });
+});

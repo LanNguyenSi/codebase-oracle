@@ -43,6 +43,8 @@ Markdown files whose content leads with a YAML frontmatter block get `fmType` / 
 
 Both filters AND-compose with `repo` and `path_glob` (and with each other). A filter only matches chunks that **have** the corresponding field: chunks without frontmatter metadata (or missing that specific field) are excluded whenever `type` or `tags` is set, not treated as a wildcard match.
 
+Like `path_glob`, `type` and `tags` are applied as a post-filter over an over-fetched window: the result count may fall short of `limit` for highly selective filters because that window is capped to keep the SQLite scan bounded. Raise `limit` if you need more matches.
+
 Matching chunks show their `fmType` in the result header (e.g. `[3] docs/okf/backend.md:1-40 (agent-tasks) [module]`) and, when `fmSources` is present, an additional `sources: path1, path2` line. Chunks without frontmatter metadata render exactly as before.
 
 `oracle_query` needs no new params: when any retrieved chunk carries `fmSources`, the answer gets a mechanically assembled `Pointers (from OKF sources metadata):` section appended after the sources list, listing the deduped union of `fmSources` paths in retrieval-rank order (capped at 10, with a `... and N more` note when truncated). No LLM involvement, and the section is omitted entirely when no retrieved chunk has `fmSources`.

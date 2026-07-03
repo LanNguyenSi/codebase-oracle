@@ -139,13 +139,13 @@ export function buildServer(): McpServer {
         .string()
         .optional()
         .describe(
-          "Optional: filter to chunks whose fmType OKF frontmatter metadata strictly equals this value. AND-composes with `repo`/`tags`. Chunks without fmType (no frontmatter, or frontmatter missing a `type` field) are excluded when this is set.",
+          "Optional: filter to chunks whose fmType OKF frontmatter metadata strictly equals this value. AND-composes with `repo`/`tags`. Chunks without fmType (no frontmatter, or frontmatter missing a `type` field) are excluded when this is set. Note: the result count may fall short of `limit` for highly selective filters because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
         ),
       tags: z
         .array(z.string())
         .optional()
         .describe(
-          "Optional: filter to chunks whose fmTags OKF frontmatter metadata contains ALL of the listed tags. AND-composes with `repo`/`type`. Chunks without fmTags (no frontmatter, or frontmatter missing a `tags` field) are excluded when this is set.",
+          "Optional: filter to chunks whose fmTags OKF frontmatter metadata contains ALL of the listed tags. AND-composes with `repo`/`type`. Chunks without fmTags (no frontmatter, or frontmatter missing a `tags` field) are excluded when this is set. Note: the result count may fall short of `limit` for highly selective filters because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
         ),
     },
     async ({ query, repo, limit, type, tags }) => {

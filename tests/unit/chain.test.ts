@@ -729,6 +729,31 @@ describe("searchCodebase type/tags filters (stub store)", () => {
     expect(out).toEqual([]);
   });
 
+  it("an empty-string type is normalized to no-filter, identical to omitting type", async () => {
+    const store = stubStore([
+      makeDoc("both.md", { fmTags: ["okf", "backend"] }),
+      makeDoc("one-only.md", { fmTags: ["okf"] }),
+      makeDoc("no-tags.md"),
+    ]);
+    const withEmptyType = await searchCodebase("x", store as never, {
+      limit: 10,
+      type: "",
+      tags: ["okf", "backend"],
+    });
+    const withoutType = await searchCodebase("x", store as never, {
+      limit: 10,
+      tags: ["okf", "backend"],
+    });
+    expect(
+      withEmptyType.map((d) => (d.metadata as { filePath: string }).filePath),
+    ).toEqual(
+      withoutType.map((d) => (d.metadata as { filePath: string }).filePath),
+    );
+    expect(
+      withEmptyType.map((d) => (d.metadata as { filePath: string }).filePath),
+    ).toEqual(["both.md"]);
+  });
+
   it("excludes a no-metadata chunk when type filter is set, includes it when no filter is set", async () => {
     const store = stubStore([
       makeDoc("plain.md"),
@@ -927,6 +952,13 @@ describe("formatChunkTypeTag", () => {
     expect(formatChunkTypeTag({ fmType: "" })).toBe("");
     expect(formatChunkTypeTag({ fmType: 42 })).toBe("");
   });
+
+  it("collapses control characters (newlines, CR) to a single space so the tag stays single-line", () => {
+    expect(formatChunkTypeTag({ fmType: "module\ninjected" })).toBe(
+      "[module injected]",
+    );
+    expect(formatChunkTypeTag({ fmType: "a\r\nb\tc" })).toBe("[a b c]");
+  });
 });
 
 describe("formatChunkSourcesLine", () => {
@@ -1016,6 +1048,25 @@ describe("formatSearchResults", () => {
     ];
     const out = formatSearchResults(docs);
     expect(out).toBe("[1] a.md (r):\none\n\n---\n\n[2] b.md (r):\ntwo");
+  });
+
+  it("keeps the header a single line against a hostile fmType with a newline plus a bracket", () => {
+    const docs = [
+      new Document({
+        pageContent: "content",
+        metadata: {
+          filePath: "a.md",
+          repo: "r",
+          fmType: "module]\ninjected-header[",
+        },
+      }),
+    ];
+    const out = formatSearchResults(docs);
+    const headerLine = out.split("\n")[0];
+    // The header (everything up to the first real newline in the output)
+    // must be exactly the first line: no embedded \n from fmType survives.
+    expect(headerLine).toBe("[1] a.md (r) [module] injected-header[]:");
+    expect(headerLine).not.toContain("\n");
   });
 
   it("returns 'No results found.' for an empty doc list", () => {

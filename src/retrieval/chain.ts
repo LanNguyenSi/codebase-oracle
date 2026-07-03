@@ -52,13 +52,23 @@ export function formatChunkLocation(metadata: Record<string, unknown>): string {
   return filePath;
 }
 
+// Frontmatter text is user-controlled (it lives in the indexed repos'
+// markdown files), so a hostile fmType/fmSources value could otherwise
+// inject newlines or other control characters into structural, single-line
+// search-result output. Collapse any run of ASCII control characters
+// (\r, \n, tabs, etc.) to a single space before interpolating.
+function sanitizeForDisplay(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1F\x7F]+/g, " ");
+}
+
 // Renders a chunk's fmType (from OKF frontmatter metadata) as a bracketed
 // tag for search-result headers, e.g. "[module]". Empty string when fmType
 // is absent or not a non-empty string, so callers can splice it in without
 // an extra presence check.
 export function formatChunkTypeTag(metadata: Record<string, unknown>): string {
   return typeof metadata.fmType === "string" && metadata.fmType.length > 0
-    ? `[${metadata.fmType}]`
+    ? `[${sanitizeForDisplay(metadata.fmType)}]`
     : "";
 }
 
@@ -71,9 +81,9 @@ export function formatChunkSourcesLine(
 ): string | null {
   const fmSources = metadata.fmSources;
   if (!Array.isArray(fmSources)) return null;
-  const paths = fmSources.filter(
-    (s): s is string => typeof s === "string" && s.length > 0,
-  );
+  const paths = fmSources
+    .filter((s): s is string => typeof s === "string" && s.length > 0)
+    .map(sanitizeForDisplay);
   if (paths.length === 0) return null;
   return `sources: ${paths.join(", ")}`;
 }
@@ -473,10 +483,14 @@ export async function searchCodebase(
   const k = options?.limit ?? 10;
   const filter = options?.repo ? { repo: options.repo } : undefined;
 
+  // Normalize both single-value and array filters the same way: an empty
+  // string / empty array means "no filter", not "match only empty values".
+  const type =
+    options?.type && options.type.length > 0 ? options.type : undefined;
   const tags =
     options?.tags && options.tags.length > 0 ? options.tags : undefined;
   const needsPostFilter =
-    Boolean(options?.pathGlob) || Boolean(options?.type) || Boolean(tags);
+    Boolean(options?.pathGlob) || Boolean(type) || Boolean(tags);
 
   if (!needsPostFilter) {
     return vectorStore.similaritySearch(query, k, filter);
@@ -503,11 +517,7 @@ export async function searchCodebase(
         typeof metadata.filePath === "string" ? metadata.filePath : "";
       if (!matchesPath(filePath)) continue;
     }
-    if (
-      options?.type !== undefined &&
-      !matchesTypeFilter(metadata, options.type)
-    )
-      continue;
+    if (type !== undefined && !matchesTypeFilter(metadata, type)) continue;
     if (tags && !matchesTagsFilter(metadata, tags)) continue;
     filtered.push(doc);
     if (filtered.length >= k) break;
