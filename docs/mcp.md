@@ -29,18 +29,35 @@ From that point on, any Claude Code session on the same machine can call the too
 | Tool | Description |
 |------|-------------|
 | `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
-| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts an optional `path_glob` filter |
+| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts optional `path_glob`, `type`, and `tags` filters |
 | `oracle_expand` | Read a window of lines around a position in an indexed file (use after `oracle_search` for more context) |
 | `oracle_list_repos` | List repos present in the index with chunk counts, file counts, and the indexed timestamp |
 | `oracle_reindex` | Rebuild the incremental index from disk; new chunks visible to the next `oracle_search` / `oracle_query` call |
 
+## OKF frontmatter filters (`type` / `tags`)
+
+Markdown files whose content leads with a YAML frontmatter block get `fmType` / `fmTitle` / `fmTags` / `fmSources` chunk metadata (see [docs/architecture.md](architecture.md#chunking)). `oracle_search` accepts two optional filters on this metadata:
+
+- `type` (string): matches chunks whose `fmType` strictly equals the given value.
+- `tags` (array of strings): matches chunks whose `fmTags` contains **all** of the listed tags.
+
+Both filters AND-compose with `repo` and `path_glob` (and with each other). A filter only matches chunks that **have** the corresponding field: chunks without frontmatter metadata (or missing that specific field) are excluded whenever `type` or `tags` is set, not treated as a wildcard match.
+
+Like `path_glob`, `type` and `tags` are applied as a post-filter over an over-fetched window: the result count may fall short of `limit` for highly selective filters because that window is capped to keep the SQLite scan bounded. Raise `limit` if you need more matches.
+
+Matching chunks show their `fmType` in the result header (e.g. `[3] docs/okf/backend.md:1-40 (agent-tasks) [module]`) and, when `fmSources` is present, an additional `sources: path1, path2` line. Chunks without frontmatter metadata render exactly as before.
+
+`oracle_query` needs no new params: when any retrieved chunk carries `fmSources`, the answer gets a mechanically assembled `Pointers (from OKF sources metadata):` section appended after the sources list, listing the deduped union of `fmSources` paths in retrieval-rank order (capped at 10, with a `... and N more` note when truncated). No LLM involvement, and the section is omitted entirely when no retrieved chunk has `fmSources`.
+
 ## Example agent prompts
 
-Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus a `path_glob` for `oracle_search`.
+Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus `path_glob` / `type` / `tags` for `oracle_search`.
 
 - `oracle_search` with `query="AGENT_TASKS_TOKEN"`: find every repo that reads the token, across all indexed repos.
 - `oracle_search` with `query="tag-driven release"`, `path_glob="**/.github/workflows/*.yml"`: scoped to GitHub Actions workflow files only. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives.
 - `oracle_search` with `query="dockerfile builder stage"`, `path_glob="**/Dockerfile*"`: every Dockerfile or `Dockerfile.prod` across the org.
+- `oracle_search` with `query="backend service invariants"`, `type="module"`, `repo="agent-tasks"`: scoped to OKF docs whose frontmatter declares `type: module`.
+- `oracle_search` with `query="okf backend"`, `tags=["okf", "backend"]`: scoped to chunks whose frontmatter `tags` include both `okf` and `backend`.
 - `oracle_query` with `question="how does the audit system work?"`: cross-repo answer with citations.
 - `oracle_query` with `question="where is the embedding provider chosen?"`, `repo="codebase-oracle"`: scoped to a single repo.
 - `oracle_list_repos`: inventory of what the index actually covers, with freshness per repo.
@@ -52,7 +69,7 @@ The returned chunks include file path plus repo name, so the agent can read the 
 
 `npm run serve` starts the MCP server over Streamable HTTP instead of stdio. Defaults: `127.0.0.1:3100`, no authentication. Appropriate for a single local agent on the same machine.
 
-The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes only `query`, `repo`, and `limit`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
+The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, and `tags`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
 
 For LAN or remote use, set both `ORACLE_HTTP_BIND` (to e.g. `0.0.0.0`) **and** `ORACLE_HTTP_TOKEN`. The server refuses to start with an off-loopback bind and no token, so there is no accidental-exposure path. Every `POST /mcp` request must then carry `Authorization: Bearer <token>` (constant-time compare). `GET /health` stays open.
 

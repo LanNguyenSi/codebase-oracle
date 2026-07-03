@@ -8,7 +8,15 @@ import {
   IndexFingerprintError,
   listIndexedRepos,
 } from "./store/vector-store.js";
-import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import {
+  formatChunkLocation,
+  formatChunkSourcesLine,
+  formatChunkTypeTag,
+  formatPointersSection,
+  parseCommaSeparatedList,
+  queryCodebase,
+  searchCodebase,
+} from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
 import { expandFile, formatExpandResult } from "./expand.js";
 import { runWatchMode } from "./watch.js";
@@ -70,6 +78,10 @@ program
           console.log(`  ${source.filePath} (${source.repo})`);
         }
       }
+      const pointersText = formatPointersSection(result.pointers);
+      if (pointersText) {
+        console.log(pointersText);
+      }
     } finally {
       store.close();
     }
@@ -85,6 +97,14 @@ program
     "-g, --path-glob <glob>",
     "Filter results by file path glob (e.g. **/.github/workflows/*.yml)",
   )
+  .option(
+    "-t, --type <type>",
+    "Filter results by fmType chunk metadata (OKF frontmatter)",
+  )
+  .option(
+    "--tags <tags>",
+    "Filter results by fmTags chunk metadata (OKF frontmatter), comma-separated; ALL listed tags must match",
+  )
   .action(async (query: string, opts) => {
     const config = loadConfig();
     const embeddings = createEmbeddings(config);
@@ -95,11 +115,20 @@ program
         repo: opts.repo,
         limit: parseInt(opts.limit, 10),
         pathGlob: opts.pathGlob,
+        type: opts.type,
+        tags: parseCommaSeparatedList(opts.tags),
       });
       for (const doc of docs) {
         const { repo } = doc.metadata as { repo: string };
         const location = formatChunkLocation(doc.metadata);
-        console.log(`\n--- ${location} (${repo}) ---`);
+        const typeTag = formatChunkTypeTag(doc.metadata);
+        console.log(
+          typeTag
+            ? `\n--- ${location} (${repo}) ${typeTag} ---`
+            : `\n--- ${location} (${repo}) ---`,
+        );
+        const sourcesLine = formatChunkSourcesLine(doc.metadata);
+        if (sourcesLine) console.log(sourcesLine);
         console.log(doc.pageContent.slice(0, 500));
       }
     } finally {
@@ -128,7 +157,11 @@ program
   .argument("<repo>", "Repo name (must be indexed)")
   .argument("<path>", "File path relative to the repo root")
   .option("-l, --line <n>", "1-indexed line to center the window on", "1")
-  .option("-w, --window <n>", "Lines to include around the center (max 200)", "30")
+  .option(
+    "-w, --window <n>",
+    "Lines to include around the center (max 200)",
+    "30",
+  )
   .action(async (repo, path, opts) => {
     const config = loadConfig();
     const embeddings = createEmbeddings(config);
@@ -157,14 +190,21 @@ program
 
 program
   .command("watch")
-  .description("Watch the scan root and re-embed files on change (debounced, incremental)")
+  .description(
+    "Watch the scan root and re-embed files on change (debounced, incremental)",
+  )
   .option("-p, --path <path>", "Path to scan root")
-  .option("--debounce <ms>", "Debounce window in ms after the last event", "3000")
+  .option(
+    "--debounce <ms>",
+    "Debounce window in ms after the last event",
+    "3000",
+  )
   .action(async (opts) => {
     const config = loadConfig(opts.path ? { scanRoot: opts.path } : {});
     const debounceMs = Number.parseInt(opts.debounce, 10);
     const watcher = await runWatchMode(config, {
-      debounceMs: Number.isFinite(debounceMs) && debounceMs > 0 ? debounceMs : undefined,
+      debounceMs:
+        Number.isFinite(debounceMs) && debounceMs > 0 ? debounceMs : undefined,
     });
     const shutdown = async (signal: NodeJS.Signals) => {
       console.log(`\nwatch: ${signal} received, flushing and closing...`);

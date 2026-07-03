@@ -7,7 +7,12 @@ import { loadEnvFromFile } from "./env.js";
 import { loadConfig, type Config } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import { createVectorStore } from "./store/vector-store.js";
-import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import {
+  formatPointersSection,
+  formatSearchResults,
+  queryCodebase,
+  searchCodebase,
+} from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
 import { expandFile, formatExpandResult } from "./expand.js";
 import { formatIndexSummary, runIndex } from "./ingest/runner.js";
@@ -57,18 +62,35 @@ export function createMcpServer(cfg: Config = config) {
     "oracle_query",
     "Ask a natural-language question about the indexed codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
     {
-      question: z.string().describe("Natural language question about the codebase"),
-      repo: z.string().optional().describe("Optional: filter to a specific repo name (e.g. 'agent-tasks')"),
+      question: z
+        .string()
+        .describe("Natural language question about the codebase"),
+      repo: z
+        .string()
+        .optional()
+        .describe(
+          "Optional: filter to a specific repo name (e.g. 'agent-tasks')",
+        ),
     },
     async ({ question, repo }) => {
       const store = await getStore();
       const result = await queryCodebase(question, store, cfg, { repo });
 
-      const sourcesText = result.sources.length > 0
-        ? "\n\nSources:\n" + result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
-        : "";
+      const sourcesText =
+        result.sources.length > 0
+          ? "\n\nSources:\n" +
+            result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
+          : "";
+      const pointersText = formatPointersSection(result.pointers);
 
-      return { content: [{ type: "text" as const, text: result.answer + sourcesText }] };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: result.answer + sourcesText + pointersText,
+          },
+        ],
+      };
     },
   );
 
@@ -76,26 +98,51 @@ export function createMcpServer(cfg: Config = config) {
     "oracle_search",
     "Raw vector similarity search over the indexed codebase. Returns matching code/doc chunks with metadata. Use this when you need specific code snippets rather than an interpreted answer.",
     {
-      query: z.string().describe("Search query (natural language or code pattern)"),
-      repo: z.string().optional().describe("Optional: filter to a specific repo"),
-      limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
-      path_glob: z.string().optional().describe(
-        "Optional glob on the chunk file path. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives. Example: `**/.github/workflows/*.yml`. AND-composes with `repo`. Note: the result count may fall short of `limit` for highly selective globs because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
-      ),
+      query: z
+        .string()
+        .describe("Search query (natural language or code pattern)"),
+      repo: z
+        .string()
+        .optional()
+        .describe("Optional: filter to a specific repo"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Number of results (default 10)"),
+      path_glob: z
+        .string()
+        .optional()
+        .describe(
+          "Optional glob on the chunk file path. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives. Example: `**/.github/workflows/*.yml`. AND-composes with `repo`/`type`/`tags`. Note: the result count may fall short of `limit` for highly selective globs because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
+        ),
+      type: z
+        .string()
+        .optional()
+        .describe(
+          "Optional: filter to chunks whose fmType OKF frontmatter metadata strictly equals this value. AND-composes with `repo`/`path_glob`/`tags`. Chunks without fmType (no frontmatter, or frontmatter missing a `type` field) are excluded when this is set. Note: the result count may fall short of `limit` for highly selective filters because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
+        ),
+      tags: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional: filter to chunks whose fmTags OKF frontmatter metadata contains ALL of the listed tags. AND-composes with `repo`/`path_glob`/`type`. Chunks without fmTags (no frontmatter, or frontmatter missing a `tags` field) are excluded when this is set. Note: the result count may fall short of `limit` for highly selective filters because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
+        ),
     },
-    async ({ query, repo, limit, path_glob }) => {
+    async ({ query, repo, limit, path_glob, type, tags }) => {
       const store = await getStore();
-      const docs = await searchCodebase(query, store, { repo, limit, pathGlob: path_glob });
-
-      const text = docs
-        .map((doc, i) => {
-          const { repo: r } = doc.metadata as { repo: string };
-          const location = formatChunkLocation(doc.metadata);
-          return `[${i + 1}] ${location} (${r}):\n${doc.pageContent}`;
-        })
-        .join("\n\n---\n\n");
-
-      return { content: [{ type: "text" as const, text: text || "No results found." }] };
+      const docs = await searchCodebase(query, store, {
+        repo,
+        limit,
+        pathGlob: path_glob,
+        type,
+        tags,
+      });
+      return {
+        content: [{ type: "text" as const, text: formatSearchResults(docs) }],
+      };
     },
   );
 
@@ -109,20 +156,24 @@ export function createMcpServer(cfg: Config = config) {
 
       if (repos.length === 0) {
         return {
-          content: [{
-            type: "text" as const,
-            text: "No repos in the index yet. Run `npm run index` to build it.",
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: "No repos in the index yet. Run `npm run index` to build it.",
+            },
+          ],
         };
       }
 
       const text = repos.map((r) => formatRepoLine(r)).join("\n");
 
       return {
-        content: [{
-          type: "text" as const,
-          text: `${repos.length} indexed repos:\n${text}`,
-        }],
+        content: [
+          {
+            type: "text" as const,
+            text: `${repos.length} indexed repos:\n${text}`,
+          },
+        ],
       };
     },
   );
@@ -131,15 +182,36 @@ export function createMcpServer(cfg: Config = config) {
     "oracle_expand",
     "Read a window of lines around a specific position in an indexed file. Use after oracle_search to see the context around a chunk without leaving the oracle. Reads the file from disk via the indexed absolutePath; if the working copy has changed since indexing, the lines may not match what oracle_search returned — check oracle_list_repos for the indexed timestamp.",
     {
-      repo: z.string().describe("Repo name (must be indexed; see oracle_list_repos)"),
-      path: z.string().describe("File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)"),
-      line: z.number().int().min(1).optional().describe("1-indexed line to center the window on (default 1, top of file)"),
-      window: z.number().int().min(1).max(200).optional().describe("Lines to include around `line` (default 30, capped at 200)"),
+      repo: z
+        .string()
+        .describe("Repo name (must be indexed; see oracle_list_repos)"),
+      path: z
+        .string()
+        .describe(
+          "File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)",
+        ),
+      line: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "1-indexed line to center the window on (default 1, top of file)",
+        ),
+      window: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Lines to include around `line` (default 30, capped at 200)"),
     },
     async ({ repo, path, line, window }) => {
       const store = await getStore();
       const result = await expandFile(store, { repo, path, line, window });
-      return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
+      return {
+        content: [{ type: "text" as const, text: formatExpandResult(result) }],
+      };
     },
   );
 
@@ -156,10 +228,12 @@ export function createMcpServer(cfg: Config = config) {
     async () => {
       if (reindexInFlight) {
         return {
-          content: [{
-            type: "text" as const,
-            text: "Another oracle_reindex is already running. Wait for it to finish before triggering a new one.",
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: "Another oracle_reindex is already running. Wait for it to finish before triggering a new one.",
+            },
+          ],
         };
       }
       reindexInFlight = true;
@@ -177,7 +251,11 @@ export function createMcpServer(cfg: Config = config) {
           storePromise = null;
         }
         const summary = await runIndex(cfg);
-        return { content: [{ type: "text" as const, text: formatIndexSummary(summary) }] };
+        return {
+          content: [
+            { type: "text" as const, text: formatIndexSummary(summary) },
+          ],
+        };
       } finally {
         reindexInFlight = false;
       }

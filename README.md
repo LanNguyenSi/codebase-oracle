@@ -35,7 +35,7 @@ flowchart LR
     retr --> answer["cited chunks / LLM answer"]
 ```
 
-Markdown files with a leading YAML frontmatter block get `fmType` / `fmTitle` / `fmTags` / `fmSources` chunk metadata alongside the usual `repo` / `filePath` / `lineStart` / `lineEnd` fields. This is groundwork for OKF-aware retrieval; see [docs/architecture.md](docs/architecture.md#chunking) for details.
+Markdown files with a leading YAML frontmatter block get `fmType` / `fmTitle` / `fmTags` / `fmSources` chunk metadata alongside the usual `repo` / `filePath` / `lineStart` / `lineEnd` fields. `oracle_search` can filter on this metadata (`type`, `tags`) and `oracle_query` surfaces a `Pointers` section built from it automatically; see [docs/architecture.md](docs/architecture.md#chunking) and [docs/mcp.md](docs/mcp.md#okf-frontmatter-filters-type--tags) for details.
 
 ## Install
 
@@ -97,6 +97,18 @@ export function requireToken(req, res, next) {
 }
 ```
 
+Chunks from markdown files with OKF frontmatter metadata add a `[type]` tag to the header and, when present, a `sources:` line:
+
+```
+[3] docs/okf/backend.md:1-40 (agent-tasks) [module]:
+sources: agent-tasks/backend/src/config.ts, agent-tasks/backend/src/server.ts
+...
+```
+
+`oracle_search --type module` matches only chunks whose frontmatter `type` field strictly equals `module`; `--tags okf,backend` matches chunks whose frontmatter `tags` contain **all** of the listed tags. Both filters only match chunks that HAVE the field: chunks without frontmatter metadata are excluded whenever `type` or `tags` is set, and both AND-compose with `--repo` / `--path-glob`.
+
+`oracle_query` answers get an automatic `Pointers (from OKF sources metadata):` section appended after the sources list when any retrieved chunk carries `fmSources`, listing the deduped union of paths in retrieval-rank order (capped at 10, with a truncation note past that). No LLM involvement, and the section is omitted entirely when nothing in the retrieved context has `fmSources`.
+
 `oracle_list_repos` shows what's indexed and how fresh each repo is:
 
 ```
@@ -124,6 +136,7 @@ npm run query -- "what is the audit system?"
 npm run query -- -r my-repo "where is the schema defined?"
 npm run query -- -k 20 "list all API endpoints"
 npm run dev -- search "evaluateTransitionRules"
+npm run dev -- search "okf backend" --type module --tags okf,backend
 npm run dev -- list-repos                # indexed repos with chunk/file counts + freshness
 npm run dev -- expand my-repo path/to/file.ts -l 42   # read a window of lines around a position
 npm run watch                            # keep the index fresh in the background
@@ -134,6 +147,8 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 |------|-------------|
 | `-r, --repo <name>` | Filter results to a specific repo |
 | `-k, --limit <n>` | Number of chunks to retrieve (default: 12) |
+| `-t, --type <type>` | (`search` only) Filter to chunks whose `fmType` OKF frontmatter metadata strictly equals this value. Excludes chunks without frontmatter metadata. |
+| `--tags <tags>` | (`search` only) Comma-separated; filter to chunks whose `fmTags` OKF frontmatter metadata contains ALL listed tags. Excludes chunks without frontmatter metadata. |
 
 Watch mode runs a chokidar watcher over the scan root and re-embeds changed files after a short debounce. Newly dropped `.git` roots need one explicit `npm run index` to back-fill before watch mode picks up subsequent edits. See [docs/architecture.md](docs/architecture.md#watch-mode) for details.
 

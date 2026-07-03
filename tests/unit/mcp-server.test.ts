@@ -43,6 +43,7 @@ vi.mock("../../src/ingest/runner.js", () => ({
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Document } from "@langchain/core/documents";
 import { createMcpServer } from "../../src/mcp-server.js";
 import { createVectorStore } from "../../src/store/vector-store.js";
 import { runIndex } from "../../src/ingest/runner.js";
@@ -74,7 +75,9 @@ const fakeSummary: IndexSummary = {
   durationMs: 120,
 };
 
-function makeFakeStore(overrides: Partial<VectorStoreWrapper> = {}): VectorStoreWrapper {
+function makeFakeStore(
+  overrides: Partial<VectorStoreWrapper> = {},
+): VectorStoreWrapper {
   return {
     addDocuments: vi.fn(async () => {}),
     similaritySearch: vi.fn(async () => []),
@@ -88,7 +91,8 @@ function makeFakeStore(overrides: Partial<VectorStoreWrapper> = {}): VectorStore
 /** Connect a fresh Client to a newly-created server. Returns { client, server, cleanup }. */
 async function connectClient(cfg: Config = testConfig) {
   const { server, getStore } = createMcpServer(cfg);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const [clientTransport, serverTransport] =
+    InMemoryTransport.createLinkedPair();
   await server.connect(serverTransport);
   const client = new Client(
     { name: "test-client", version: "1.0.0" },
@@ -96,8 +100,16 @@ async function connectClient(cfg: Config = testConfig) {
   );
   await client.connect(clientTransport);
   const cleanup = async () => {
-    try { await client.close(); } catch { /* already closed */ }
-    try { await server.close(); } catch { /* already closed */ }
+    try {
+      await client.close();
+    } catch {
+      /* already closed */
+    }
+    try {
+      await server.close();
+    } catch {
+      /* already closed */
+    }
   };
   return { client, server, getStore, cleanup };
 }
@@ -118,7 +130,8 @@ describe("storePromise rejection-not-cached", () => {
     let callCount = 0;
     vi.mocked(createVectorStore).mockImplementation(() => {
       callCount++;
-      if (callCount === 1) return Promise.reject(new Error("DB connection failed"));
+      if (callCount === 1)
+        return Promise.reject(new Error("DB connection failed"));
       return Promise.resolve(fakeStore);
     });
 
@@ -182,7 +195,10 @@ describe("oracle_reindex mutex", () => {
       // server handler runs up to `await runIndex(cfg)` BEFORE client.callTool
       // returns — so reindexInFlight is already true and the signal is
       // already set by the time we reach the next line.
-      const firstCallP = client.callTool({ name: "oracle_reindex", arguments: {} });
+      const firstCallP = client.callTool({
+        name: "oracle_reindex",
+        arguments: {},
+      });
 
       // Wait for runIndex to be called (belt-and-suspenders: handles any
       // async scheduling model the MCP SDK may use).
@@ -194,8 +210,13 @@ describe("oracle_reindex mutex", () => {
       // causes the second call to start a real runIndex call, which returns
       // a different message (the summary from formatIndexSummary), failing
       // the toContain assertion below.
-      const secondResult = await client.callTool({ name: "oracle_reindex", arguments: {} });
-      const text = (secondResult.content as Array<{ type: string; text: string }>)[0]?.text ?? "";
+      const secondResult = await client.callTool({
+        name: "oracle_reindex",
+        arguments: {},
+      });
+      const text =
+        (secondResult.content as Array<{ type: string; text: string }>)[0]
+          ?.text ?? "";
       expect(text).toContain("already running");
       expect(text).toContain("Wait for it to finish");
 
@@ -243,7 +264,9 @@ describe("oracle_reindex close-before-reindex", () => {
       // produce callOrder = ["runIndex", "close"], failing the indexOf check.
       expect(callOrder.indexOf("close")).toBeGreaterThanOrEqual(0);
       expect(callOrder.indexOf("runIndex")).toBeGreaterThanOrEqual(0);
-      expect(callOrder.indexOf("close")).toBeLessThan(callOrder.indexOf("runIndex"));
+      expect(callOrder.indexOf("close")).toBeLessThan(
+        callOrder.indexOf("runIndex"),
+      );
     } finally {
       await cleanup();
     }
@@ -254,14 +277,192 @@ describe("oracle_reindex close-before-reindex", () => {
 
 describe("oracle_list_repos happy path", () => {
   it("returns the empty-index message when the store has no repos", async () => {
-    vi.mocked(createVectorStore).mockResolvedValue(makeFakeStore({ listRepos: vi.fn(() => []) }));
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({ listRepos: vi.fn(() => []) }),
+    );
 
     const { client, cleanup } = await connectClient();
 
     try {
-      const result = await client.callTool({ name: "oracle_list_repos", arguments: {} });
-      const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? "";
+      const result = await client.callTool({
+        name: "oracle_list_repos",
+        arguments: {},
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
       expect(text).toContain("No repos in the index yet");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+// ── 5. oracle_search: type/tags filter params (OKF metadata) ────────────────
+
+describe("oracle_search type/tags filter parity", () => {
+  it("tool schema exposes optional `type` (string) and `tags` (string array) params", async () => {
+    vi.mocked(createVectorStore).mockResolvedValue(makeFakeStore());
+    const { client, cleanup } = await connectClient();
+
+    try {
+      const { tools } = await client.listTools();
+      const searchTool = tools.find((t) => t.name === "oracle_search");
+      expect(searchTool).toBeDefined();
+      const props = searchTool?.inputSchema.properties as Record<
+        string,
+        { type?: string }
+      >;
+      expect(props).toHaveProperty("type");
+      expect(props.type.type).toBe("string");
+      expect(props).toHaveProperty("tags");
+      expect(props.tags.type).toBe("array");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("a search call with a type filter round-trips through the real filtering logic", async () => {
+    const docs = [
+      new Document({
+        pageContent: "backend doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/backend.md",
+          fmType: "module",
+          fmTags: ["okf", "backend"],
+        },
+      }),
+      new Document({
+        pageContent: "frontend doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/frontend.md",
+          fmType: "guide",
+        },
+      }),
+    ];
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({ similaritySearch: vi.fn(async () => docs) }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "doc", type: "module" },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain("docs/okf/backend.md");
+      expect(text).toContain("[module]");
+      expect(text).not.toContain("docs/okf/frontend.md");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("a search call with a tags filter round-trips through the real filtering logic", async () => {
+    const docs = [
+      new Document({
+        pageContent: "backend doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/backend.md",
+          fmTags: ["okf", "backend"],
+        },
+      }),
+      new Document({
+        pageContent: "other doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/other.md",
+          fmTags: ["okf"],
+        },
+      }),
+    ];
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({ similaritySearch: vi.fn(async () => docs) }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "doc", tags: ["okf", "backend"] },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain("docs/okf/backend.md");
+      expect(text).not.toContain("docs/okf/other.md");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+// ── 6. oracle_query: pointers section ────────────────────────────────────────
+
+describe("oracle_query pointers section", () => {
+  it("appends the Pointers section after Sources when a retrieved chunk has fmSources", async () => {
+    const docs = [
+      new Document({
+        pageContent: "content",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/a.md",
+          fmSources: ["src1", "src2"],
+        },
+      }),
+    ];
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({ similaritySearch: vi.fn(async () => docs) }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_query",
+        arguments: { question: "what is this?" },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain("Pointers (from OKF sources metadata):");
+      expect(text).toContain("- src1");
+      expect(text).toContain("- src2");
+      // Pointers section must come after the Sources list.
+      expect(text.indexOf("Sources:")).toBeLessThan(
+        text.indexOf("Pointers (from OKF sources metadata):"),
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("omits the Pointers section entirely when no retrieved chunk has fmSources", async () => {
+    const docs = [
+      new Document({
+        pageContent: "content",
+        metadata: { repo: "docs", filePath: "docs/a.md" },
+      }),
+    ];
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({ similaritySearch: vi.fn(async () => docs) }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_query",
+        arguments: { question: "what is this?" },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).not.toContain("Pointers");
     } finally {
       await cleanup();
     }
