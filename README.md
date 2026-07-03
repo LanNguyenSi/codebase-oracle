@@ -35,6 +35,8 @@ flowchart LR
     retr --> answer["cited chunks / LLM answer"]
 ```
 
+Markdown files with a leading YAML frontmatter block get `fmType` / `fmTitle` / `fmTags` / `fmSources` chunk metadata alongside the usual `repo` / `filePath` / `lineStart` / `lineEnd` fields. This is groundwork for OKF-aware retrieval; see [docs/architecture.md](docs/architecture.md#chunking) for details.
+
 ## Install
 
 From npm (recommended for MCP-only use):

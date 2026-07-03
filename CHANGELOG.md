@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-03
+
+### Added
+
+- **Markdown YAML frontmatter is now extracted into chunk metadata at ingest.** Files whose content leads with a `---`/`---` block get `fmType`, `fmTitle`, `fmTags`, and `fmSources` metadata keys (read from the frontmatter's `type`, `title`, `tags`, and `sources` fields), each included only when present with the right type; anything else, or a malformed block, is fail-soft (a single logged warning, no `fm*` keys, ingest continues as plain text). The chunked content itself is unchanged, only metadata is added. This is groundwork for OKF-aware retrieval; the retrieval and MCP/HTTP layers do not read these keys yet. No on-disk migration: existing chunks lack the new keys until their file changes or the store is rebuilt (see [docs/upgrades.md](docs/upgrades.md)).
+
 ## [0.6.5] - 2026-06-16
 
 Patch release. Security bump for esbuild advisories via tsx, an expanded eval set for retrieval quality, and internal housekeeping.
