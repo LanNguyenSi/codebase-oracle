@@ -29,6 +29,8 @@ The index pipeline scans all git repos under a root directory, splits source fil
 
 The splitter uses LangChain's code-aware splitters where available, falling back to a recursive character splitter for text. Chunks record `lineStart` / `lineEnd` so search results can render as `path:line_start-line_end (repo)`. Older chunks indexed before the line-number rollout fall back to the bare `filePath` form.
 
+Markdown files that lead with a YAML frontmatter block (`---` ... `---` as the first lines) get four additional flat metadata keys: `fmType`, `fmTitle`, `fmTags`, and `fmSources`, read from the frontmatter's `type`, `title`, `tags`, and `sources` fields respectively. Each key is included only when the source field is present with the right type (non-empty string for `fmType`/`fmTitle`, an array of non-empty strings for `fmTags`/`fmSources`); anything else is silently omitted, and the frontmatter text itself is left in the chunked content rather than stripped out. A malformed frontmatter block fails soft: the ingest logs a warning naming the file and continues without any `fm*` keys, never throwing. This is groundwork for OKF-aware retrieval; the current retrieval and MCP/HTTP surfaces do not yet read these keys.
+
 ## Embeddings
 
 By default, OpenAI's `text-embedding-3-small` (1536 dimensions). Override with `ORACLE_EMBEDDING_PROVIDER=ollama` and a local embedding model like `nomic-embed-text` to keep everything off the network. See [docs/configuration.md](configuration.md) for the full env var list.

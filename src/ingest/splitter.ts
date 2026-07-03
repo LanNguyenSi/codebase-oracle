@@ -1,16 +1,21 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { Document } from "@langchain/core/documents";
+import { parse as parseYaml } from "yaml";
 import type { ScannedFile } from "./scanner.js";
 
 // Language-specific separators for better chunk boundaries
 const TS_SEPARATORS = [
-  "\nexport ", "\nfunction ", "\nclass ", "\ninterface ", "\ntype ",
-  "\nconst ", "\n\n", "\n",
+  "\nexport ",
+  "\nfunction ",
+  "\nclass ",
+  "\ninterface ",
+  "\ntype ",
+  "\nconst ",
+  "\n\n",
+  "\n",
 ];
 
-const MD_SEPARATORS = [
-  "\n## ", "\n### ", "\n#### ", "\n\n", "\n",
-];
+const MD_SEPARATORS = ["\n## ", "\n### ", "\n#### ", "\n\n", "\n"];
 
 const DEFAULT_SEPARATORS = ["\n\n", "\n", " "];
 
@@ -35,22 +40,99 @@ export async function splitFile(file: ScannedFile): Promise<Document[]> {
     separators: getSeparators(file.language),
   });
 
-  const docs = await splitter.createDocuments(
-    [file.content],
-    [
-      {
-        repo: file.repo,
-        filePath: file.relativePath,
-        language: file.language,
-        absolutePath: file.absolutePath,
-        fileHash: file.contentHash,
-      },
-    ],
-  );
+  const metadata: Record<string, unknown> = {
+    repo: file.repo,
+    filePath: file.relativePath,
+    language: file.language,
+    absolutePath: file.absolutePath,
+    fileHash: file.contentHash,
+  };
+
+  if (file.language === "md") {
+    Object.assign(
+      metadata,
+      extractFrontmatterMetadata(file.content, file.repo, file.relativePath),
+    );
+  }
+
+  // The splitter still sees the full, unstripped content: frontmatter text
+  // carries semantic signal, and stripping it would shift attachLineNumbers'
+  // line accounting out of sync with the on-disk file.
+  const docs = await splitter.createDocuments([file.content], [metadata]);
 
   attachLineNumbers(docs, file.content);
 
   return docs;
+}
+
+interface FrontmatterBlock {
+  yamlText: string;
+}
+
+// Detects a LEADING frontmatter block: the first line must be exactly `---`
+// (a trailing \r is tolerated for CRLF files), and the block ends at the
+// next line that is exactly `---`. If there is no closing delimiter, no
+// block is recognized at all (same as a file with no leading `---`).
+function detectFrontmatterBlock(content: string): FrontmatterBlock | null {
+  const lines = content.split("\n");
+  if (lines.length === 0) return null;
+  if (lines[0].replace(/\r$/, "") !== "---") return null;
+
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].replace(/\r$/, "") === "---") {
+      const yamlLines = lines
+        .slice(1, i)
+        .map((line) => line.replace(/\r$/, ""));
+      return { yamlText: yamlLines.join("\n") };
+    }
+  }
+  return null;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every((v) => typeof v === "string" && v.length > 0)
+  );
+}
+
+// Extracts exactly four flat, `fm`-prefixed metadata keys from a markdown
+// file's leading YAML frontmatter block, if present and valid. Never
+// throws: parse errors or a non-object result are fail-soft (one
+// console.warn, no fm keys), and files with no leading `---` are untouched.
+export function extractFrontmatterMetadata(
+  content: string,
+  repo: string,
+  filePath: string,
+): Record<string, unknown> {
+  const block = detectFrontmatterBlock(content);
+  if (!block) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(block.yamlText);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`frontmatter parse failed in ${repo}/${filePath}: ${reason}`);
+    return {};
+  }
+
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    console.warn(
+      `frontmatter parse failed in ${repo}/${filePath}: frontmatter block did not parse to a mapping`,
+    );
+    return {};
+  }
+
+  const obj = parsed as Record<string, unknown>;
+  const fm: Record<string, unknown> = {};
+  if (typeof obj.type === "string" && obj.type.length > 0) fm.fmType = obj.type;
+  if (typeof obj.title === "string" && obj.title.length > 0)
+    fm.fmTitle = obj.title;
+  if (isStringArray(obj.tags)) fm.fmTags = obj.tags;
+  if (isStringArray(obj.sources)) fm.fmSources = obj.sources;
+  return fm;
 }
 
 // Annotate each chunk with 1-indexed lineStart / lineEnd in the source file.

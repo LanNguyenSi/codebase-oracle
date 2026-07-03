@@ -8,6 +8,8 @@ import {
   openSqliteStore,
   type StoredEntry,
 } from "../../src/store/sqlite-store.js";
+import { splitFile } from "../../src/ingest/splitter.js";
+import type { ScannedFile } from "../../src/ingest/scanner.js";
 import type { Config } from "../../src/config.js";
 
 const tmpDirs: string[] = [];
@@ -409,6 +411,63 @@ describe("CRUD + similarity", () => {
       entry("r", "r/a.ts", normalized([0, 1, 0]), "y", "h2"),
     ]);
     expect(store.getWriteEpoch()).toBeGreaterThan(e1);
+    store.close();
+  });
+});
+
+describe("frontmatter metadata round-trip", () => {
+  it("fmType/fmTitle/fmTags/fmSources survive upsertFile + similaritySearch", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+
+    const scanned: ScannedFile = {
+      absolutePath: "/repos/docs/guide.md",
+      relativePath: "docs/guide.md",
+      repo: "docs",
+      language: "md",
+      content: [
+        "---",
+        "type: doc",
+        "title: Guide Title",
+        "tags:",
+        "  - a",
+        "  - b",
+        "sources:",
+        "  - src1",
+        "---",
+        "",
+        "Body content.",
+      ].join("\n"),
+      contentHash: "h1",
+    };
+
+    const docs = await splitFile(scanned);
+    expect(docs.length).toBeGreaterThanOrEqual(1);
+    const embedding = normalized([1, 0, 0]);
+    const entries: StoredEntry[] = docs.map((doc) => ({
+      embedding,
+      pageContent: doc.pageContent,
+      metadata: doc.metadata,
+    }));
+
+    store.upsertFile("docs", "docs/guide.md", "h1", entries);
+
+    const results = store.similaritySearch(embedding, entries.length);
+    expect(results).toHaveLength(entries.length);
+    for (const result of results) {
+      expect(result.metadata.fmType).toBe("doc");
+      expect(result.metadata.fmTitle).toBe("Guide Title");
+      expect(result.metadata.fmTags).toEqual(["a", "b"]);
+      expect(result.metadata.fmSources).toEqual(["src1"]);
+    }
+
+    const fileMetadata = store.getFileMetadata("docs", "docs/guide.md");
+    expect(fileMetadata?.fmType).toBe("doc");
+    expect(fileMetadata?.fmTitle).toBe("Guide Title");
+    expect(fileMetadata?.fmTags).toEqual(["a", "b"]);
+    expect(fileMetadata?.fmSources).toEqual(["src1"]);
+
     store.close();
   });
 });
