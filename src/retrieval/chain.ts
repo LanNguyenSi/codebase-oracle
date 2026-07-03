@@ -26,21 +26,130 @@ const OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini";
 export interface QueryResult {
   answer: string;
   sources: Array<{ repo: string; filePath: string; snippet: string }>;
+  // Deduped, rank-ordered fmSources paths collected across every retrieved
+  // chunk that contributed to the answer context (uncapped; the 10-item cap
+  // and truncation note are applied at render time by
+  // formatPointersSection()). Empty when no retrieved chunk carries
+  // fmSources metadata.
+  pointers: string[];
 }
 
 // Format a chunk's path with line numbers when the splitter recorded them.
 // Older chunks indexed before the line-number rollout fall back to the bare
 // filePath.
 export function formatChunkLocation(metadata: Record<string, unknown>): string {
-  const filePath = typeof metadata.filePath === "string" ? metadata.filePath : "";
-  const lineStart = typeof metadata.lineStart === "number" ? metadata.lineStart : null;
-  const lineEnd = typeof metadata.lineEnd === "number" ? metadata.lineEnd : null;
+  const filePath =
+    typeof metadata.filePath === "string" ? metadata.filePath : "";
+  const lineStart =
+    typeof metadata.lineStart === "number" ? metadata.lineStart : null;
+  const lineEnd =
+    typeof metadata.lineEnd === "number" ? metadata.lineEnd : null;
   if (lineStart !== null && lineEnd !== null) {
     return lineStart === lineEnd
       ? `${filePath}:${lineStart}`
       : `${filePath}:${lineStart}-${lineEnd}`;
   }
   return filePath;
+}
+
+// Renders a chunk's fmType (from OKF frontmatter metadata) as a bracketed
+// tag for search-result headers, e.g. "[module]". Empty string when fmType
+// is absent or not a non-empty string, so callers can splice it in without
+// an extra presence check.
+export function formatChunkTypeTag(metadata: Record<string, unknown>): string {
+  return typeof metadata.fmType === "string" && metadata.fmType.length > 0
+    ? `[${metadata.fmType}]`
+    : "";
+}
+
+// Renders a chunk's fmSources (from OKF frontmatter metadata) as a single
+// "sources: a, b" line for search-result display. Returns null when
+// fmSources is absent, not an array, or has no valid (non-empty string)
+// entries, so callers can skip the line entirely.
+export function formatChunkSourcesLine(
+  metadata: Record<string, unknown>,
+): string | null {
+  const fmSources = metadata.fmSources;
+  if (!Array.isArray(fmSources)) return null;
+  const paths = fmSources.filter(
+    (s): s is string => typeof s === "string" && s.length > 0,
+  );
+  if (paths.length === 0) return null;
+  return `sources: ${paths.join(", ")}`;
+}
+
+// Shared search-result renderer for the MCP (stdio) and HTTP MCP surfaces,
+// which use an identical header/body layout. Chunks without fm metadata
+// render byte-identical to the pre-OKF format: "[i] location (repo):\n<body>".
+// Chunks with fmType/fmSources add a "[type]" tag to the header and a
+// "sources: ..." line before the body, respectively.
+export function formatSearchResults(docs: Document[]): string {
+  if (docs.length === 0) return "No results found.";
+  return docs
+    .map((doc, i) => {
+      const { repo } = doc.metadata as { repo: string };
+      const location = formatChunkLocation(doc.metadata);
+      const typeTag = formatChunkTypeTag(doc.metadata);
+      const header = typeTag
+        ? `[${i + 1}] ${location} (${repo}) ${typeTag}:`
+        : `[${i + 1}] ${location} (${repo}):`;
+      const sourcesLine = formatChunkSourcesLine(doc.metadata);
+      const body = sourcesLine
+        ? `${sourcesLine}\n${doc.pageContent}`
+        : doc.pageContent;
+      return `${header}\n${body}`;
+    })
+    .join("\n\n---\n\n");
+}
+
+// Collects the union of fmSources across every retrieved chunk, in first-
+// appearance order (chunk rank, then within-chunk array order), deduped.
+// Uncapped: formatPointersSection() applies the 10-item render cap.
+export function extractSourcePointers(docs: Document[]): string[] {
+  const seen = new Set<string>();
+  const pointers: string[] = [];
+  for (const doc of docs) {
+    const fmSources = (doc.metadata as Record<string, unknown>).fmSources;
+    if (!Array.isArray(fmSources)) continue;
+    for (const src of fmSources) {
+      if (typeof src !== "string" || src.length === 0) continue;
+      if (seen.has(src)) continue;
+      seen.add(src);
+      pointers.push(src);
+    }
+  }
+  return pointers;
+}
+
+const POINTERS_SECTION_LABEL = "Pointers (from OKF sources metadata):";
+const POINTERS_CAP = 10;
+
+// Renders the mechanically-assembled OKF pointers section appended after an
+// oracle_query answer's sources list. Returns "" (omit entirely) when there
+// are no pointers, so today's no-fmSources output stays byte-identical.
+export function formatPointersSection(pointers: string[]): string {
+  if (pointers.length === 0) return "";
+  const shown = pointers.slice(0, POINTERS_CAP);
+  const lines = shown.map((p) => `- ${p}`);
+  if (pointers.length > POINTERS_CAP) {
+    lines.push(`... and ${pointers.length - POINTERS_CAP} more`);
+  }
+  return `\n\n${POINTERS_SECTION_LABEL}\n${lines.join("\n")}`;
+}
+
+// Splits a CLI-style comma-separated option value (e.g. `--tags a,b, c`)
+// into a trimmed, non-empty string array. Returns undefined for an absent
+// or empty-after-trim value, so "no --tags flag" and "--tags ''" both mean
+// "no filter" to callers.
+export function parseCommaSeparatedList(
+  raw: string | undefined,
+): string[] | undefined {
+  if (!raw) return undefined;
+  const parts = raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return parts.length > 0 ? parts : undefined;
 }
 
 export async function queryCodebase(
@@ -58,10 +167,16 @@ export async function queryCodebase(
 
   if (docs.length === 0) {
     return {
-      answer: "No relevant code found in the index. Try re-indexing or rephrasing your question.",
+      answer:
+        "No relevant code found in the index. Try re-indexing or rephrasing your question.",
       sources: [],
+      pointers: [],
     };
   }
+
+  // Mechanically assembled, no LLM involved: union of fmSources across every
+  // retrieved chunk, deduped, in retrieval-rank order.
+  const pointers = extractSourcePointers(docs);
 
   // Format context
   const context = docs
@@ -80,6 +195,7 @@ export async function queryCodebase(
     return {
       answer: formatRawContextAnswer(docs),
       sources: extractSources(docs),
+      pointers,
     };
   }
 
@@ -95,18 +211,18 @@ export async function queryCodebase(
     answer = await chain.invoke({ context, question });
   } catch (err) {
     const details = getLlmErrorDetails(err);
-    const detailText = details
-      ? ` (${details})`
-      : "";
+    const detailText = details ? ` (${details})` : "";
     return {
       answer: `LLM request failed${detailText}. Returning raw retrieved context instead.\n\n${formatRawContextAnswer(docs)}`,
       sources: extractSources(docs),
+      pointers,
     };
   }
 
   return {
     answer,
     sources: extractSources(docs),
+    pointers,
   };
 }
 
@@ -150,11 +266,12 @@ export function getLlmErrorDetails(err: unknown): string | null {
           child.code.length > 0,
       )
     : undefined;
-  const networkCode = typeof e.code === "string" && e.code.length > 0
-    ? e.code
-    : typeof e.cause?.code === "string" && e.cause.code.length > 0
-      ? e.cause.code
-      : aggregateChild?.code ?? null;
+  const networkCode =
+    typeof e.code === "string" && e.code.length > 0
+      ? e.code
+      : typeof e.cause?.code === "string" && e.cause.code.length > 0
+        ? e.cause.code
+        : (aggregateChild?.code ?? null);
   if (networkCode) {
     parts.push(networkCode);
   }
@@ -179,7 +296,10 @@ function pickShortMessage(raw: string | undefined): string | null {
   // Take the first non-empty line and cap the length — SDK messages
   // sometimes append multi-paragraph troubleshooting URLs that drown the
   // useful first line.
-  const firstLine = raw.split(/\r?\n/).map((s) => s.trim()).find(Boolean);
+  const firstLine = raw
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .find(Boolean);
   if (!firstLine) return null;
   const MAX = 240;
   return firstLine.length > MAX ? firstLine.slice(0, MAX - 1) + "…" : firstLine;
@@ -219,9 +339,7 @@ function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
   if (isLegacyOllama) {
     warnOllamaProviderDeprecated();
   }
-  const baseURL = ensureV1BaseUrl(
-    config.llmBaseUrl ?? config.ollamaBaseUrl,
-  );
+  const baseURL = ensureV1BaseUrl(config.llmBaseUrl ?? config.ollamaBaseUrl);
   // For local Ollama the conventional sentinel key is the literal "ollama"
   // (the server ignores it). For openai-compatible we prefer to leave the
   // key blank and let the SDK surface a clear 401 if the endpoint requires
@@ -259,7 +377,9 @@ export function resetOllamaDeprecationWarning(): void {
 export function createLlm(config: Config) {
   if (config.llmProvider === "anthropic") {
     if (!config.anthropicApiKey) {
-      throw new Error("ORACLE_LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.");
+      throw new Error(
+        "ORACLE_LLM_PROVIDER=anthropic requires ANTHROPIC_API_KEY.",
+      );
     }
     return createAnthropicLlm(config);
   }
@@ -299,7 +419,10 @@ export function extractSources(docs: Document[]) {
   const seen = new Set<string>();
   return docs
     .map((doc) => {
-      const { repo, filePath } = doc.metadata as { repo: string; filePath: string };
+      const { repo, filePath } = doc.metadata as {
+        repo: string;
+        filePath: string;
+      };
       const key = filePath;
       if (seen.has(key)) return null;
       seen.add(key);
@@ -315,6 +438,31 @@ export interface SearchCodebaseOptions {
   // semantics: `*` within a segment, `**` across segments, `?` for a
   // single character, `{a,b}` for alternatives. AND-composed with `repo`.
   pathGlob?: string;
+  // fmType (OKF frontmatter metadata) filter: strict equality. Only matches
+  // chunks that HAVE fmType set; chunks without frontmatter metadata are
+  // excluded when this is set. AND-composed with repo/pathGlob/tags.
+  type?: string;
+  // fmTags (OKF frontmatter metadata) filter: contains-ALL semantics, every
+  // listed tag must appear in the chunk's fmTags. Only matches chunks that
+  // HAVE fmTags set; chunks without frontmatter metadata are excluded when
+  // this is set. AND-composed with repo/pathGlob/type.
+  tags?: string[];
+}
+
+function matchesTypeFilter(
+  metadata: Record<string, unknown>,
+  type: string,
+): boolean {
+  return metadata.fmType === type;
+}
+
+function matchesTagsFilter(
+  metadata: Record<string, unknown>,
+  tags: string[],
+): boolean {
+  const fmTags = metadata.fmTags;
+  if (!Array.isArray(fmTags)) return false;
+  return tags.every((tag) => fmTags.includes(tag));
 }
 
 export async function searchCodebase(
@@ -325,26 +473,44 @@ export async function searchCodebase(
   const k = options?.limit ?? 10;
   const filter = options?.repo ? { repo: options.repo } : undefined;
 
-  if (!options?.pathGlob) {
+  const tags =
+    options?.tags && options.tags.length > 0 ? options.tags : undefined;
+  const needsPostFilter =
+    Boolean(options?.pathGlob) || Boolean(options?.type) || Boolean(tags);
+
+  if (!needsPostFilter) {
     return vectorStore.similaritySearch(query, k, filter);
   }
 
   // Over-fetch so the post-filter still has a chance of returning k
-  // results when the glob is narrow. Cap to keep the SQLite scan
-  // bounded for pathological cases (e.g. limit=50 → 200 fetched).
+  // results when the combined filters are narrow. Cap to keep the SQLite
+  // scan bounded for pathological cases (e.g. limit=50 → 200 fetched).
+  // Shared by pathGlob/type/tags: all three AND-compose through this same
+  // over-fetched window.
   const FETCH_MULTIPLIER = 4;
   const FETCH_MAX = 200;
   const overFetch = Math.min(k * FETCH_MULTIPLIER, FETCH_MAX);
 
-  const matchesPath = picomatch(options.pathGlob, { dot: true });
+  const matchesPath = options?.pathGlob
+    ? picomatch(options.pathGlob, { dot: true })
+    : null;
   const raw = await vectorStore.similaritySearch(query, overFetch, filter);
   const filtered: Document[] = [];
   for (const doc of raw) {
-    const filePath = (doc.metadata as { filePath?: string }).filePath ?? "";
-    if (matchesPath(filePath)) {
-      filtered.push(doc);
-      if (filtered.length >= k) break;
+    const metadata = doc.metadata as Record<string, unknown>;
+    if (matchesPath) {
+      const filePath =
+        typeof metadata.filePath === "string" ? metadata.filePath : "";
+      if (!matchesPath(filePath)) continue;
     }
+    if (
+      options?.type !== undefined &&
+      !matchesTypeFilter(metadata, options.type)
+    )
+      continue;
+    if (tags && !matchesTagsFilter(metadata, tags)) continue;
+    filtered.push(doc);
+    if (filtered.length >= k) break;
   }
   return filtered;
 }

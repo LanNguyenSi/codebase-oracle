@@ -14,10 +14,31 @@
  * MCP tool layer; it is flagged as a risk/open question in the task report.
  */
 import { createServer } from "node:http";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createHttpRequestHandler } from "../../src/http-server.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Document } from "@langchain/core/documents";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { HttpBindConfig } from "../../src/http-auth.js";
 import { VERSION } from "../../src/version.js";
+
+// vi.mock is hoisted above these imports. We keep the real IndexFingerprintError
+// class (and everything else) via importOriginal, only replacing
+// createVectorStore so the new oracle_search pass-through test below can drive
+// a fake store without a real DB/embeddings/network. None of the OTHER tests
+// in this file exercise any MCP tool (they only hit auth/health/404 routing),
+// so this mock has no effect on them.
+vi.mock("../../src/store/vector-store.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/store/vector-store.js")>();
+  return { ...actual, createVectorStore: vi.fn() };
+});
+
+import {
+  createHttpRequestHandler,
+  buildServer,
+} from "../../src/http-server.js";
+import { createVectorStore } from "../../src/store/vector-store.js";
+import type { VectorStoreWrapper } from "../../src/store/vector-store.js";
 
 const TOKEN = "test-bearer-token-abc123";
 const LOOPBACK_WITH_TOKEN: HttpBindConfig = { bind: "127.0.0.1", token: TOKEN };
@@ -33,7 +54,10 @@ function startServer(bindConfig: HttpBindConfig, port = 3100) {
       const p = typeof addr === "object" && addr ? addr.port : 0;
       resolve({
         url: `http://127.0.0.1:${p}`,
-        close: () => new Promise<void>((res, rej) => server.close((err) => (err ? rej(err) : res()))),
+        close: () =>
+          new Promise<void>((res, rej) =>
+            server.close((err) => (err ? rej(err) : res())),
+          ),
       });
     });
   });
@@ -55,7 +79,11 @@ describe("createHttpRequestHandler — auth gate (token configured)", () => {
     const res = await fetch(`${url}/mcp`, { method: "POST" });
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toMatch(/Bearer/i);
-    const body = await res.json() as { jsonrpc: string; error: { code: number; message: string }; id: null };
+    const body = (await res.json()) as {
+      jsonrpc: string;
+      error: { code: number; message: string };
+      id: null;
+    };
     expect(body.jsonrpc).toBe("2.0");
     expect(body.error.code).toBe(-32001);
     expect(body.error.message).toContain("Unauthorized");
@@ -69,7 +97,9 @@ describe("createHttpRequestHandler — auth gate (token configured)", () => {
       headers: { Authorization: "Bearer wrong-token" },
     });
     expect(res.status).toBe(401);
-    const body = await res.json() as { error: { code: number; message: string } };
+    const body = (await res.json()) as {
+      error: { code: number; message: string };
+    };
     expect(body.error.code).toBe(-32001);
     expect(body.error.message).toContain("invalid");
   });
@@ -85,7 +115,16 @@ describe("createHttpRequestHandler — auth gate (token configured)", () => {
         Authorization: `Bearer ${TOKEN}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test", version: "1.0" } } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: {
+          protocolVersion: "2024-11-05",
+          capabilities: {},
+          clientInfo: { name: "test", version: "1.0" },
+        },
+      }),
     });
     expect(res.status).not.toBe(401);
   });
@@ -111,7 +150,7 @@ describe("createHttpRequestHandler — GET /health", () => {
     const res = await fetch(`${url}/health`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("application/json");
-    const body = await res.json() as { status: string; version: string };
+    const body = (await res.json()) as { status: string; version: string };
     expect(body.status).toBe("ok");
     expect(body.version).toBe(VERSION);
   });
@@ -137,12 +176,114 @@ describe("createHttpRequestHandler — unknown paths → 404", () => {
   it("GET /unknown → 404 with error JSON", async () => {
     const res = await fetch(`${url}/unknown`);
     expect(res.status).toBe(404);
-    const body = await res.json() as { error: string };
+    const body = (await res.json()) as { error: string };
     expect(body.error).toContain("Not found");
   });
 
   it("POST /unknown → 404", async () => {
     const res = await fetch(`${url}/unknown`, { method: "POST" });
     expect(res.status).toBe(404);
+  });
+});
+
+// ── oracle_search type/tags pass-through (OKF metadata) ──────────────────────
+//
+// Connects an MCP client directly to buildServer() via InMemoryTransport,
+// bypassing the HTTP transport entirely (mirrors mcp-server.test.ts's
+// connectClient() pattern). createVectorStore is mocked so no real DB or
+// embeddings are touched. Kept to a single test with multiple calls sharing
+// one connection: http-server.ts's getStore()/storePromise cache is
+// module-level (not per-instance like mcp-server.ts's createMcpServer()), so
+// splitting this across multiple `it` blocks would let a later test observe
+// the earlier test's cached store instead of its own mock.
+describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
+  function fakeStore(
+    similaritySearch: VectorStoreWrapper["similaritySearch"],
+  ): VectorStoreWrapper {
+    return {
+      addDocuments: async () => {},
+      similaritySearch,
+      listRepos: () => [],
+      getFileMetadata: () => null,
+      close: () => {},
+    };
+  }
+
+  it("passes `type` and `tags` through to the real filtering logic", async () => {
+    const docs = [
+      new Document({
+        pageContent: "backend doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/backend.md",
+          fmType: "module",
+          fmTags: ["okf", "backend"],
+        },
+      }),
+      new Document({
+        pageContent: "frontend doc",
+        metadata: {
+          repo: "docs",
+          filePath: "docs/okf/frontend.md",
+          fmType: "guide",
+        },
+      }),
+    ];
+    vi.mocked(createVectorStore).mockResolvedValue(fakeStore(async () => docs));
+
+    const server = buildServer();
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client(
+      { name: "test-client", version: "1.0.0" },
+      { capabilities: {} },
+    );
+    await client.connect(clientTransport);
+
+    try {
+      // Tool schema exposes the new params.
+      const { tools } = await client.listTools();
+      const searchTool = tools.find((t) => t.name === "oracle_search");
+      const props = searchTool?.inputSchema.properties as Record<
+        string,
+        { type?: string }
+      >;
+      expect(props).toHaveProperty("type");
+      expect(props).toHaveProperty("tags");
+
+      // type filter round-trips.
+      const byType = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "doc", type: "module" },
+      });
+      const byTypeText =
+        (byType.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(byTypeText).toContain("docs/okf/backend.md");
+      expect(byTypeText).not.toContain("docs/okf/frontend.md");
+
+      // tags filter round-trips.
+      const byTags = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "doc", tags: ["okf", "backend"] },
+      });
+      const byTagsText =
+        (byTags.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(byTagsText).toContain("docs/okf/backend.md");
+      expect(byTagsText).not.toContain("docs/okf/frontend.md");
+    } finally {
+      try {
+        await client.close();
+      } catch {
+        /* already closed */
+      }
+      try {
+        await server.close();
+      } catch {
+        /* already closed */
+      }
+    }
   });
 });

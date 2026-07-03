@@ -24,11 +24,24 @@ import { z } from "zod";
 import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
-import { createVectorStore, IndexFingerprintError, type VectorStoreWrapper } from "./store/vector-store.js";
-import { formatChunkLocation, queryCodebase, searchCodebase } from "./retrieval/chain.js";
+import {
+  createVectorStore,
+  IndexFingerprintError,
+  type VectorStoreWrapper,
+} from "./store/vector-store.js";
+import {
+  formatPointersSection,
+  formatSearchResults,
+  queryCodebase,
+  searchCodebase,
+} from "./retrieval/chain.js";
 import { formatRepoLine } from "./format-freshness.js";
 import { expandFile, formatExpandResult } from "./expand.js";
-import { resolveHttpBindConfig, verifyBearer, type HttpBindConfig } from "./http-auth.js";
+import {
+  resolveHttpBindConfig,
+  verifyBearer,
+  type HttpBindConfig,
+} from "./http-auth.js";
 import { VERSION } from "./version.js";
 
 loadEnvFromFile();
@@ -59,7 +72,10 @@ function getStore(): Promise<VectorStoreWrapper> {
 // server._transport is set, and a stateless POST never clears it. So we build a
 // fresh McpServer per request. Tools close over the shared lazy getStore()/config,
 // so there is no per-request store rebuild.
-function buildServer(): McpServer {
+// Exported so tests can connect an in-memory MCP client directly to a fresh
+// server instance without going through the HTTP transport (mirrors
+// mcp-server.ts's createMcpServer() test seam).
+export function buildServer(): McpServer {
   const server = new McpServer({
     name: "codebase-oracle",
     version: VERSION,
@@ -69,18 +85,35 @@ function buildServer(): McpServer {
     "oracle_query",
     "Ask a natural-language question about the indexed codebase. Returns an LLM-generated answer with source citations. Use this for understanding code, finding implementations, or learning how systems connect across repos.",
     {
-      question: z.string().describe("Natural language question about the codebase"),
-      repo: z.string().optional().describe("Optional: filter to a specific repo name (e.g. 'agent-tasks')"),
+      question: z
+        .string()
+        .describe("Natural language question about the codebase"),
+      repo: z
+        .string()
+        .optional()
+        .describe(
+          "Optional: filter to a specific repo name (e.g. 'agent-tasks')",
+        ),
     },
     async ({ question, repo }) => {
       const store = await getStore();
       const result = await queryCodebase(question, store, config, { repo });
 
-      const sourcesText = result.sources.length > 0
-        ? "\n\nSources:\n" + result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
-        : "";
+      const sourcesText =
+        result.sources.length > 0
+          ? "\n\nSources:\n" +
+            result.sources.map((s) => `- ${s.filePath} (${s.repo})`).join("\n")
+          : "";
+      const pointersText = formatPointersSection(result.pointers);
 
-      return { content: [{ type: "text" as const, text: result.answer + sourcesText }] };
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: result.answer + sourcesText + pointersText,
+          },
+        ],
+      };
     },
   );
 
@@ -88,23 +121,44 @@ function buildServer(): McpServer {
     "oracle_search",
     "Raw vector similarity search over the indexed codebase. Returns matching code/doc chunks with metadata. Use this when you need specific code snippets rather than an interpreted answer. No LLM involved — pure embedding retrieval.",
     {
-      query: z.string().describe("Search query (natural language or code pattern)"),
-      repo: z.string().optional().describe("Optional: filter to a specific repo"),
-      limit: z.number().int().min(1).max(50).optional().describe("Number of results (default 10)"),
+      query: z
+        .string()
+        .describe("Search query (natural language or code pattern)"),
+      repo: z
+        .string()
+        .optional()
+        .describe("Optional: filter to a specific repo"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("Number of results (default 10)"),
+      type: z
+        .string()
+        .optional()
+        .describe(
+          "Optional: filter to chunks whose fmType OKF frontmatter metadata strictly equals this value. AND-composes with `repo`/`tags`. Chunks without fmType (no frontmatter, or frontmatter missing a `type` field) are excluded when this is set.",
+        ),
+      tags: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "Optional: filter to chunks whose fmTags OKF frontmatter metadata contains ALL of the listed tags. AND-composes with `repo`/`type`. Chunks without fmTags (no frontmatter, or frontmatter missing a `tags` field) are excluded when this is set.",
+        ),
     },
-    async ({ query, repo, limit }) => {
+    async ({ query, repo, limit, type, tags }) => {
       const store = await getStore();
-      const docs = await searchCodebase(query, store, { repo, limit });
-
-      const text = docs
-        .map((doc, i) => {
-          const { repo: r } = doc.metadata as { repo: string };
-          const location = formatChunkLocation(doc.metadata);
-          return `[${i + 1}] ${location} (${r}):\n${doc.pageContent}`;
-        })
-        .join("\n\n---\n\n");
-
-      return { content: [{ type: "text" as const, text: text || "No results found." }] };
+      const docs = await searchCodebase(query, store, {
+        repo,
+        limit,
+        type,
+        tags,
+      });
+      return {
+        content: [{ type: "text" as const, text: formatSearchResults(docs) }],
+      };
     },
   );
 
@@ -118,17 +172,24 @@ function buildServer(): McpServer {
 
       if (repos.length === 0) {
         return {
-          content: [{
-            type: "text" as const,
-            text: "No repos in the index yet. Run `npm run index` to build it.",
-          }],
+          content: [
+            {
+              type: "text" as const,
+              text: "No repos in the index yet. Run `npm run index` to build it.",
+            },
+          ],
         };
       }
 
       const text = repos.map((r) => formatRepoLine(r)).join("\n");
 
       return {
-        content: [{ type: "text" as const, text: `${repos.length} indexed repos:\n${text}` }],
+        content: [
+          {
+            type: "text" as const,
+            text: `${repos.length} indexed repos:\n${text}`,
+          },
+        ],
       };
     },
   );
@@ -137,15 +198,36 @@ function buildServer(): McpServer {
     "oracle_expand",
     "Read a window of lines around a specific position in an indexed file. Use after oracle_search to see the context around a chunk without leaving the oracle. Reads the file from disk via the indexed absolutePath; if the working copy has changed since indexing, the lines may not match what oracle_search returned — check oracle_list_repos for the indexed timestamp.",
     {
-      repo: z.string().describe("Repo name (must be indexed; see oracle_list_repos)"),
-      path: z.string().describe("File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)"),
-      line: z.number().int().min(1).optional().describe("1-indexed line to center the window on (default 1, top of file)"),
-      window: z.number().int().min(1).max(200).optional().describe("Lines to include around `line` (default 30, capped at 200)"),
+      repo: z
+        .string()
+        .describe("Repo name (must be indexed; see oracle_list_repos)"),
+      path: z
+        .string()
+        .describe(
+          "File path exactly as it appears in oracle_search results (e.g. `scaffoldkit/src/scaffoldkit/cli.py` — includes the repo segment)",
+        ),
+      line: z
+        .number()
+        .int()
+        .min(1)
+        .optional()
+        .describe(
+          "1-indexed line to center the window on (default 1, top of file)",
+        ),
+      window: z
+        .number()
+        .int()
+        .min(1)
+        .max(200)
+        .optional()
+        .describe("Lines to include around `line` (default 30, capped at 200)"),
     },
     async ({ repo, path, line, window }) => {
       const store = await getStore();
       const result = await expandFile(store, { repo, path, line, window });
-      return { content: [{ type: "text" as const, text: formatExpandResult(result) }] };
+      return {
+        content: [{ type: "text" as const, text: formatExpandResult(result) }],
+      };
     },
   );
 
@@ -187,7 +269,10 @@ export function createHttpRequestHandler(
         res.end(
           JSON.stringify({
             jsonrpc: "2.0",
-            error: { code: -32001, message: `Unauthorized: ${auth.reason} bearer token` },
+            error: {
+              code: -32001,
+              message: `Unauthorized: ${auth.reason} bearer token`,
+            },
             id: null,
           }),
         );
@@ -203,7 +288,8 @@ export function createHttpRequestHandler(
         // Build standard Request object for the MCP transport
         const headers = new Headers();
         for (const [key, value] of Object.entries(req.headers)) {
-          if (value) headers.set(key, Array.isArray(value) ? value.join(", ") : value);
+          if (value)
+            headers.set(key, Array.isArray(value) ? value.join(", ") : value);
         }
 
         const request = new Request(url.toString(), {
@@ -233,7 +319,10 @@ export function createHttpRequestHandler(
         };
 
         // Forward response headers
-        res.writeHead(response.status, Object.fromEntries(response.headers.entries()));
+        res.writeHead(
+          response.status,
+          Object.fromEntries(response.headers.entries()),
+        );
 
         // Stream the response body (supports SSE)
         if (response.body) {
@@ -250,17 +339,26 @@ export function createHttpRequestHandler(
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
         }
-        const message = err instanceof IndexFingerprintError
-          ? err.message
-          : "Internal error";
-        res.end(JSON.stringify({ jsonrpc: "2.0", error: { code: -32603, message }, id: null }));
+        const message =
+          err instanceof IndexFingerprintError ? err.message : "Internal error";
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            error: { code: -32603, message },
+            id: null,
+          }),
+        );
       }
       return;
     }
 
     // 404 for everything else
     res.writeHead(404, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: "Not found. POST /mcp for MCP, GET /health for status." }));
+    res.end(
+      JSON.stringify({
+        error: "Not found. POST /mcp for MCP, GET /health for status.",
+      }),
+    );
   };
 }
 
@@ -277,9 +375,15 @@ export function startHttpServer(): void {
   const port = Number(process.env.ORACLE_HTTP_PORT ?? 3100);
   const server = createHttpServer(createHttpRequestHandler(bindConfig, port));
   server.listen(port, bindConfig.bind, () => {
-    const authNote = bindConfig.token ? "with bearer-token auth" : "(no auth; loopback only)";
-    console.log(`[codebase-oracle] HTTP MCP server listening on http://${bindConfig.bind}:${port}/mcp ${authNote}`);
-    console.log(`[codebase-oracle] Health check: http://${bindConfig.bind}:${port}/health`);
+    const authNote = bindConfig.token
+      ? "with bearer-token auth"
+      : "(no auth; loopback only)";
+    console.log(
+      `[codebase-oracle] HTTP MCP server listening on http://${bindConfig.bind}:${port}/mcp ${authNote}`,
+    );
+    console.log(
+      `[codebase-oracle] Health check: http://${bindConfig.bind}:${port}/health`,
+    );
   });
 }
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-03
+
+### Added
+
+- **`oracle_search` gains `type` and `tags` filters over OKF frontmatter chunk metadata** (`fmType` / `fmTags`, added in v0.7.0). `type` is a strict-equality match; `tags` requires ALL listed tags to be present. Both only match chunks that HAVE the corresponding field, so chunks without frontmatter metadata are excluded whenever a filter is set, and both AND-compose with the existing `repo` / `path_glob` filters. Available on the CLI (`-t, --type`, `--tags` comma-separated), stdio MCP, and HTTP MCP.
+- **Search results show OKF metadata when present.** A matching chunk's header gains a `[type]` tag (e.g. `[3] docs/okf/backend.md:1-40 (agent-tasks) [module]`) and, when `fmSources` is set, an additional `sources: path1, path2` line. Chunks without frontmatter metadata render byte-identical to before.
+- **`oracle_query` answers get an automatic `Pointers (from OKF sources metadata):` section**, mechanically assembled (no LLM) from the deduped, rank-ordered union of `fmSources` across every retrieved chunk, appended after the existing sources list and capped at 10 entries with a truncation note. Omitted entirely when no retrieved chunk carries `fmSources`. No new params needed on `oracle_query`.
+
 ## [0.7.0] - 2026-07-03
 
 ### Added
