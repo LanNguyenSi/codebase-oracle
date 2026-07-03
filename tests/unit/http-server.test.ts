@@ -14,12 +14,39 @@
  * MCP tool layer; it is flagged as a risk/open question in the task report.
  */
 import { createServer } from "node:http";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { Document } from "@langchain/core/documents";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { HttpBindConfig } from "../../src/http-auth.js";
 import { VERSION } from "../../src/version.js";
+
+// http-server.ts computes its module-level `config` via loadConfig() at
+// import time (below), reading real process.env. Pin the embedding provider
+// to the repo's deterministic in-process stub (src/store/embeddings.ts,
+// also used by tests/integration/index-cli.test.ts) BEFORE that import
+// evaluates, via vi.hoisted: vitest hoists this above every import in the
+// file, including the static `import ... from "../../src/http-server.js"`
+// below, so loadConfig() never sees the real (or absent) OPENAI_API_KEY /
+// ORACLE_EMBEDDING_PROVIDER. Without this, createEmbeddings() takes the real
+// OpenAI path and throws "OPENAI_API_KEY is required..." whenever this file
+// runs without ambient env (e.g. CI, which has no .env and no such secret),
+// so this file must not depend on another test file, a developer's local
+// .env, or CI job/worker ordering for that. vi.stubEnv is undone in the
+// afterAll below so the mutation never leaks to a test file that runs after
+// this one in the same worker process (process.env is a real, shared
+// Node.js global, not something vitest's per-file module isolation resets).
+vi.hoisted(() => {
+  vi.stubEnv("ORACLE_EMBEDDING_PROVIDER", "stub");
+});
 
 // vi.mock is hoisted above these imports. We keep the real IndexFingerprintError
 // class (and everything else) via importOriginal, only replacing
@@ -39,6 +66,13 @@ import {
 } from "../../src/http-server.js";
 import { createVectorStore } from "../../src/store/vector-store.js";
 import type { VectorStoreWrapper } from "../../src/store/vector-store.js";
+
+// Undo the vi.stubEnv from the vi.hoisted block above once every test in
+// this file has run, so the stubbed ORACLE_EMBEDDING_PROVIDER never leaks
+// into a different test file sharing the same worker process.
+afterAll(() => {
+  vi.unstubAllEnvs();
+});
 
 const TOKEN = "test-bearer-token-abc123";
 const LOOPBACK_WITH_TOKEN: HttpBindConfig = { bind: "127.0.0.1", token: TOKEN };
