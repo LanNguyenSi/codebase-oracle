@@ -88,20 +88,40 @@ describe("openSqliteStore basics", () => {
   it("initializeSchema is idempotent for matching meta and refuses mismatched ones", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 4 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 4,
+    });
     // Repeat with identical meta: no throw.
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 4 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 4,
+    });
     // Different dimension: throws.
     expect(() =>
-      store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 8 }),
+      store.initializeSchema({
+        embeddingProvider: "openai",
+        embeddingModel: "m",
+        dimension: 8,
+      }),
     ).toThrow(IndexFingerprintError);
     // Different provider: throws.
     expect(() =>
-      store.initializeSchema({ embeddingProvider: "ollama", embeddingModel: "m", dimension: 4 }),
+      store.initializeSchema({
+        embeddingProvider: "ollama",
+        embeddingModel: "m",
+        dimension: 4,
+      }),
     ).toThrow(IndexFingerprintError);
     // Different model: throws.
     expect(() =>
-      store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "n", dimension: 4 }),
+      store.initializeSchema({
+        embeddingProvider: "openai",
+        embeddingModel: "n",
+        dimension: 4,
+      }),
     ).toThrow(IndexFingerprintError);
     store.close();
   });
@@ -111,7 +131,10 @@ describe("openSqliteStore basics", () => {
     const store = openSqliteStore(testConfig(dir));
     expect(() =>
       store.assertCompatibleWithConfig(
-        testConfig(dir, { embeddingProvider: "ollama", embeddingModel: "other" }),
+        testConfig(dir, {
+          embeddingProvider: "ollama",
+          embeddingModel: "other",
+        }),
       ),
     ).not.toThrow();
     store.close();
@@ -120,14 +143,22 @@ describe("openSqliteStore basics", () => {
   it("assertCompatibleWithConfig throws on provider or model drift", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m1", dimension: 4 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m1",
+      dimension: 4,
+    });
 
     expect(() =>
-      store.assertCompatibleWithConfig(testConfig(dir, { embeddingProvider: "ollama" })),
+      store.assertCompatibleWithConfig(
+        testConfig(dir, { embeddingProvider: "ollama" }),
+      ),
     ).toThrow(/provider "openai"/);
 
     expect(() =>
-      store.assertCompatibleWithConfig(testConfig(dir, { embeddingModel: "m2" })),
+      store.assertCompatibleWithConfig(
+        testConfig(dir, { embeddingModel: "m2" }),
+      ),
     ).toThrow(/model "m1"/);
     store.close();
   });
@@ -137,7 +168,11 @@ describe("CRUD + similarity", () => {
   it("insertBatch + similaritySearch returns nearest neighbours first", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("r", "r/a.ts", normalized([1, 0, 0])),
       entry("r", "r/b.ts", normalized([0, 1, 0])),
@@ -156,13 +191,19 @@ describe("CRUD + similarity", () => {
   it("similaritySearch filters by repo", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("auth", "auth/a.ts", normalized([1, 0, 0.1])),
       entry("billing", "billing/a.ts", normalized([1, 0, 0.05])),
       entry("auth", "auth/b.ts", normalized([0.9, 0.1, 0])),
     ]);
-    const results = store.similaritySearch(normalized([1, 0, 0]), 5, { repo: "auth" });
+    const results = store.similaritySearch(normalized([1, 0, 0]), 5, {
+      repo: "auth",
+    });
     expect(results).toHaveLength(2);
     for (const r of results) expect(r.metadata.repo).toBe("auth");
     store.close();
@@ -171,7 +212,11 @@ describe("CRUD + similarity", () => {
   it("upsertFile atomically replaces per-file chunks", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("r", "r/a.ts", normalized([1, 0, 0]), "v1", "h1"),
       entry("r", "r/a.ts", normalized([0.9, 0.1, 0]), "v1b", "h1"),
@@ -193,7 +238,11 @@ describe("CRUD + similarity", () => {
   it("deleteByFile and deleteByRepo remove both docs and vectors", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("auth", "auth/a.ts", normalized([1, 0, 0])),
       entry("auth", "auth/b.ts", normalized([0, 1, 0])),
@@ -217,7 +266,11 @@ describe("CRUD + similarity", () => {
   it("listRepos.lastIndexedAt is null on a fresh store, advances on writes, clears on deleteByRepo", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
 
     // No repos yet.
     expect(store.listRepos()).toEqual([]);
@@ -232,13 +285,17 @@ describe("CRUD + similarity", () => {
     // Second write advances lastIndexedAt strictly forward.
     await new Promise((r) => setTimeout(r, 10)); // ensure ISO ms diff
     store.upsertFile("r", "r/b.ts", null, [
-      { embedding: normalized([0, 1, 0]), pageContent: "y", metadata: { repo: "r", filePath: "r/b.ts" } },
+      {
+        embedding: normalized([0, 1, 0]),
+        pageContent: "y",
+        metadata: { repo: "r", filePath: "r/b.ts" },
+      },
     ]);
     const afterSecond = store.listRepos();
     expect(afterSecond[0].lastIndexedAt).not.toBe(firstStamp);
-    expect(new Date(afterSecond[0].lastIndexedAt!).getTime()).toBeGreaterThanOrEqual(
-      new Date(firstStamp!).getTime(),
-    );
+    expect(
+      new Date(afterSecond[0].lastIndexedAt!).getTime(),
+    ).toBeGreaterThanOrEqual(new Date(firstStamp!).getTime());
 
     // deleteByFile bumps the timestamp (file removal IS an index update).
     await new Promise((r) => setTimeout(r, 10));
@@ -261,7 +318,11 @@ describe("CRUD + similarity", () => {
     // leave a stale freshness row behind that nothing ever cleaned up.
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("r", "r/a.ts", normalized([1, 0, 0])),
       entry("r", "r/b.ts", normalized([0, 1, 0])),
@@ -292,7 +353,11 @@ describe("CRUD + similarity", () => {
     // repo_meta rows should be removable in one sweep at re-index startup.
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("kept", "kept/a.ts", normalized([1, 0, 0])),
       entry("orphan-a", "orphan-a/x.ts", normalized([0, 1, 0])),
@@ -310,7 +375,9 @@ describe("CRUD + similarity", () => {
     const raw = new Database(dbPath);
     sqliteVec.load(raw);
     raw
-      .prepare("DELETE FROM vectors WHERE rowid IN (SELECT rowid FROM docs WHERE repo LIKE 'orphan-%')")
+      .prepare(
+        "DELETE FROM vectors WHERE rowid IN (SELECT rowid FROM docs WHERE repo LIKE 'orphan-%')",
+      )
       .run();
     raw.prepare("DELETE FROM docs WHERE repo LIKE 'orphan-%'").run();
     raw.close();
@@ -333,7 +400,11 @@ describe("CRUD + similarity", () => {
     // just dropped would be re-created as an orphan.
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("kept", "kept/a.ts", normalized([1, 0, 0])),
       entry("kept", "kept/b.ts", normalized([0, 1, 0])),
@@ -370,7 +441,11 @@ describe("CRUD + similarity", () => {
     // leaves last_indexed_at = null forever.
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
 
     const before = store.listRepos()[0].lastIndexedAt!;
@@ -379,14 +454,20 @@ describe("CRUD + similarity", () => {
     store.touchRepo("r", stamp);
     const after = store.listRepos()[0].lastIndexedAt;
     expect(after).toBe(stamp);
-    expect(new Date(after!).getTime()).toBeGreaterThan(new Date(before).getTime());
+    expect(new Date(after!).getTime()).toBeGreaterThan(
+      new Date(before).getTime(),
+    );
     store.close();
   });
 
   it("fileSignatures returns the latest per-file hash", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     store.insertBatch([
       entry("r", "r/a.ts", normalized([1, 0, 0]), "x", "hash-a"),
       entry("r", "r/a.ts", normalized([0.9, 0, 0.1]), "x2", "hash-a"),
@@ -402,7 +483,11 @@ describe("CRUD + similarity", () => {
   it("write epoch advances on every mutation", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     expect(store.getWriteEpoch()).toBe(0);
     store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
     const e1 = store.getWriteEpoch();
@@ -419,7 +504,11 @@ describe("frontmatter metadata round-trip", () => {
   it("fmType/fmTitle/fmTags/fmSources survive upsertFile + similaritySearch", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
-    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
 
     const scanned: ScannedFile = {
       absolutePath: "/repos/docs/guide.md",
@@ -481,13 +570,25 @@ describe("initializeSchema contention", () => {
       // Both handles start with no meta and would try to create the vec0
       // table. With IMMEDIATE + re-check under lock, one wins, the other
       // sees matching meta and is a no-op.
-      s1.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 4 });
-      s2.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 4 });
+      s1.initializeSchema({
+        embeddingProvider: "openai",
+        embeddingModel: "m",
+        dimension: 4,
+      });
+      s2.initializeSchema({
+        embeddingProvider: "openai",
+        embeddingModel: "m",
+        dimension: 4,
+      });
       expect(s1.getMeta()?.dimension).toBe(4);
       expect(s2.getMeta()?.dimension).toBe(4);
       // A racing call with a DIFFERENT dim throws once the store is populated.
       expect(() =>
-        s2.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 8 }),
+        s2.initializeSchema({
+          embeddingProvider: "openai",
+          embeddingModel: "m",
+          dimension: 8,
+        }),
       ).toThrow(IndexFingerprintError);
     } finally {
       s1.close();
@@ -500,7 +601,11 @@ describe("concurrency (WAL)", () => {
   it("a separate reader sees writes from another connection without reopening", async () => {
     const dir = await makeTmpDir();
     const writer = openSqliteStore(testConfig(dir));
-    writer.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    writer.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     writer.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
 
     const reader = openSqliteStore(testConfig(dir));
@@ -525,7 +630,11 @@ describe("concurrency (WAL)", () => {
   it("a separate OS process sees writes from the current process (file-level WAL)", async () => {
     const dir = await makeTmpDir();
     const writer = openSqliteStore(testConfig(dir));
-    writer.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    writer.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
     writer.insertBatch([
       entry("repoA", "a.ts", normalized([1, 0, 0])),
       entry("repoB", "b.ts", normalized([0, 1, 0])),
@@ -558,7 +667,9 @@ db.close();
     ]);
     writerAgain.close();
 
-    const result = spawnSync(process.execPath, [scriptPath], { encoding: "utf8" });
+    const result = spawnSync(process.execPath, [scriptPath], {
+      encoding: "utf8",
+    });
     expect(result.status).toBe(0);
     const parsed = JSON.parse(result.stdout.trim()) as {
       count: number;

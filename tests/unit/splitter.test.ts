@@ -226,6 +226,65 @@ describe("splitFile frontmatter metadata", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
+  it("treats a frontmatter block parsing to an array like malformed YAML", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const content = "---\n- a\n---\n\nBody.";
+    const docs = await splitFile(makeFile({ language: "md", content }));
+    for (const doc of docs) {
+      expect(doc.metadata.fmType).toBeUndefined();
+      expect(doc.metadata.fmTitle).toBeUndefined();
+      expect(doc.metadata.fmTags).toBeUndefined();
+      expect(doc.metadata.fmSources).toBeUndefined();
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("treats an empty or comment-only frontmatter stub as zero fields, silently (no warn)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const emptyStubDocs = await splitFile(
+      makeFile({ language: "md", content: "---\n---\n\nBody." }),
+    );
+    for (const doc of emptyStubDocs) {
+      expect(doc.metadata.fmType).toBeUndefined();
+      expect(doc.metadata.fmTitle).toBeUndefined();
+      expect(doc.metadata.fmTags).toBeUndefined();
+      expect(doc.metadata.fmSources).toBeUndefined();
+    }
+
+    const commentOnlyDocs = await splitFile(
+      makeFile({
+        language: "md",
+        content: "---\n# just a comment\n---\n\nBody.",
+      }),
+    );
+    for (const doc of commentOnlyDocs) {
+      expect(doc.metadata.fmType).toBeUndefined();
+      expect(doc.metadata.fmTitle).toBeUndefined();
+      expect(doc.metadata.fmTags).toBeUndefined();
+      expect(doc.metadata.fmSources).toBeUndefined();
+    }
+
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("warns exactly once even when malformed frontmatter is followed by a multi-chunk body", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const longBody = Array.from(
+      { length: 200 },
+      (_, i) => `## Section ${i}\n\nContent for section ${i}.`,
+    ).join("\n\n");
+    const content = `---\nfoo: [unclosed\n---\n\n${longBody}`;
+    const docs = await splitFile(makeFile({ language: "md", content }));
+    expect(docs.length).toBeGreaterThan(1);
+    for (const doc of docs) {
+      expect(doc.metadata.fmType).toBeUndefined();
+      expect(doc.metadata.fmTitle).toBeUndefined();
+      expect(doc.metadata.fmTags).toBeUndefined();
+      expect(doc.metadata.fmSources).toBeUndefined();
+    }
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
   it("omits wrong-typed fields but keeps valid siblings", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const content = [

@@ -118,7 +118,14 @@ export function extractFrontmatterMetadata(
     return {};
   }
 
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  // An empty or comment-only frontmatter stub (e.g. "---\n---", or a block
+  // containing only YAML comments) is legitimate markdown, not malformed
+  // input: the yaml parser returns null for it. Same for a leading
+  // thematic-break "---" immediately followed by another "---" line. Treat
+  // it like "no fields present", silently, with no warning.
+  if (parsed === null) return {};
+
+  if (typeof parsed !== "object" || Array.isArray(parsed)) {
     console.warn(
       `frontmatter parse failed in ${repo}/${filePath}: frontmatter block did not parse to a mapping`,
     );
