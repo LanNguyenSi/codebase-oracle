@@ -2,7 +2,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
-import type { Document } from "@langchain/core/documents";
+import { Document } from "@langchain/core/documents";
 import picomatch from "picomatch";
 import type { Config } from "../config.js";
 import type { VectorStoreWrapper } from "../store/vector-store.js";
@@ -72,6 +72,21 @@ export function formatChunkTypeTag(metadata: Record<string, unknown>): string {
     : "";
 }
 
+// Renders the transient `expandedFrom` marker as a bracketed header tag showing
+// the basename of the parent doc that vouched for this file, e.g.
+// "[expanded from chain.ts]". The marker is set only on Documents injected by
+// sources-expansion (see searchCodebase) and is never persisted. Returns "" when
+// the marker is absent, so callers can splice it in alongside the [type] tag
+// without an extra presence check.
+export function formatChunkExpandedTag(
+  metadata: Record<string, unknown>,
+): string {
+  const expandedFrom = metadata.expandedFrom;
+  if (typeof expandedFrom !== "string" || expandedFrom.length === 0) return "";
+  const basename = expandedFrom.split("/").pop() || expandedFrom;
+  return `[expanded from ${sanitizeForDisplay(basename)}]`;
+}
+
 // Renders a chunk's fmSources (from OKF frontmatter metadata) as a single
 // "sources: a, b" line for search-result display. Returns null when
 // fmSources is absent, not an array, or has no valid (non-empty string)
@@ -99,10 +114,15 @@ export function formatSearchResults(docs: Document[]): string {
     .map((doc, i) => {
       const { repo } = doc.metadata as { repo: string };
       const location = formatChunkLocation(doc.metadata);
-      const typeTag = formatChunkTypeTag(doc.metadata);
-      const header = typeTag
-        ? `[${i + 1}] ${location} (${repo}) ${typeTag}:`
-        : `[${i + 1}] ${location} (${repo}):`;
+      // A sources-expanded row may carry both the [type] tag and the
+      // [expanded from ...] marker; render them in that order. Rows with
+      // neither stay byte-identical to the pre-OKF header.
+      const tags = [
+        formatChunkTypeTag(doc.metadata),
+        formatChunkExpandedTag(doc.metadata),
+      ].filter((t) => t.length > 0);
+      const tagSuffix = tags.length > 0 ? ` ${tags.join(" ")}` : "";
+      const header = `[${i + 1}] ${location} (${repo})${tagSuffix}:`;
       const sourcesLine = formatChunkSourcesLine(doc.metadata);
       const body = sourcesLine
         ? `${sourcesLine}\n${doc.pageContent}`
@@ -457,6 +477,12 @@ export interface SearchCodebaseOptions {
   // HAVE fmTags set; chunks without frontmatter metadata are excluded when
   // this is set. AND-composed with repo/pathGlob/type.
   tags?: string[];
+  // Sources-expansion (default true): after the post-filter top-k is computed,
+  // each result row that carries fmSources "vouches" for those files — inject a
+  // representative chunk per pointed-at file into the result list. Set false to
+  // return the raw retrieval result unchanged. When true but no row carries
+  // fmSources, the output is byte-identical to false.
+  expandSources?: boolean;
 }
 
 function matchesTypeFilter(
@@ -475,12 +501,81 @@ function matchesTagsFilter(
   return tags.every((tag) => fmTags.includes(tag));
 }
 
+// Max representative chunks injected per parent row whose fmSources vouches for
+// other files. Keeps a single high-fanout doc from flooding the result list.
+const MAX_INJECTIONS_PER_PARENT = 3;
+
+function fileKeyOf(metadata: Record<string, unknown>): string {
+  const repo = typeof metadata.repo === "string" ? metadata.repo : "";
+  const filePath =
+    typeof metadata.filePath === "string" ? metadata.filePath : "";
+  return `${repo}::${filePath}`;
+}
+
+// Sources-expansion. For each organic result row that carries fmSources, inject
+// a representative chunk (the file's first chunk) for each pointed-at file
+// immediately after its parent, in fmSources order, at most
+// MAX_INJECTIONS_PER_PARENT per parent. Dedup key is (repo, filePath): a file
+// already present as an organic hit anywhere, or already injected, is skipped —
+// organic wins. Injected Documents carry a transient `expandedFrom` marker
+// (the parent's filePath) and are never persisted. The final list is capped at
+// `limit`, so injections displace tail organic rows; if the limit is already
+// reached by earlier ranks, later injections simply don't fit. When no row
+// carries a resolvable fmSources entry the returned list is the organic list
+// unchanged (byte-identical to expandSources:false).
+function expandSourcesInResults(
+  organic: Document[],
+  vectorStore: VectorStoreWrapper,
+  limit: number,
+): Document[] {
+  // Seed dedup with every organic hit so organic always wins over an injection.
+  const seen = new Set<string>();
+  for (const doc of organic) {
+    seen.add(fileKeyOf(doc.metadata as Record<string, unknown>));
+  }
+
+  const expanded: Document[] = [];
+  for (const parent of organic) {
+    expanded.push(parent);
+    const metadata = parent.metadata as Record<string, unknown>;
+    const fmSources = metadata.fmSources;
+    if (!Array.isArray(fmSources)) continue;
+    const parentRepo = typeof metadata.repo === "string" ? metadata.repo : "";
+    const parentFilePath =
+      typeof metadata.filePath === "string" ? metadata.filePath : "";
+    if (parentRepo.length === 0) continue;
+
+    let injected = 0;
+    for (const src of fmSources) {
+      if (injected >= MAX_INJECTIONS_PER_PARENT) break;
+      if (typeof src !== "string" || src.length === 0) continue;
+      // A non-matching entry (directory, glob, typo, absent file) resolves to
+      // null and is skipped silently and deterministically.
+      const chunk = vectorStore.getFirstChunkByFile(parentRepo, src);
+      if (!chunk) continue;
+      const key = fileKeyOf(chunk.metadata);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      expanded.push(
+        new Document({
+          pageContent: chunk.pageContent,
+          metadata: { ...chunk.metadata, expandedFrom: parentFilePath },
+        }),
+      );
+      injected++;
+    }
+  }
+
+  return expanded.slice(0, limit);
+}
+
 export async function searchCodebase(
   query: string,
   vectorStore: VectorStoreWrapper,
   options?: SearchCodebaseOptions,
 ): Promise<Document[]> {
   const k = options?.limit ?? 10;
+  const expandSources = options?.expandSources ?? true;
   const filter = options?.repo ? { repo: options.repo } : undefined;
 
   // Normalize both single-value and array filters the same way: an empty
@@ -492,35 +587,42 @@ export async function searchCodebase(
   const needsPostFilter =
     Boolean(options?.pathGlob) || Boolean(type) || Boolean(tags);
 
+  // Compute the organic top-k first (raw retrieval, then any post-filter),
+  // then optionally apply sources-expansion. Both branches feed the same
+  // expansion step so injected chunks appear regardless of the filter path.
+  let organic: Document[];
   if (!needsPostFilter) {
-    return vectorStore.similaritySearch(query, k, filter);
-  }
+    organic = await vectorStore.similaritySearch(query, k, filter);
+  } else {
+    // Over-fetch so the post-filter still has a chance of returning k
+    // results when the combined filters are narrow. Cap to keep the SQLite
+    // scan bounded for pathological cases (e.g. limit=50 → 200 fetched).
+    // Shared by pathGlob/type/tags: all three AND-compose through this same
+    // over-fetched window.
+    const FETCH_MULTIPLIER = 4;
+    const FETCH_MAX = 200;
+    const overFetch = Math.min(k * FETCH_MULTIPLIER, FETCH_MAX);
 
-  // Over-fetch so the post-filter still has a chance of returning k
-  // results when the combined filters are narrow. Cap to keep the SQLite
-  // scan bounded for pathological cases (e.g. limit=50 → 200 fetched).
-  // Shared by pathGlob/type/tags: all three AND-compose through this same
-  // over-fetched window.
-  const FETCH_MULTIPLIER = 4;
-  const FETCH_MAX = 200;
-  const overFetch = Math.min(k * FETCH_MULTIPLIER, FETCH_MAX);
-
-  const matchesPath = options?.pathGlob
-    ? picomatch(options.pathGlob, { dot: true })
-    : null;
-  const raw = await vectorStore.similaritySearch(query, overFetch, filter);
-  const filtered: Document[] = [];
-  for (const doc of raw) {
-    const metadata = doc.metadata as Record<string, unknown>;
-    if (matchesPath) {
-      const filePath =
-        typeof metadata.filePath === "string" ? metadata.filePath : "";
-      if (!matchesPath(filePath)) continue;
+    const matchesPath = options?.pathGlob
+      ? picomatch(options.pathGlob, { dot: true })
+      : null;
+    const raw = await vectorStore.similaritySearch(query, overFetch, filter);
+    const filtered: Document[] = [];
+    for (const doc of raw) {
+      const metadata = doc.metadata as Record<string, unknown>;
+      if (matchesPath) {
+        const filePath =
+          typeof metadata.filePath === "string" ? metadata.filePath : "";
+        if (!matchesPath(filePath)) continue;
+      }
+      if (type !== undefined && !matchesTypeFilter(metadata, type)) continue;
+      if (tags && !matchesTagsFilter(metadata, tags)) continue;
+      filtered.push(doc);
+      if (filtered.length >= k) break;
     }
-    if (type !== undefined && !matchesTypeFilter(metadata, type)) continue;
-    if (tags && !matchesTagsFilter(metadata, tags)) continue;
-    filtered.push(doc);
-    if (filtered.length >= k) break;
+    organic = filtered;
   }
-  return filtered;
+
+  if (!expandSources) return organic;
+  return expandSourcesInResults(organic, vectorStore, k);
 }

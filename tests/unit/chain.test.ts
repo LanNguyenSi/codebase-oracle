@@ -7,6 +7,7 @@ import {
   createLlm,
   extractSourcePointers,
   extractSources,
+  formatChunkExpandedTag,
   formatChunkLocation,
   formatChunkSourcesLine,
   formatChunkTypeTag,
@@ -939,6 +940,264 @@ describe("searchCodebase type/tags filters (real store)", () => {
   });
 });
 
+describe("searchCodebase sources-expansion (stub store)", () => {
+  // Stub store: similaritySearch returns the organic docs in order (repo-
+  // scoped + k-sliced like the real wrapper); getFirstChunkByFile resolves a
+  // (repo, filePath) key against a fixture map, returning null for misses.
+  function stubStore(
+    organic: Document[],
+    files: Record<
+      string,
+      { pageContent: string; metadata: Record<string, unknown> }
+    > = {},
+  ) {
+    return {
+      similaritySearch: async (
+        _query: string,
+        k: number,
+        filter?: Record<string, string>,
+      ): Promise<Document[]> => {
+        const scoped = filter?.repo
+          ? organic.filter(
+              (d) => (d.metadata as { repo?: string }).repo === filter.repo,
+            )
+          : organic;
+        return scoped.slice(0, k);
+      },
+      getFirstChunkByFile: (repo: string, filePath: string) =>
+        files[`${repo}::${filePath}`] ?? null,
+    };
+  }
+
+  function organicDoc(
+    filePath: string,
+    metadata: Record<string, unknown> = {},
+    repo = "demo",
+  ): Document {
+    return new Document({
+      pageContent: `// ${filePath}`,
+      metadata: { filePath, repo, ...metadata },
+    });
+  }
+
+  function fileChunk(
+    filePath: string,
+    repo = "demo",
+    pageContent = `chunk of ${filePath}`,
+  ) {
+    return { pageContent, metadata: { filePath, repo } };
+  }
+
+  function filePaths(docs: Document[]): string[] {
+    return docs.map((d) => (d.metadata as { filePath: string }).filePath);
+  }
+
+  it("injects a representative chunk per fmSources entry right after the parent, in order, with the expandedFrom marker", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md", { fmSources: ["src/x.ts", "src/y.ts"] }),
+        organicDoc("docs/b.md"),
+      ],
+      {
+        "demo::src/x.ts": fileChunk("src/x.ts"),
+        "demo::src/y.ts": fileChunk("src/y.ts"),
+      },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual([
+      "docs/a.md",
+      "src/x.ts",
+      "src/y.ts",
+      "docs/b.md",
+    ]);
+    // Injected rows carry the transient marker naming the parent; organic
+    // rows are never marked.
+    expect((out[1].metadata as { expandedFrom?: string }).expandedFrom).toBe(
+      "docs/a.md",
+    );
+    expect((out[2].metadata as { expandedFrom?: string }).expandedFrom).toBe(
+      "docs/a.md",
+    );
+    expect(
+      (out[0].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+    expect(
+      (out[3].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+    // The injected Document carries the resolved file's page content, not the
+    // parent's.
+    expect(out[1].pageContent).toBe("chunk of src/x.ts");
+  });
+
+  it("injects at most 3 chunks per parent even when fmSources lists more", async () => {
+    const store = stubStore(
+      [organicDoc("docs/a.md", { fmSources: ["s1", "s2", "s3", "s4", "s5"] })],
+      {
+        "demo::s1": fileChunk("s1"),
+        "demo::s2": fileChunk("s2"),
+        "demo::s3": fileChunk("s3"),
+        "demo::s4": fileChunk("s4"),
+        "demo::s5": fileChunk("s5"),
+      },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["docs/a.md", "s1", "s2", "s3"]);
+  });
+
+  it("does not inject a source that is already an organic hit; the organic row keeps its position", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md", { fmSources: ["src/x.ts"] }),
+        organicDoc("src/x.ts"), // same file already an organic hit at rank 2
+      ],
+      { "demo::src/x.ts": fileChunk("src/x.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["docs/a.md", "src/x.ts"]);
+    // The surviving src/x.ts is the ORGANIC row (no marker), not an injection.
+    expect(
+      (out[1].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+  });
+
+  it("injects a shared source only once even when two parents point to it", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md", { fmSources: ["src/shared.ts"] }),
+        organicDoc("docs/b.md", { fmSources: ["src/shared.ts"] }),
+      ],
+      { "demo::src/shared.ts": fileChunk("src/shared.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual([
+      "docs/a.md",
+      "src/shared.ts",
+      "docs/b.md",
+    ]);
+  });
+
+  it("silently skips fmSources entries that do not resolve to an indexed file", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md", {
+          fmSources: ["src/", "does/not/exist.ts", "src/real.ts"],
+        }),
+      ],
+      { "demo::src/real.ts": fileChunk("src/real.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["docs/a.md", "src/real.ts"]);
+  });
+
+  it("resolves sources against the parent row's repo only", async () => {
+    const store = stubStore(
+      [organicDoc("docs/a.md", { fmSources: ["src/x.ts"] }, "alpha")],
+      // The file exists, but under a DIFFERENT repo — must not resolve.
+      { "beta::src/x.ts": fileChunk("src/x.ts", "beta") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["docs/a.md"]);
+  });
+
+  it("caps the final list at limit; an injection displaces the tail organic row", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md", { fmSources: ["src/x.ts"] }),
+        organicDoc("docs/b.md"),
+        organicDoc("docs/c.md"),
+      ],
+      { "demo::src/x.ts": fileChunk("src/x.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 3 });
+    expect(out).toHaveLength(3);
+    // [a, x(injected), b] — c is displaced off the tail by the injection.
+    expect(filePaths(out)).toEqual(["docs/a.md", "src/x.ts", "docs/b.md"]);
+  });
+
+  it("drops injections that fall past the limit boundary", async () => {
+    const store = stubStore(
+      [
+        organicDoc("docs/a.md"),
+        organicDoc("docs/b.md"),
+        organicDoc("docs/c.md", { fmSources: ["src/z.ts"] }),
+      ],
+      { "demo::src/z.ts": fileChunk("src/z.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 3 });
+    // Budget filled by a,b,c before c's injection can be placed → z doesn't fit.
+    expect(filePaths(out)).toEqual(["docs/a.md", "docs/b.md", "docs/c.md"]);
+  });
+
+  it("expandSources:false returns the raw retrieval result with no injections", async () => {
+    const store = stubStore(
+      [organicDoc("docs/a.md", { fmSources: ["src/x.ts"] })],
+      { "demo::src/x.ts": fileChunk("src/x.ts") },
+    );
+    const out = await searchCodebase("q", store as never, {
+      limit: 10,
+      expandSources: false,
+    });
+    expect(filePaths(out)).toEqual(["docs/a.md"]);
+  });
+
+  it("negative control: a corpus without fmSources is byte-identical to expandSources:false and pre-change output", async () => {
+    const makeCorpus = () =>
+      stubStore([
+        organicDoc("docs/a.md", { lineStart: 1, lineEnd: 1 }),
+        organicDoc("docs/b.md", { fmType: "module" }),
+      ]);
+    const withExpand = await searchCodebase("q", makeCorpus() as never, {
+      limit: 10,
+    });
+    const withoutExpand = await searchCodebase("q", makeCorpus() as never, {
+      limit: 10,
+      expandSources: false,
+    });
+    // Same rows, same order, no injected marker anywhere.
+    expect(withExpand.map((d) => d.metadata)).toEqual(
+      withoutExpand.map((d) => d.metadata),
+    );
+    for (const d of withExpand) {
+      expect(
+        (d.metadata as { expandedFrom?: string }).expandedFrom,
+      ).toBeUndefined();
+    }
+    // Rendered output is byte-identical, and matches the exact pre-change form.
+    const rendered = formatSearchResults(withExpand);
+    expect(rendered).toBe(formatSearchResults(withoutExpand));
+    expect(rendered).toBe(
+      "[1] docs/a.md:1 (demo):\n// docs/a.md\n\n---\n\n" +
+        "[2] docs/b.md (demo) [module]:\n// docs/b.md",
+    );
+  });
+});
+
+describe("formatChunkExpandedTag", () => {
+  it("renders the basename of the parent path when expandedFrom is set", () => {
+    expect(formatChunkExpandedTag({ expandedFrom: "docs/okf/chain.md" })).toBe(
+      "[expanded from chain.md]",
+    );
+  });
+
+  it("uses the whole value when it has no path separator", () => {
+    expect(formatChunkExpandedTag({ expandedFrom: "chain.md" })).toBe(
+      "[expanded from chain.md]",
+    );
+  });
+
+  it("returns '' when expandedFrom is absent, empty, or the wrong type", () => {
+    expect(formatChunkExpandedTag({})).toBe("");
+    expect(formatChunkExpandedTag({ expandedFrom: "" })).toBe("");
+    expect(formatChunkExpandedTag({ expandedFrom: 42 })).toBe("");
+  });
+
+  it("collapses control characters so the header stays single-line", () => {
+    expect(formatChunkExpandedTag({ expandedFrom: "a/b\ninjected" })).toBe(
+      "[expanded from b injected]",
+    );
+  });
+});
+
 describe("formatChunkTypeTag", () => {
   it("renders a bracketed tag when fmType is a non-empty string", () => {
     expect(formatChunkTypeTag({ fmType: "module" })).toBe("[module]");
@@ -1033,6 +1292,35 @@ describe("formatSearchResults", () => {
     ];
     const out = formatSearchResults(docs);
     expect(out).toBe("[1] a.md (r) [module]:\nsources: src1\ncontent");
+  });
+
+  it("adds an [expanded from <basename>] marker for an injected row, alongside any [type] tag", () => {
+    const docs = [
+      new Document({
+        pageContent: "content",
+        metadata: {
+          filePath: "src/x.ts",
+          repo: "r",
+          fmType: "module",
+          expandedFrom: "docs/okf/a.md",
+        },
+      }),
+    ];
+    expect(formatSearchResults(docs)).toBe(
+      "[1] src/x.ts (r) [module] [expanded from a.md]:\ncontent",
+    );
+  });
+
+  it("renders the expanded marker without a [type] tag when fmType is absent", () => {
+    const docs = [
+      new Document({
+        pageContent: "content",
+        metadata: { filePath: "src/x.ts", repo: "r", expandedFrom: "a/b.md" },
+      }),
+    ];
+    expect(formatSearchResults(docs)).toBe(
+      "[1] src/x.ts (r) [expanded from b.md]:\ncontent",
+    );
   });
 
   it("joins multiple chunks with the existing '---' separator", () => {

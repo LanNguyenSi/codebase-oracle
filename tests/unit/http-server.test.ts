@@ -239,6 +239,7 @@ describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
       similaritySearch,
       listRepos: () => [],
       getFileMetadata: () => null,
+      getFirstChunkByFile: () => null,
       close: () => {},
     };
   }

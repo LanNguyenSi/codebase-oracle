@@ -21,6 +21,10 @@ export interface VectorStoreWrapper {
   ): Promise<Document[]>;
   listRepos(): IndexedRepo[];
   getFileMetadata(repo: string, filePath: string): Record<string, unknown> | null;
+  getFirstChunkByFile(
+    repo: string,
+    filePath: string,
+  ): { pageContent: string; metadata: Record<string, unknown> } | null;
   close(): void;
 }
 
@@ -136,6 +140,10 @@ export async function createVectorStore(
 
     getFileMetadata(repo, filePath) {
       return store.getFileMetadata(repo, filePath);
+    },
+
+    getFirstChunkByFile(repo, filePath) {
+      return store.getFirstChunkByFile(repo, filePath);
     },
 
     close() {

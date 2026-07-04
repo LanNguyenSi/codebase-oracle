@@ -147,14 +147,21 @@ export function buildServer(): McpServer {
         .describe(
           "Optional: filter to chunks whose fmTags OKF frontmatter metadata contains ALL of the listed tags. AND-composes with `repo`/`type`. Chunks without fmTags (no frontmatter, or frontmatter missing a `tags` field) are excluded when this is set. Note: the result count may fall short of `limit` for highly selective filters because the underlying over-fetch is capped to keep the SQLite scan bounded; raise `limit` if you need more matches.",
         ),
+      expand_sources: z
+        .boolean()
+        .optional()
+        .describe(
+          "inject files pointed at by a retrieved doc's OKF sources: frontmatter, marked [expanded from ...] (default true)",
+        ),
     },
-    async ({ query, repo, limit, type, tags }) => {
+    async ({ query, repo, limit, type, tags, expand_sources }) => {
       const store = await getStore();
       const docs = await searchCodebase(query, store, {
         repo,
         limit,
         type,
         tags,
+        expandSources: expand_sources,
       });
       return {
         content: [{ type: "text" as const, text: formatSearchResults(docs) }],
