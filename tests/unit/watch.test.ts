@@ -163,6 +163,7 @@ describe("runWatchMode integration", () => {
       embeddingModel: "fake-model",
       llmModel: "fake-llm",
       vectorStoreType: "directory",
+      maxFileSizeBytes: 500_000,
     };
   }
 

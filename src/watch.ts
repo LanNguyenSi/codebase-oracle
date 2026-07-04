@@ -7,6 +7,7 @@ import { assertScanRoot, type Config } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
 import {
   DEFAULT_INCLUDE_EXTENSIONS,
+  DEFAULT_MAX_FILE_SIZE_BYTES,
   discoverRepos,
   type ScannedFile,
 } from "./ingest/scanner.js";
@@ -121,14 +122,20 @@ async function loadScannedFile(
   absolutePath: string,
   relativePath: string,
   repo: string,
-  maxFileSizeBytes: number,
+  maxFileSizeBytes: number | undefined,
 ): Promise<LoadResult> {
+  // Mirrors walkRepo's fallback (scanner.ts). Config.maxFileSizeBytes is
+  // required after loadConfig, but tests hand-build Config literals and are
+  // not typechecked (tsconfig only includes src/) — an undefined limit here
+  // would make `st.size > undefined` always false and silently re-open the
+  // very drop this feature closes.
+  const limit = maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
   // Stat-first in true bytes, same reasoning as scanner.ts: decide before
   // reading the file into memory, and measure real bytes rather than
   // UTF-16 string length.
   const st = await stat(absolutePath);
-  if (st.size > maxFileSizeBytes) {
-    return { kind: "too-large", sizeBytes: st.size, limitBytes: maxFileSizeBytes };
+  if (st.size > limit) {
+    return { kind: "too-large", sizeBytes: st.size, limitBytes: limit };
   }
   const content = await readFile(absolutePath, "utf-8");
   if (!content.trim()) return { kind: "empty" };

@@ -214,4 +214,42 @@ describe("oracle index CLI integration", () => {
       expect(store.filesByRepo.get("oversized")).toEqual(["oversized/small.ts"]);
     },
   );
+
+  it(
+    "prunes a previously-indexed file that a lowered ORACLE_MAX_FILE_SIZE now skips",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      await makeRepo(scanRoot, "shrinking", {
+        "big.ts": "x".repeat(2000) + "\n",
+        "small.ts": "export const small = 1;\n",
+      });
+
+      // First run under the default limit: both files enter the store.
+      const first = runIndex(scanRoot, dataDir);
+      expect(first.status, `first index failed: ${first.stderr}`).toBe(0);
+      expect(readStore(dataDir).filesByRepo.get("shrinking")).toEqual([
+        "shrinking/big.ts",
+        "shrinking/small.ts",
+      ]);
+
+      // Second run with a lowered limit: big.ts is now over the ceiling. It
+      // must be reported AND its stale chunks pruned by the deleted-file
+      // sweep — a skipped file is not in seenKeys, so lowering the limit
+      // must not leave its old vectors lingering in the store.
+      const second = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(second.status, `second index failed: ${second.stderr}`).toBe(0);
+      expect(second.stderr).toMatch(
+        /WARNING: skipped shrinking\/big\.ts — \d+ bytes > ORACLE_MAX_FILE_SIZE=500/,
+      );
+      expect(second.stdout).toMatch(/Pruned 1 files? that vanished from disk\./);
+      expect(readStore(dataDir).filesByRepo.get("shrinking")).toEqual([
+        "shrinking/small.ts",
+      ]);
+    },
+  );
 });
