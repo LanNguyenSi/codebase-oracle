@@ -404,4 +404,54 @@ describe("runWatchMode integration", () => {
       warnSpy.mockRestore();
     }
   }, 15000);
+
+  it("skips an oversized changed file with a loud warning; a normal sibling still embeds", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    // Custom low ceiling so a small fixture file can exercise the "too-large"
+    // path without writing hundreds of KB to disk.
+    const config: Config = { ...testConfig(scanRoot, dataDir), maxFileSizeBytes: 500 };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(" "));
+    });
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      // Embed the normal file first so the store's schema (embedding
+      // dimension) is already initialized before the oversized file is
+      // skipped — deleteByFile on a brand-new, never-initialized store is a
+      // separate pre-existing edge case outside this task's scope.
+      await writeFile(join(repoDir, "small.ts"), "export const small = 1;", "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+
+      await writeFile(join(repoDir, "big.ts"), "x".repeat(1000), "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+
+      // Loud warning naming the oversized file, never a silent drop.
+      expect(
+        warns.some((w) => w.includes("WARNING: skipped") && w.includes("big.ts")),
+      ).toBe(true);
+
+      // The oversized file never made it into the store / never got
+      // embedded; the small file from the first flush is still the only
+      // indexed file.
+      const repos = await listIndexedRepos(config);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
 });

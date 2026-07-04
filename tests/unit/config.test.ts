@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { assertScanRoot, loadConfig } from "../../src/config.js";
 
 describe("loadConfig", () => {
@@ -65,6 +65,41 @@ describe("loadConfig", () => {
     expect(typeof config.anthropicApiKey === "string" || config.anthropicApiKey === undefined).toBe(true);
     expect(typeof config.ollamaApiKey === "string" || config.ollamaApiKey === undefined).toBe(true);
   });
+});
+
+describe("loadConfig maxFileSizeBytes / ORACLE_MAX_FILE_SIZE", () => {
+  const prevEnv = process.env.ORACLE_MAX_FILE_SIZE;
+
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.ORACLE_MAX_FILE_SIZE;
+    else process.env.ORACLE_MAX_FILE_SIZE = prevEnv;
+  });
+
+  it("defaults to 500_000 when unset", () => {
+    delete process.env.ORACLE_MAX_FILE_SIZE;
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxFileSizeBytes).toBe(500_000);
+  });
+
+  it("parses a set env var as an integer", () => {
+    process.env.ORACLE_MAX_FILE_SIZE = "1000000";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxFileSizeBytes).toBe(1_000_000);
+  });
+
+  it("treats an empty string as unset (an `ORACLE_MAX_FILE_SIZE=` .env line must not crash)", () => {
+    process.env.ORACLE_MAX_FILE_SIZE = "";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxFileSizeBytes).toBe(500_000);
+  });
+
+  it.each(["abc", "0", "-5"])(
+    "throws for an invalid value (%s) instead of silently falling back",
+    (raw) => {
+      process.env.ORACLE_MAX_FILE_SIZE = raw;
+      expect(() => loadConfig({ scanRoot: "/tmp/repos" })).toThrow();
+    },
+  );
 });
 
 describe("assertScanRoot", () => {

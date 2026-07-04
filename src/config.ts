@@ -52,6 +52,15 @@ const configSchema = z.object({
   // never replaces the defaults, so forgetting `node_modules` here can't
   // explode the index.
   skipDirs: z.array(z.string().min(1)).optional(),
+
+  // Ingest — per-file size ceiling in bytes. Files larger than this are
+  // skipped (loudly reported, never silently dropped — see scanner.ts).
+  // An unset env var falls back to the default; an env var present but
+  // unparseable/non-positive fails the zod parse instead of silently
+  // falling back, since a typo'd limit that resolves to some other
+  // default would look like a working config while quietly changing
+  // ingest behavior.
+  maxFileSizeBytes: z.number().int().positive().default(500_000),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -103,6 +112,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     llmApiKey: process.env.ORACLE_LLM_API_KEY,
     includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),
     skipDirs: parseCsvList(process.env.ORACLE_SKIP_DIRS),
+    maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE),
     ...overrides,
   });
 }
@@ -122,4 +132,17 @@ function parseCsvList(raw: string | undefined): string[] | undefined {
   if (!raw) return undefined;
   const parts = raw.split(",").map((s) => s.trim()).filter(Boolean);
   return parts.length > 0 ? parts : undefined;
+}
+
+// Unset or empty -> undefined so the schema default (500_000) applies; the
+// empty string counts as unset to match parseExtensionsList/parseCsvList
+// (an `ORACLE_MAX_FILE_SIZE=` line in a .env template must not crash the
+// CLI). A non-empty but unparseable/non-positive value is deliberately NOT
+// coerced to a fallback here: it is handed to configSchema.parse below,
+// where `.int().positive()` rejects it (NaN, 0, negative all fail) and
+// loadConfig throws. A typo'd ORACLE_MAX_FILE_SIZE must fail loudly, not
+// silently resolve to some other limit.
+function parseMaxFileSizeBytes(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  return Number(raw);
 }

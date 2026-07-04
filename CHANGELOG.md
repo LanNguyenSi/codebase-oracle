@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-04
+
+### Added
+
+- **`ORACLE_MAX_FILE_SIZE` config option** (bytes, default `500000`) makes the per-file size ceiling explicit and overridable, instead of a hardcoded constant.
+- **Loud per-file skip reporting.** `npm run index` now reports every file it skips for size or fails to read, one `WARNING:` line per file naming the path and the reason, plus a one-line total, on stderr. `npm run watch` reports the same way through its console logging when a changed file trips the limit.
+- **`IndexSummary` gains `filesSkipped` and `skippedFiles`**, and `formatIndexSummary` (surfaced by the MCP `oracle_reindex` tool) now includes the skip count in its files segment.
+
+### Changed
+
+- **The per-file size limit moved from an implicit `content.length > 200_000` (UTF-16 chars, read into memory first) to a `stat`-first check in true bytes against the configurable `ORACLE_MAX_FILE_SIZE` (default 500 KB)**, in both the scanner and `watch.ts`, which previously duplicated the old limit as its own `MAX_FILE_BYTES` constant and now reads it from config.
+
+### Fixed
+
+- **Files over the size limit no longer disappear from the index without a trace.** `agent-tasks/backend/src/routes/tasks.ts` (207,716 bytes) was silently dropped by the old `content.length > 200_000` check; it and any file like it are now reported, not swallowed.
+- **A per-file read error (permission denied, binary decode failure) no longer vanishes into a bare `catch {}`.** It is now reported the same way as a size skip.
+
 ## [0.9.0] - 2026-07-04
 
 ### Added

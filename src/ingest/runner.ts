@@ -7,7 +7,13 @@
 
 import { Document } from "@langchain/core/documents";
 import { assertScanRoot, type Config } from "../config.js";
-import { discoverRepos, walkRepo, type WalkRepoOptions } from "./scanner.js";
+import {
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  discoverRepos,
+  walkRepo,
+  type SkippedFile,
+  type WalkRepoOptions,
+} from "./scanner.js";
 import { mergeSkipDirs } from "./skip-dirs.js";
 import { splitFile } from "./splitter.js";
 import { createEmbeddings } from "../store/embeddings.js";
@@ -20,6 +26,15 @@ export interface IndexSummary {
   filesChanged: number;
   filesNew: number;
   filesPruned: number;
+  filesSkipped: number;
+  skippedFiles: Array<{
+    repo: string;
+    relativePath: string;
+    reason: string;
+    sizeBytes?: number;
+    limitBytes?: number;
+    message?: string;
+  }>;
   chunksTotal: number;
   chunksReused: number;
   chunksEmbedded: number;
@@ -30,6 +45,12 @@ export interface RunIndexOptions {
   // Per-line progress sink. Defaults to a no-op so the MCP server stays
   // quiet; the CLI passes (msg) => process.stdout.write(msg).
   logger?: (line: string) => void;
+  // Per-line warning sink, same no-op-by-default pattern as `logger`. Kept
+  // separate from `logger` so a caller (e.g. the CLI) can route it to
+  // stderr while normal progress stays on stdout, and so zero-skip runs and
+  // MCP callers stay quiet by default (nothing is ever written here unless
+  // there is an actual skip to report).
+  warn?: (line: string) => void;
 }
 
 function fileKey(repo: string, filePath: string): string {
@@ -42,6 +63,7 @@ export async function runIndex(
 ): Promise<IndexSummary> {
   assertScanRoot(config);
   const log = options.logger ?? (() => {});
+  const warn = options.warn ?? (() => {});
   const startedAt = Date.now();
 
   log(`Scanning repos in ${config.scanRoot}...\n`);
@@ -63,8 +85,22 @@ export async function runIndex(
       );
     }
 
+    const skippedFiles: IndexSummary["skippedFiles"] = [];
     const skipDirs = mergeSkipDirs(config.skipDirs);
-    const walkOptions: WalkRepoOptions = { skipDirs };
+    const walkOptions: WalkRepoOptions = {
+      skipDirs,
+      maxFileSizeBytes: config.maxFileSizeBytes,
+      onSkip: (skip: SkippedFile) => {
+        skippedFiles.push({
+          repo: skip.repo,
+          relativePath: skip.relativePath,
+          reason: skip.reason,
+          sizeBytes: skip.sizeBytes,
+          limitBytes: skip.limitBytes,
+          message: skip.message,
+        });
+      },
+    };
     if (config.includeExtensions) {
       walkOptions.extensions = new Set(config.includeExtensions);
       log(
@@ -73,6 +109,11 @@ export async function runIndex(
     }
     if (config.skipDirs && config.skipDirs.length > 0) {
       log(`Adding ORACLE_SKIP_DIRS to defaults: ${config.skipDirs.join(", ")}\n`);
+    }
+    if (config.maxFileSizeBytes !== DEFAULT_MAX_FILE_SIZE_BYTES) {
+      log(
+        `Using ORACLE_MAX_FILE_SIZE override: ${config.maxFileSizeBytes} bytes\n`,
+      );
     }
 
     let filesScanned = 0;
@@ -114,6 +155,26 @@ export async function runIndex(
       if (repoFiles > 0) liveRepos.add(repo.name);
 
       log(` ${repoFiles} files, ${repoChunks} chunks (${repoReusedFiles} files reused)\n`);
+    }
+
+    // Loud, opt-in reporting of per-file skips (too-large / read-error).
+    // Both reasons mean a file that would otherwise have entered the index
+    // did not — the exact silent-drop failure mode this feature closes. Kept
+    // on a separate `warn` sink (defaults to a no-op) so the MCP path and
+    // zero-skip CLI runs stay exactly as quiet as before.
+    if (skippedFiles.length > 0) {
+      for (const skip of skippedFiles) {
+        if (skip.reason === "too-large") {
+          warn(
+            `WARNING: skipped ${skip.relativePath} — ${skip.sizeBytes} bytes > ORACLE_MAX_FILE_SIZE=${skip.limitBytes}\n`,
+          );
+        } else {
+          warn(`WARNING: skipped ${skip.relativePath} — read error: ${skip.message}\n`);
+        }
+      }
+      warn(
+        `WARNING: ${skippedFiles.length} file(s) skipped during scan; raise ORACLE_MAX_FILE_SIZE to index larger files.\n`,
+      );
     }
 
     // Files that existed in the store but were not seen this scan → deleted
@@ -160,6 +221,8 @@ export async function runIndex(
         filesChanged,
         filesNew,
         filesPruned,
+        filesSkipped: skippedFiles.length,
+        skippedFiles,
         chunksTotal,
         chunksReused: chunksTotal,
         chunksEmbedded: 0,
@@ -256,6 +319,8 @@ export async function runIndex(
       filesChanged,
       filesNew,
       filesPruned,
+      filesSkipped: skippedFiles.length,
+      skippedFiles,
       chunksTotal: finalTotal,
       chunksReused,
       chunksEmbedded: docsToEmbed.length,
@@ -272,7 +337,8 @@ export function formatIndexSummary(summary: IndexSummary): string {
     `Reindex complete in ${seconds}s.`,
     `Repos: ${summary.reposScanned}, files: ${summary.filesScanned} scanned (`
       + `${summary.filesReused} reused, ${summary.filesChanged} changed, `
-      + `${summary.filesNew} new, ${summary.filesPruned} pruned).`,
+      + `${summary.filesNew} new, ${summary.filesPruned} pruned, `
+      + `${summary.filesSkipped} skipped).`,
     `Chunks: ${summary.chunksTotal} total (`
       + `${summary.chunksReused} reused, ${summary.chunksEmbedded} embedded).`,
   ].join("\n");

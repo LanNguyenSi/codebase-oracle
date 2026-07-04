@@ -69,6 +69,8 @@ const fakeSummary: IndexSummary = {
   filesChanged: 1,
   filesNew: 0,
   filesPruned: 0,
+  filesSkipped: 0,
+  skippedFiles: [],
   chunksTotal: 4,
   chunksReused: 2,
   chunksEmbedded: 2,

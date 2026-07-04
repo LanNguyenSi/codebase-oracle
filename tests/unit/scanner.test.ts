@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { discoverRepos, walkRepo } from "../../src/ingest/scanner.js";
+import {
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  discoverRepos,
+  walkRepo,
+  type SkippedFile,
+} from "../../src/ingest/scanner.js";
 import { join } from "node:path";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 describe("discoverRepos", () => {
@@ -307,6 +312,117 @@ describe("walkRepo", () => {
       expect(typeof files[0].contentHash).toBe("string");
       expect(files[0].contentHash.length).toBe(64);
     } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+});
+
+describe("walkRepo size limit and skip reporting", () => {
+  it("has a default limit of 500_000 bytes", () => {
+    expect(DEFAULT_MAX_FILE_SIZE_BYTES).toBe(500_000);
+  });
+
+  it("does not yield a file over the (custom) limit, and reports it via onSkip", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "size-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      const bigContent = "x".repeat(1000);
+      const smallContent = "const ok = 1;";
+      await writeFile(join(repo, "big.ts"), bigContent);
+      await writeFile(join(repo, "small.ts"), smallContent);
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "size-repo", root, {
+        maxFileSizeBytes: 500,
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      // Negative control: the file under the limit IS yielded.
+      expect(files).toEqual(["size-repo/small.ts"]);
+
+      expect(skips).toHaveLength(1);
+      expect(skips[0]).toMatchObject({
+        repo: "size-repo",
+        relativePath: "size-repo/big.ts",
+        reason: "too-large",
+        sizeBytes: 1000,
+        limitBytes: 500,
+      });
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("respects the default limit (500_000 bytes) when no override is given", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "default-size-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      // One byte over the default ceiling, one comfortably under it.
+      await writeFile(join(repo, "over.ts"), "x".repeat(DEFAULT_MAX_FILE_SIZE_BYTES + 1));
+      await writeFile(join(repo, "under.ts"), "const ok = 1;");
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "default-size-repo", root, {
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["default-size-repo/under.ts"]);
+      expect(skips).toHaveLength(1);
+      expect(skips[0]).toMatchObject({
+        relativePath: "default-size-repo/over.ts",
+        reason: "too-large",
+        sizeBytes: DEFAULT_MAX_FILE_SIZE_BYTES + 1,
+        limitBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+      });
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  }, 15_000);
+
+  it("reports a read error via onSkip and keeps walking the sibling file", async () => {
+    // Running as root bypasses file permission bits entirely, which would
+    // make the chmod(0o000) below a no-op and this test a false pass.
+    if (process.getuid && process.getuid() === 0) {
+      return;
+    }
+
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "unreadable-repo");
+    const unreadablePath = join(repo, "locked.ts");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(unreadablePath, "export const locked = 1;");
+      await writeFile(join(repo, "sibling.ts"), "export const sibling = 1;");
+      await chmod(unreadablePath, 0o000);
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "unreadable-repo", root, {
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      // The walk continues past the unreadable file and still yields the
+      // sibling — one bad file must not kill the whole scan.
+      expect(files).toEqual(["unreadable-repo/sibling.ts"]);
+
+      expect(skips).toHaveLength(1);
+      expect(skips[0].relativePath).toBe("unreadable-repo/locked.ts");
+      expect(skips[0].reason).toBe("read-error");
+      expect(typeof skips[0].message).toBe("string");
+    } finally {
+      // Restore permissions before rm, otherwise the recursive delete of
+      // the 0o000 file can itself fail.
+      await chmod(unreadablePath, 0o644).catch(() => {});
       await rm(root, { recursive: true });
     }
   });

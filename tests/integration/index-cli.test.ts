@@ -72,7 +72,11 @@ function readStore(dataDir: string): {
   return { repos, meta, filesByRepo };
 }
 
-function runIndex(scanRoot: string, dataDir: string): { stdout: string; stderr: string; status: number | null } {
+function runIndex(
+  scanRoot: string,
+  dataDir: string,
+  extraEnv: Record<string, string> = {},
+): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync("npx", ["tsx", indexEntry, "index", "--path", scanRoot], {
     encoding: "utf8",
     cwd: repoRoot,
@@ -82,6 +86,7 @@ function runIndex(scanRoot: string, dataDir: string): { stdout: string; stderr: 
       ORACLE_EMBEDDING_PROVIDER: "stub",
       ORACLE_EMBEDDING_MODEL: "stub",
       ORACLE_SCAN_ROOT: scanRoot,
+      ...extraEnv,
     },
   });
   return { stdout: result.stdout ?? "", stderr: result.stderr ?? "", status: result.status };
@@ -174,4 +179,39 @@ describe("oracle index CLI integration", () => {
     const afterSweep = readStore(dataDir);
     expect(afterSweep.meta.map((m) => m.repo)).not.toContain("legacy-orphan");
   });
+
+  it(
+    "reports an oversized file loudly on stderr, keeps it out of the store, and still indexes its sibling",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      // 2000 bytes comfortably clears the ORACLE_MAX_FILE_SIZE=500 ceiling
+      // set for this run below (real repro was tasks.ts at 207,716 bytes
+      // vs. the old hardcoded 200_000; a smaller number keeps the fixture
+      // cheap while exercising the exact same code path).
+      const oversized = "x".repeat(2000) + "\n";
+      await makeRepo(scanRoot, "oversized", {
+        "big.ts": oversized,
+        "small.ts": "export const small = 1;\n",
+      });
+
+      const result = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(result.status, `index failed: ${result.stderr}`).toBe(0);
+
+      // Loud per-file skip line naming the path, size, and configured limit.
+      expect(result.stderr).toMatch(
+        /WARNING: skipped oversized\/big\.ts — \d+ bytes > ORACLE_MAX_FILE_SIZE=500/,
+      );
+      // Run summary line (the acceptance criterion: never a silent drop).
+      expect(result.stderr).toMatch(/WARNING: 1 file\(s\) skipped during scan/);
+
+      const store = readStore(dataDir);
+      // The oversized file never entered the store; its sibling did.
+      expect(store.filesByRepo.get("oversized")).toEqual(["oversized/small.ts"]);
+    },
+  );
 });

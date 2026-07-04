@@ -29,13 +29,14 @@ All configuration is via environment variables. The CLI and MCP server auto-load
 | `ORACLE_VECTOR_STORE` | No | `directory` | `directory` (persisted) or `memory` (ephemeral) |
 | `ORACLE_INCLUDE_EXTENSIONS` | No | _see scanner defaults_ | Comma-separated extension allowlist, replaces defaults entirely (e.g. `.ts,.py,.rb`). Leading dot optional. If you include `.json`, the built-in manifest filter (only `package.json`/`tsconfig.json`) is bypassed: you'll get every matching JSON file. |
 | `ORACLE_SKIP_DIRS` | No | — | Comma-separated directory names to skip on top of the built-in defaults (see below). Append-only: defaults like `node_modules` and `.git` are always skipped, so this field is for repo-specific additions (`generated`, `fixtures`, etc). |
+| `ORACLE_MAX_FILE_SIZE` | No | `500000` | Per-file size ceiling in bytes. Files over this size are skipped and reported (never silently dropped — see below). Must be a positive integer; unset (or set to the empty string) falls back to the default, but a set value that isn't a positive integer (e.g. `abc`, `0`, `-5`) fails config loading loudly instead of silently falling back. |
 | `ORACLE_HTTP_PORT` | No | `3100` | Port for the HTTP MCP server (`npm run serve`) |
 | `ORACLE_HTTP_BIND` | No | `127.0.0.1` | Bind address for the HTTP MCP server. Any non-loopback value (e.g. `0.0.0.0`, LAN IP, IPv6 `::`) requires `ORACLE_HTTP_TOKEN`: the server refuses to start otherwise |
 | `ORACLE_HTTP_TOKEN` | No | — | Bearer token for the HTTP MCP server. When set, every `POST /mcp` request must carry `Authorization: Bearer <token>` (constant-time compare). `GET /health` stays open |
 
 ## Default scan filters
 
-`npm run index` scans all git repos under `ORACLE_SCAN_ROOT`. By default it loads JS/TS sources (`.ts`, `.tsx`, `.js`, `.jsx`, `.vue`), docs (`.md`), sibling languages (`.py`, `.php`, `.go`, `.rs`, `.java`), config/infra (`.yaml`, `.yml`, `.toml`, `.sql`, `.prisma`, `.sh`), and the `package.json` / `tsconfig.json` manifests. Files over 200 KB are skipped.
+`npm run index` scans all git repos under `ORACLE_SCAN_ROOT`. By default it loads JS/TS sources (`.ts`, `.tsx`, `.js`, `.jsx`, `.vue`), docs (`.md`), sibling languages (`.py`, `.php`, `.go`, `.rs`, `.java`), config/infra (`.yaml`, `.yml`, `.toml`, `.sql`, `.prisma`, `.sh`), and the `package.json` / `tsconfig.json` manifests. Files over `ORACLE_MAX_FILE_SIZE` bytes (default 500 KB) are skipped. Empty files are silently skipped (nothing to index); files over the size limit and files that fail to read (permission errors, binary decode failures) are each reported on stderr at index time, one line per file naming the path and the reason, followed by a one-line total — never a silent drop. `npm run watch` reports the same way through its console logging when a changed file trips the limit.
 
 ### Default skip directories
 

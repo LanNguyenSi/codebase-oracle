@@ -18,7 +18,6 @@ import {
   type StoredEntry,
 } from "./store/sqlite-store.js";
 const JSON_ALLOWLIST = new Set(["package.json", "tsconfig.json"]);
-const MAX_FILE_BYTES = 200_000;
 const DEFAULT_DEBOUNCE_MS = 3000;
 
 export interface RunningWatcher {
@@ -108,21 +107,42 @@ export class PendingEventMap {
   }
 }
 
+// Result of trying to load a changed file for re-embedding. Distinguishes
+// "too-large" (an anomaly worth a loud WARNING — the file used to be
+// indexed, or should be, and now silently wouldn't be) from "empty" (nothing
+// to index, unremarkable, mirrors the silent-skip in scanner.ts) so the
+// caller can log accordingly.
+type LoadResult =
+  | { kind: "ok"; file: ScannedFile }
+  | { kind: "empty" }
+  | { kind: "too-large"; sizeBytes: number; limitBytes: number };
+
 async function loadScannedFile(
   absolutePath: string,
   relativePath: string,
   repo: string,
-): Promise<ScannedFile | null> {
+  maxFileSizeBytes: number,
+): Promise<LoadResult> {
+  // Stat-first in true bytes, same reasoning as scanner.ts: decide before
+  // reading the file into memory, and measure real bytes rather than
+  // UTF-16 string length.
+  const st = await stat(absolutePath);
+  if (st.size > maxFileSizeBytes) {
+    return { kind: "too-large", sizeBytes: st.size, limitBytes: maxFileSizeBytes };
+  }
   const content = await readFile(absolutePath, "utf-8");
-  if (!content.trim() || content.length > MAX_FILE_BYTES) return null;
+  if (!content.trim()) return { kind: "empty" };
   const ext = extname(absolutePath);
   return {
-    absolutePath,
-    relativePath,
-    repo,
-    language: ext.slice(1),
-    content,
-    contentHash: createHash("sha256").update(content).digest("hex"),
+    kind: "ok",
+    file: {
+      absolutePath,
+      relativePath,
+      repo,
+      language: ext.slice(1),
+      content,
+      contentHash: createHash("sha256").update(content).digest("hex"),
+    },
   };
 }
 
@@ -225,9 +245,14 @@ export async function runWatchMode(
 
         // Upsert: compute new vectors FIRST, only swap on success. An embed
         // failure leaves the old vectors in place instead of net-losing them.
-        let scanned: ScannedFile | null;
+        let loaded: LoadResult;
         try {
-          scanned = await loadScannedFile(ev.absolutePath, ev.relativePath, ev.repo);
+          loaded = await loadScannedFile(
+            ev.absolutePath,
+            ev.relativePath,
+            ev.repo,
+            config.maxFileSizeBytes,
+          );
         } catch (err) {
           console.warn(
             `watch: failed to read ${ev.relativePath}:`,
@@ -236,15 +261,30 @@ export async function runWatchMode(
           continue;
         }
 
-        if (!scanned) {
+        if (loaded.kind === "too-large") {
+          console.warn(
+            `WARNING: skipped ${ev.relativePath} — ${loaded.sizeBytes} bytes > `
+              + `ORACLE_MAX_FILE_SIZE=${loaded.limitBytes}`,
+          );
           const removed = store.deleteByFile(ev.repo, ev.relativePath);
           if (removed > 0) {
-            console.log(
-              `watch: ${ev.relativePath} unindexed (empty / too large) (-${removed} chunks)`,
-            );
+            console.log(`watch: ${ev.relativePath} unindexed (too large) (-${removed} chunks)`);
           }
           continue;
         }
+
+        if (loaded.kind === "empty") {
+          // Empty files have nothing worth indexing — silent skip on
+          // purpose, mirroring scanner.ts. Any stale vectors from a
+          // previously non-empty version of the file are still cleared.
+          const removed = store.deleteByFile(ev.repo, ev.relativePath);
+          if (removed > 0) {
+            console.log(`watch: ${ev.relativePath} unindexed (empty) (-${removed} chunks)`);
+          }
+          continue;
+        }
+
+        const scanned = loaded.file;
 
         let newEntries: StoredEntry[];
         try {
