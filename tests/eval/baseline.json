@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-15T17:31:02.183Z",
+  "generatedAt": "2026-07-04T06:16:02.740Z",
   "results": [
     {
       "id": "auth-jwt-signing-key",
@@ -11,6 +11,10 @@
     },
     {
       "id": "cli-subcommand-dispatch",
+      "pass": true
+    },
+    {
+      "id": "cli-create-label-sources-expansion",
       "pass": true
     },
     {

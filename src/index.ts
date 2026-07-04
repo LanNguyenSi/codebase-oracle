@@ -9,9 +9,9 @@ import {
   listIndexedRepos,
 } from "./store/vector-store.js";
 import {
+  formatChunkHeaderTags,
   formatChunkLocation,
   formatChunkSourcesLine,
-  formatChunkTypeTag,
   formatPointersSection,
   parseCommaSeparatedList,
   queryCodebase,
@@ -105,6 +105,10 @@ program
     "--tags <tags>",
     "Filter results by fmTags chunk metadata (OKF frontmatter), comma-separated; ALL listed tags must match",
   )
+  .option(
+    "--no-expand-sources",
+    "Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter)",
+  )
   .action(async (query: string, opts) => {
     const config = loadConfig();
     const embeddings = createEmbeddings(config);
@@ -117,16 +121,13 @@ program
         pathGlob: opts.pathGlob,
         type: opts.type,
         tags: parseCommaSeparatedList(opts.tags),
+        expandSources: opts.expandSources,
       });
       for (const doc of docs) {
         const { repo } = doc.metadata as { repo: string };
         const location = formatChunkLocation(doc.metadata);
-        const typeTag = formatChunkTypeTag(doc.metadata);
-        console.log(
-          typeTag
-            ? `\n--- ${location} (${repo}) ${typeTag} ---`
-            : `\n--- ${location} (${repo}) ---`,
-        );
+        const tagSuffix = formatChunkHeaderTags(doc.metadata);
+        console.log(`\n--- ${location} (${repo})${tagSuffix} ---`);
         const sourcesLine = formatChunkSourcesLine(doc.metadata);
         if (sourcesLine) console.log(sourcesLine);
         console.log(doc.pageContent.slice(0, 500));

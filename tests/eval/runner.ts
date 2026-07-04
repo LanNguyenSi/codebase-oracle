@@ -120,8 +120,13 @@ async function runEval(): Promise<{ results: QuestionResult[]; regressions: stri
 
     for (const q of questions) {
       // Pull a generous slice so a top-10 bucket can still resolve when
-      // the embedder happens to surface unrelated chunks first.
-      const docs = await searchCodebase(q.question, store, { limit: 15 });
+      // the embedder happens to surface unrelated chunks first. expandSources
+      // is explicit (not just relying on the default) so this eval measures
+      // the shipped default behavior, sources-expansion included.
+      const docs = await searchCodebase(q.question, store, {
+        limit: 15,
+        expandSources: true,
+      });
       const ranks = new Map<string, number>();
       docs.forEach((doc, i) => {
         const filePath = (doc.metadata as { filePath?: string }).filePath ?? "";

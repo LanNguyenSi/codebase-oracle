@@ -83,6 +83,7 @@ function makeFakeStore(
     similaritySearch: vi.fn(async () => []),
     listRepos: vi.fn(() => []),
     getFileMetadata: vi.fn(() => null),
+    getFirstChunkByFile: vi.fn(() => null),
     close: vi.fn(),
     ...overrides,
   };
@@ -463,6 +464,98 @@ describe("oracle_query pointers section", () => {
         (result.content as Array<{ type: string; text: string }>)[0]?.text ??
         "";
       expect(text).not.toContain("Pointers");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+// ── 7. oracle_search: sources-expansion (expand_sources param) ───────────────
+
+describe("oracle_search sources-expansion", () => {
+  const parentDoc = () =>
+    new Document({
+      pageContent: "the doc body",
+      metadata: {
+        repo: "docs",
+        filePath: "docs/okf/module.md",
+        fmSources: ["src/impl.ts"],
+      },
+    });
+
+  const implChunk = {
+    pageContent: "impl body",
+    metadata: { repo: "docs", filePath: "src/impl.ts" },
+  };
+
+  it("tool schema exposes an optional boolean `expand_sources` param", async () => {
+    vi.mocked(createVectorStore).mockResolvedValue(makeFakeStore());
+    const { client, cleanup } = await connectClient();
+    try {
+      const { tools } = await client.listTools();
+      const searchTool = tools.find((t) => t.name === "oracle_search");
+      const props = searchTool?.inputSchema.properties as Record<
+        string,
+        { type?: string }
+      >;
+      expect(props).toHaveProperty("expand_sources");
+      expect(props.expand_sources.type).toBe("boolean");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("injects the [expanded from ...] marker for a seeded fmSources corpus by default", async () => {
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({
+        similaritySearch: vi.fn(async () => [parentDoc()]),
+        getFirstChunkByFile: vi.fn((repo: string, filePath: string) =>
+          repo === "docs" && filePath === "src/impl.ts" ? implChunk : null,
+        ),
+      }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "module" },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain("docs/okf/module.md");
+      expect(text).toContain("src/impl.ts");
+      expect(text).toContain("[expanded from module.md]");
+      expect(text).toContain("impl body");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("respects expand_sources:false — no injection, no marker, resolver never consulted", async () => {
+    const getFirstChunkByFile = vi.fn(() => implChunk);
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({
+        similaritySearch: vi.fn(async () => [parentDoc()]),
+        getFirstChunkByFile,
+      }),
+    );
+
+    const { client, cleanup } = await connectClient();
+    try {
+      const result = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "module", expand_sources: false },
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain("docs/okf/module.md");
+      expect(text).not.toContain("[expanded from");
+      expect(text).not.toContain("impl body");
+      // Short-circuited before expansion — the resolver is never consulted.
+      expect(getFirstChunkByFile).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }

@@ -99,6 +99,17 @@ export interface SqliteStore {
    * the absolutePath at query time without making the caller know it.
    */
   getFileMetadata(repo: string, filePath: string): Record<string, unknown> | null;
+  /**
+   * Returns the first chunk of the given file as `{ pageContent, metadata }`,
+   * or `null` when no chunks are indexed for it. "First" is the lowest rowid;
+   * chunks are inserted in file order, so this is the top of the file. Used by
+   * sources-expansion to inject one representative chunk for a file pointed at
+   * by another chunk's `fmSources` metadata.
+   */
+  getFirstChunkByFile(
+    repo: string,
+    filePath: string,
+  ): { pageContent: string; metadata: Record<string, unknown> } | null;
   insertBatch(entries: StoredEntry[]): void;
   close(): void;
   /**
@@ -146,6 +157,7 @@ interface CompiledStatements {
   insertDoc: Database.Statement;
   selectFileSignatures: Database.Statement;
   selectFileMetadata: Database.Statement<[string, string]>;
+  selectFirstChunkByFile: Database.Statement<[string, string]>;
   selectEpoch: Database.Statement;
   upsertEpoch: Database.Statement;
   touchRepo: Database.Statement<[string, string]>;
@@ -277,6 +289,9 @@ export function openSqliteStore(config: Config): SqliteStore {
     ),
     selectFileMetadata: db.prepare(
       "SELECT metadata FROM docs WHERE repo = ? AND file_path = ? LIMIT 1",
+    ),
+    selectFirstChunkByFile: db.prepare(
+      "SELECT page_content, metadata FROM docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1",
     ),
     selectEpoch: db.prepare("SELECT value FROM meta WHERE key = 'writeEpoch'"),
     upsertEpoch: db.prepare(
@@ -602,6 +617,20 @@ export function openSqliteStore(config: Config): SqliteStore {
     return JSON.parse(row.metadata) as Record<string, unknown>;
   }
 
+  function getFirstChunkByFileInternal(
+    repo: string,
+    filePath: string,
+  ): { pageContent: string; metadata: Record<string, unknown> } | null {
+    const row = stmts.selectFirstChunkByFile.get(repo, filePath) as
+      | { page_content: string; metadata: string }
+      | undefined;
+    if (!row) return null;
+    return {
+      pageContent: row.page_content,
+      metadata: JSON.parse(row.metadata) as Record<string, unknown>,
+    };
+  }
+
   function fileSignaturesInternal(): Map<string, FileSignature> {
     const rows = stmts.selectFileSignatures.all() as Array<{
       repo: string;
@@ -652,6 +681,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     pruneOrphanRepoMeta: pruneOrphanRepoMetaInternal,
     fileSignatures: fileSignaturesInternal,
     getFileMetadata: getFileMetadataInternal,
+    getFirstChunkByFile: getFirstChunkByFileInternal,
     insertBatch: insertBatchInternal,
     bumpWriteEpoch: bumpEpochInternal,
     getWriteEpoch: getWriteEpochInternal,

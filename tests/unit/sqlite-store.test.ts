@@ -480,6 +480,33 @@ describe("CRUD + similarity", () => {
     store.close();
   });
 
+  it("getFirstChunkByFile returns the first-inserted chunk (lowest rowid) and null for misses", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({
+      embeddingProvider: "openai",
+      embeddingModel: "m",
+      dimension: 3,
+    });
+    // Chunks are inserted in file order, so the first insert is the top of
+    // the file and must be what getFirstChunkByFile returns.
+    store.insertBatch([
+      entry("r", "r/a.ts", normalized([1, 0, 0]), "first-chunk", "h"),
+      entry("r", "r/a.ts", normalized([0, 1, 0]), "second-chunk", "h"),
+      entry("r", "r/b.ts", normalized([0, 0, 1]), "b-chunk", "h"),
+    ]);
+
+    const first = store.getFirstChunkByFile("r", "r/a.ts");
+    expect(first?.pageContent).toBe("first-chunk");
+    expect(first?.metadata.filePath).toBe("r/a.ts");
+    expect(first?.metadata.repo).toBe("r");
+
+    // Miss: unknown file and wrong-repo scoping both return null.
+    expect(store.getFirstChunkByFile("r", "r/missing.ts")).toBeNull();
+    expect(store.getFirstChunkByFile("other", "r/a.ts")).toBeNull();
+    store.close();
+  });
+
   it("write epoch advances on every mutation", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));

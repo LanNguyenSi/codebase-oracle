@@ -33,6 +33,7 @@ function stubStore(docs: Document[]): VectorStoreWrapper {
     addDocuments: async () => {},
     listRepos: () => [],
     getFileMetadata: () => null,
+    getFirstChunkByFile: () => null,
     close: () => {},
   };
 }

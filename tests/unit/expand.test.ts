@@ -16,6 +16,7 @@ function fakeStore(opts: FakeStoreOptions = {}): VectorStoreWrapper {
     similaritySearch: async () => [],
     listRepos: () => [],
     getFileMetadata: (repo, path) => files[`${repo}::${path}`] ?? null,
+    getFirstChunkByFile: () => null,
     close: () => {},
   };
 }

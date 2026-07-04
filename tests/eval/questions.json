@@ -21,6 +21,13 @@
     ]
   },
   {
+    "id": "cli-create-label-sources-expansion",
+    "question": "what is the rationale for not validating or restricting the grouping value attached to a new record?",
+    "expectedFilePaths": [
+      { "path": "cli-toy/src/commands/create.ts", "atRank": "top-3" }
+    ]
+  },
+  {
     "id": "config-env-validation",
     "question": "where are environment variables validated against a schema at startup?",
     "expectedFilePaths": [
