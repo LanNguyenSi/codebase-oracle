@@ -1203,6 +1203,62 @@ describe("searchCodebase sources-expansion (stub store)", () => {
         "[2] docs/b.md (demo) [module]:\n// docs/b.md",
     );
   });
+
+  it("resolves repo-root-relative fmSources against a repo-prefixed store namespace (the real scan layout)", async () => {
+    // Real stores index repos as subdirectories of the scan root, so stored
+    // file paths carry the repo prefix ("demo/src/x.ts") while OKF sources:
+    // entries are repo-root-relative ("src/x.ts"). Caught live on the first
+    // production run: raw-only lookup silently no-opped on every real repo.
+    const store = stubStore(
+      [
+        organicDoc("demo/docs/a.md", { fmSources: ["src/x.ts"] }),
+        organicDoc("demo/docs/b.md"),
+      ],
+      {
+        "demo::demo/src/x.ts": fileChunk("demo/src/x.ts"),
+      },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual([
+      "demo/docs/a.md",
+      "demo/src/x.ts",
+      "demo/docs/b.md",
+    ]);
+    expect((out[1].metadata as { expandedFrom?: string }).expandedFrom).toBe(
+      "demo/docs/a.md",
+    );
+  });
+
+  it("falls back to the raw entry when the prefixed candidate misses (double-prefix guard)", async () => {
+    // Guards the internal first-then-second fallback order: a source entry
+    // that already carries the repo prefix produces a doubled-prefix first
+    // candidate ("demo/demo/src/y.ts") that misses, and the raw fallback
+    // resolves it. Does not reproduce the production no-op bug (the
+    // prefixed-namespace test above does).
+    const store = stubStore(
+      [organicDoc("demo/docs/a.md", { fmSources: ["demo/src/y.ts"] })],
+      {
+        "demo::demo/src/y.ts": fileChunk("demo/src/y.ts"),
+      },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["demo/docs/a.md", "demo/src/y.ts"]);
+  });
+
+  it("prefers the prefixed candidate when BOTH forms resolve to distinct store entries", async () => {
+    // Locks in the ?? short-circuit order as intentional: for a prefixed
+    // parent, the namespace-consistent (prefixed) match wins over a raw
+    // verbatim match.
+    const store = stubStore(
+      [organicDoc("demo/docs/a.md", { fmSources: ["src/z.ts"] })],
+      {
+        "demo::demo/src/z.ts": fileChunk("demo/src/z.ts"),
+        "demo::src/z.ts": fileChunk("src/z.ts"),
+      },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["demo/docs/a.md", "demo/src/z.ts"]);
+  });
 });
 
 describe("formatChunkExpandedTag", () => {

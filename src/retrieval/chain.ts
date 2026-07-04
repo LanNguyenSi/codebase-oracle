@@ -526,6 +526,30 @@ function fileKeyOf(metadata: Record<string, unknown>): string {
   return `${repo}::${filePath}`;
 }
 
+// fmSources entries are repo-root-relative by OKF convention
+// ("backend/src/app.ts"), while the store's file_path namespace depends on the
+// scan layout: when repos are subdirectories of the scan root (the common
+// case), stored paths carry the repo prefix ("agent-tasks/backend/src/app.ts").
+// Resolve against the parent doc's own namespace first — if the parent's
+// filePath is repo-prefixed, the pointed-at file will be too — then fall back
+// to the other form. Caught live: the raw-only lookup silently no-opped on
+// every real repo while fixture-shaped tests passed.
+function resolveSourceChunk(
+  vectorStore: VectorStoreWrapper,
+  repo: string,
+  parentFilePath: string,
+  src: string,
+): { pageContent: string; metadata: Record<string, unknown> } | null {
+  const prefixed = `${repo}/${src}`;
+  const parentIsPrefixed = parentFilePath.startsWith(`${repo}/`);
+  const first = parentIsPrefixed ? prefixed : src;
+  const second = parentIsPrefixed ? src : prefixed;
+  return (
+    vectorStore.getFirstChunkByFile(repo, first) ??
+    vectorStore.getFirstChunkByFile(repo, second)
+  );
+}
+
 // Sources-expansion. For each organic result row that carries fmSources, inject
 // a representative chunk (the file's first chunk) for each pointed-at file
 // immediately after its parent, in fmSources order, at most
@@ -572,7 +596,12 @@ function expandSourcesInResults(
       if (typeof src !== "string" || src.length === 0) continue;
       // A non-matching entry (directory, glob, typo, absent file) resolves to
       // null and is skipped silently and deterministically.
-      const chunk = vectorStore.getFirstChunkByFile(parentRepo, src);
+      const chunk = resolveSourceChunk(
+        vectorStore,
+        parentRepo,
+        parentFilePath,
+        src,
+      );
       if (!chunk) continue;
       const key = fileKeyOf(chunk.metadata);
       if (seen.has(key)) continue;
