@@ -103,6 +103,19 @@ export function formatChunkSourcesLine(
   return `sources: ${paths.join(", ")}`;
 }
 
+// Joins a chunk's [type] tag and [expanded from ...] marker (when present)
+// into a single space-prefixed suffix, e.g. " [module] [expanded from a.md]",
+// or "" when neither applies (byte-identical to the pre-OKF header). Shared by
+// every render site (formatSearchResults, the CLI `search` loop) so header-tag
+// composition can't drift between the MCP/HTTP and CLI surfaces.
+export function formatChunkHeaderTags(metadata: Record<string, unknown>): string {
+  const tags = [
+    formatChunkTypeTag(metadata),
+    formatChunkExpandedTag(metadata),
+  ].filter((t) => t.length > 0);
+  return tags.length > 0 ? ` ${tags.join(" ")}` : "";
+}
+
 // Shared search-result renderer for the MCP (stdio) and HTTP MCP surfaces,
 // which use an identical header/body layout. Chunks without fm metadata
 // render byte-identical to the pre-OKF format: "[i] location (repo):\n<body>".
@@ -114,14 +127,7 @@ export function formatSearchResults(docs: Document[]): string {
     .map((doc, i) => {
       const { repo } = doc.metadata as { repo: string };
       const location = formatChunkLocation(doc.metadata);
-      // A sources-expanded row may carry both the [type] tag and the
-      // [expanded from ...] marker; render them in that order. Rows with
-      // neither stay byte-identical to the pre-OKF header.
-      const tags = [
-        formatChunkTypeTag(doc.metadata),
-        formatChunkExpandedTag(doc.metadata),
-      ].filter((t) => t.length > 0);
-      const tagSuffix = tags.length > 0 ? ` ${tags.join(" ")}` : "";
+      const tagSuffix = formatChunkHeaderTags(doc.metadata);
       const header = `[${i + 1}] ${location} (${repo})${tagSuffix}:`;
       const sourcesLine = formatChunkSourcesLine(doc.metadata);
       const body = sourcesLine
@@ -505,6 +511,14 @@ function matchesTagsFilter(
 // other files. Keeps a single high-fanout doc from flooding the result list.
 const MAX_INJECTIONS_PER_PARENT = 3;
 
+// Max raw fmSources entries looked at per parent, regardless of how many
+// resolve or inject. fmSources is frontmatter text controlled by the indexed
+// repos, so an adversarial or pathological doc could list thousands of
+// entries; without this bound every one of them would trigger a synchronous
+// getFirstChunkByFile lookup even though at most MAX_INJECTIONS_PER_PARENT
+// can ever be used.
+const MAX_SOURCES_EXAMINED_PER_PARENT = 20;
+
 function fileKeyOf(metadata: Record<string, unknown>): string {
   const repo = typeof metadata.repo === "string" ? metadata.repo : "";
   const filePath =
@@ -537,6 +551,10 @@ function expandSourcesInResults(
   const expanded: Document[] = [];
   for (const parent of organic) {
     expanded.push(parent);
+    // Once the cap is already filled, every later parent's push AND every
+    // injection would be sliced away below anyway — stop touching the store.
+    if (expanded.length >= limit) break;
+
     const metadata = parent.metadata as Record<string, unknown>;
     const fmSources = metadata.fmSources;
     if (!Array.isArray(fmSources)) continue;
@@ -546,7 +564,10 @@ function expandSourcesInResults(
     if (parentRepo.length === 0) continue;
 
     let injected = 0;
+    let examined = 0;
     for (const src of fmSources) {
+      if (examined >= MAX_SOURCES_EXAMINED_PER_PARENT) break;
+      examined++;
       if (injected >= MAX_INJECTIONS_PER_PARENT) break;
       if (typeof src !== "string" || src.length === 0) continue;
       // A non-matching entry (directory, glob, typo, absent file) resolves to

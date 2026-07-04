@@ -8,6 +8,7 @@ import {
   extractSourcePointers,
   extractSources,
   formatChunkExpandedTag,
+  formatChunkHeaderTags,
   formatChunkLocation,
   formatChunkSourcesLine,
   formatChunkTypeTag,
@@ -1089,6 +1090,19 @@ describe("searchCodebase sources-expansion (stub store)", () => {
     expect(filePaths(out)).toEqual(["docs/a.md", "src/real.ts"]);
   });
 
+  it("examines at most 20 fmSources entries per parent, even if a later entry would resolve", async () => {
+    // 20 misses fill the examined budget; the 21st entry (index 20) WOULD
+    // resolve and inject if examined, but the bound must stop the inner loop
+    // before it is ever looked at.
+    const misses = Array.from({ length: 20 }, (_, i) => `miss-${i}.ts`);
+    const fmSources = [...misses, "late-real.ts"];
+    const store = stubStore([organicDoc("docs/a.md", { fmSources })], {
+      "demo::late-real.ts": fileChunk("late-real.ts"),
+    });
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["docs/a.md"]);
+  });
+
   it("resolves sources against the parent row's repo only", async () => {
     const store = stubStore(
       [organicDoc("docs/a.md", { fmSources: ["src/x.ts"] }, "alpha")],
@@ -1126,6 +1140,25 @@ describe("searchCodebase sources-expansion (stub store)", () => {
     const out = await searchCodebase("q", store as never, { limit: 3 });
     // Budget filled by a,b,c before c's injection can be placed → z doesn't fit.
     expect(filePaths(out)).toEqual(["docs/a.md", "docs/b.md", "docs/c.md"]);
+  });
+
+  it("stops touching the store entirely once the list has already reached limit (outer-loop bound)", async () => {
+    // Once pushing organic row `c` fills the limit, c's own fmSources must
+    // never even be examined — the outer loop should break immediately
+    // instead of resolving a chunk that slice(0, limit) would discard anyway.
+    const getFirstChunkByFile = vi.fn(() => fileChunk("src/x.ts"));
+    const store = {
+      similaritySearch: async (_q: string, k: number) =>
+        [
+          organicDoc("docs/a.md"),
+          organicDoc("docs/b.md"),
+          organicDoc("docs/c.md", { fmSources: ["src/x.ts"] }),
+        ].slice(0, k),
+      getFirstChunkByFile,
+    };
+    const out = await searchCodebase("q", store as never, { limit: 3 });
+    expect(filePaths(out)).toEqual(["docs/a.md", "docs/b.md", "docs/c.md"]);
+    expect(getFirstChunkByFile).not.toHaveBeenCalled();
   });
 
   it("expandSources:false returns the raw retrieval result with no injections", async () => {
@@ -1195,6 +1228,28 @@ describe("formatChunkExpandedTag", () => {
     expect(formatChunkExpandedTag({ expandedFrom: "a/b\ninjected" })).toBe(
       "[expanded from b injected]",
     );
+  });
+});
+
+describe("formatChunkHeaderTags", () => {
+  it("returns '' when neither fmType nor expandedFrom is present", () => {
+    expect(formatChunkHeaderTags({})).toBe("");
+  });
+
+  it("returns a single space-prefixed [type] tag when only fmType is present", () => {
+    expect(formatChunkHeaderTags({ fmType: "module" })).toBe(" [module]");
+  });
+
+  it("returns a single space-prefixed [expanded from ...] tag when only expandedFrom is present", () => {
+    expect(formatChunkHeaderTags({ expandedFrom: "a/b.md" })).toBe(
+      " [expanded from b.md]",
+    );
+  });
+
+  it("joins both tags, type first, with a single leading space", () => {
+    expect(
+      formatChunkHeaderTags({ fmType: "module", expandedFrom: "a/b.md" }),
+    ).toBe(" [module] [expanded from b.md]");
   });
 });
 

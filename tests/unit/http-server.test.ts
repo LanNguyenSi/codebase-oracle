@@ -220,7 +220,7 @@ describe("createHttpRequestHandler — unknown paths → 404", () => {
   });
 });
 
-// ── oracle_search type/tags pass-through (OKF metadata) ──────────────────────
+// ── oracle_search type/tags pass-through (OKF metadata) + sources-expansion ──
 //
 // Connects an MCP client directly to buildServer() via InMemoryTransport,
 // bypassing the HTTP transport entirely (mirrors mcp-server.test.ts's
@@ -229,22 +229,29 @@ describe("createHttpRequestHandler — unknown paths → 404", () => {
 // one connection: http-server.ts's getStore()/storePromise cache is
 // module-level (not per-instance like mcp-server.ts's createMcpServer()), so
 // splitting this across multiple `it` blocks would let a later test observe
-// the earlier test's cached store instead of its own mock.
+// the earlier test's cached store instead of its own mock — the FIRST tool
+// call in this file to actually invoke createVectorStore() wins the cache for
+// every subsequent test in the file. The sources-expansion assertions (which
+// mirror mcp-server.test.ts's two oracle_search expand_sources tests) are
+// folded into this same test for exactly that reason: the store is
+// query-dispatching so one instance serves both scenarios.
 describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
   function fakeStore(
     similaritySearch: VectorStoreWrapper["similaritySearch"],
+    getFirstChunkByFile: VectorStoreWrapper["getFirstChunkByFile"] = () =>
+      null,
   ): VectorStoreWrapper {
     return {
       addDocuments: async () => {},
       similaritySearch,
       listRepos: () => [],
       getFileMetadata: () => null,
-      getFirstChunkByFile: () => null,
+      getFirstChunkByFile,
       close: () => {},
     };
   }
 
-  it("passes `type` and `tags` through to the real filtering logic", async () => {
+  it("passes `type` and `tags` through to the real filtering logic, and sources-expansion respects expand_sources", async () => {
     const docs = [
       new Document({
         pageContent: "backend doc",
@@ -264,7 +271,29 @@ describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
         },
       }),
     ];
-    vi.mocked(createVectorStore).mockResolvedValue(fakeStore(async () => docs));
+    const moduleDoc = new Document({
+      pageContent: "the doc body",
+      metadata: {
+        repo: "docs",
+        filePath: "docs/okf/module.md",
+        fmSources: ["src/impl.ts"],
+      },
+    });
+    const implChunk = {
+      pageContent: "impl body",
+      metadata: { repo: "docs", filePath: "src/impl.ts" },
+    };
+    const getFirstChunkByFile = vi.fn((repo: string, filePath: string) =>
+      repo === "docs" && filePath === "src/impl.ts" ? implChunk : null,
+    );
+    vi.mocked(createVectorStore).mockResolvedValue(
+      fakeStore(async (query: string) => {
+        // Query-dispatching so this single cached store instance can also
+        // serve the sources-expansion assertions below (see module comment).
+        if (query === "module") return [moduleDoc];
+        return docs;
+      }, getFirstChunkByFile),
+    );
 
     const server = buildServer();
     const [clientTransport, serverTransport] =
@@ -308,6 +337,46 @@ describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
         "";
       expect(byTagsText).toContain("docs/okf/backend.md");
       expect(byTagsText).not.toContain("docs/okf/frontend.md");
+
+      // Tool schema also exposes the sources-expansion param.
+      const searchProps = searchTool?.inputSchema.properties as Record<
+        string,
+        { type?: string }
+      >;
+      expect(searchProps).toHaveProperty("expand_sources");
+      expect(searchProps.expand_sources.type).toBe("boolean");
+
+      // Default (expand_sources omitted): the [expanded from ...] marker
+      // appears for a seeded fmSources corpus. Mirrors mcp-server.test.ts's
+      // "injects the [expanded from ...] marker ... by default" assertion.
+      const withExpansion = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "module" },
+      });
+      const withExpansionText =
+        (withExpansion.content as Array<{ type: string; text: string }>)[0]
+          ?.text ?? "";
+      expect(withExpansionText).toContain("docs/okf/module.md");
+      expect(withExpansionText).toContain("src/impl.ts");
+      expect(withExpansionText).toContain("[expanded from module.md]");
+      expect(withExpansionText).toContain("impl body");
+      const callsAfterExpansion = getFirstChunkByFile.mock.calls.length;
+      expect(callsAfterExpansion).toBeGreaterThan(0);
+
+      // expand_sources:false: no injection, no marker, and the resolver is
+      // not consulted for THIS call (call count must not increase). Mirrors
+      // mcp-server.test.ts's "respects expand_sources:false" assertion.
+      const withoutExpansion = await client.callTool({
+        name: "oracle_search",
+        arguments: { query: "module", expand_sources: false },
+      });
+      const withoutExpansionText =
+        (withoutExpansion.content as Array<{ type: string; text: string }>)[0]
+          ?.text ?? "";
+      expect(withoutExpansionText).toContain("docs/okf/module.md");
+      expect(withoutExpansionText).not.toContain("[expanded from");
+      expect(withoutExpansionText).not.toContain("impl body");
+      expect(getFirstChunkByFile.mock.calls.length).toBe(callsAfterExpansion);
     } finally {
       try {
         await client.close();
@@ -322,3 +391,4 @@ describe("oracle_search type/tags pass-through (HTTP MCP)", () => {
     }
   });
 });
+

@@ -9,10 +9,9 @@ import {
   listIndexedRepos,
 } from "./store/vector-store.js";
 import {
-  formatChunkExpandedTag,
+  formatChunkHeaderTags,
   formatChunkLocation,
   formatChunkSourcesLine,
-  formatChunkTypeTag,
   formatPointersSection,
   parseCommaSeparatedList,
   queryCodebase,
@@ -127,11 +126,7 @@ program
       for (const doc of docs) {
         const { repo } = doc.metadata as { repo: string };
         const location = formatChunkLocation(doc.metadata);
-        const tags = [
-          formatChunkTypeTag(doc.metadata),
-          formatChunkExpandedTag(doc.metadata),
-        ].filter((t) => t.length > 0);
-        const tagSuffix = tags.length > 0 ? ` ${tags.join(" ")}` : "";
+        const tagSuffix = formatChunkHeaderTags(doc.metadata);
         console.log(`\n--- ${location} (${repo})${tagSuffix} ---`);
         const sourcesLine = formatChunkSourcesLine(doc.metadata);
         if (sourcesLine) console.log(sourcesLine);
