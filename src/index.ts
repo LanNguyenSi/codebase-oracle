@@ -51,6 +51,7 @@ program
     const config = loadConfig(opts.path ? { scanRoot: opts.path } : {});
     await runIndex(config, {
       logger: (line) => process.stdout.write(line),
+      warn: (line) => process.stderr.write(line),
     });
   });
 

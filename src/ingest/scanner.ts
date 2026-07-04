@@ -21,6 +21,12 @@ const JSON_ALLOWLIST = new Set([
   "package.json", "tsconfig.json",
 ]);
 
+// Fallback when neither config nor WalkRepoOptions supplies a limit.
+// Config.maxFileSizeBytes (config.ts) defaults to this same value, so in
+// practice callers that go through loadConfig() always pass an explicit
+// number; this constant only matters for direct walkRepo() callers (tests).
+export const DEFAULT_MAX_FILE_SIZE_BYTES = 500_000;
+
 export interface ScannedFile {
   absolutePath: string;
   relativePath: string; // relative to scanRoot
@@ -56,9 +62,28 @@ export async function discoverRepos(scanRoot: string): Promise<RepoInfo[]> {
   return repos.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Reported through onSkip whenever walkRepo declines to yield a file it
+// otherwise would have (i.e. everything except the silent "empty file"
+// case, which has nothing worth indexing and so stays quiet — see the
+// comment at the empty-file check below).
+export interface SkippedFile {
+  repo: string;
+  relativePath: string;
+  absolutePath: string;
+  reason: "too-large" | "read-error";
+  sizeBytes?: number;
+  limitBytes?: number;
+  message?: string;
+}
+
 export interface WalkRepoOptions {
   extensions?: ReadonlySet<string>;
   skipDirs?: ReadonlySet<string>;
+  maxFileSizeBytes?: number;
+  /** Per-file skip reporter. Defaults to a no-op — callers that care (the
+   * indexer, watch mode) pass one so a skip is always visible somewhere,
+   * never just a file that quietly never shows up in the index. */
+  onSkip?: (skip: SkippedFile) => void;
 }
 
 export async function* walkRepo(
@@ -69,6 +94,8 @@ export async function* walkRepo(
 ): AsyncGenerator<ScannedFile> {
   const extensions = options?.extensions ?? DEFAULT_INCLUDE_EXTENSIONS;
   const skipDirs = options?.skipDirs ?? DEFAULT_SKIP_DIRS;
+  const maxFileSizeBytes = options?.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+  const onSkip = options?.onSkip ?? (() => {});
   // Lockfiles + per-package manifests explode the index, so we only whitelist
   // a couple by name when the user hasn't taken control of the extension list.
   // An explicit override means the user knows what they're asking for.
@@ -102,21 +129,53 @@ export async function* walkRepo(
 
       if (ext === ".json" && applyJsonAllowlist && !JSON_ALLOWLIST.has(entry.name)) continue;
 
+      const relativePath = relative(scanRoot, fullPath);
+
       try {
+        // Stat before read: a size check in true bytes, decided BEFORE we
+        // pull the file into memory. Reading a multi-MB file into a string
+        // just to discard it (the old content.length > 200_000 check, which
+        // also mismeasured UTF-16 chars as bytes) wastes memory and time on
+        // every over-limit file, every run.
+        const st = await stat(fullPath);
+        if (st.size > maxFileSizeBytes) {
+          onSkip({
+            repo: repoName,
+            relativePath,
+            absolutePath: fullPath,
+            reason: "too-large",
+            sizeBytes: st.size,
+            limitBytes: maxFileSizeBytes,
+          });
+          continue;
+        }
+
         const content = await readFile(fullPath, "utf-8");
-        // Skip empty or very large files
-        if (!content.trim() || content.length > 200_000) continue;
+        // Empty files have nothing worth indexing, so this one stays a
+        // silent skip on purpose — unlike too-large/read-error, it is not
+        // an anomaly worth a WARNING line.
+        if (!content.trim()) continue;
 
         yield {
           absolutePath: fullPath,
-          relativePath: relative(scanRoot, fullPath),
+          relativePath,
           repo: repoName,
           language: ext.slice(1),
           content,
           contentHash: createHash("sha256").update(content).digest("hex"),
         };
-      } catch {
-        // Permission error or binary, skip
+      } catch (err) {
+        // Permission error, binary decode failure, or a stat/read race
+        // (file removed between readdir and stat). Reported, never
+        // swallowed — but still non-throwing: one bad file must not kill
+        // the whole scan.
+        onSkip({
+          repo: repoName,
+          relativePath,
+          absolutePath: fullPath,
+          reason: "read-error",
+          message: err instanceof Error ? err.message : String(err),
+        });
       }
     }
   }

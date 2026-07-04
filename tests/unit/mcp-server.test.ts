@@ -60,6 +60,7 @@ const testConfig: Config = {
   embeddingModel: "text-embedding-3-small",
   llmModel: "claude-sonnet-4-6",
   vectorStoreType: "directory",
+  maxFileSizeBytes: 500_000,
 };
 
 const fakeSummary: IndexSummary = {
@@ -69,6 +70,8 @@ const fakeSummary: IndexSummary = {
   filesChanged: 1,
   filesNew: 0,
   filesPruned: 0,
+  filesSkipped: 0,
+  skippedFiles: [],
   chunksTotal: 4,
   chunksReused: 2,
   chunksEmbedded: 2,
