@@ -1,7 +1,7 @@
 ---
 type: doc
 sources:
-  - cli-toy/src/commands/create.ts
+  - src/commands/create.ts
 ---
 
 # Why `create` accepts an optional label
