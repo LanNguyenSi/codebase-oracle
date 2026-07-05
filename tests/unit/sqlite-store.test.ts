@@ -85,6 +85,22 @@ describe("openSqliteStore basics", () => {
     store.close();
   });
 
+  it("deleteByRepo on a never-initialized store is a no-op, not a crash", async () => {
+    // Regression test (sibling of the deleteByFile guard above): watch mode's
+    // flush() calls store.deleteByRepo for a dropped repo BEFORE any file has
+    // ever been embedded (watch.ts flush() drains droppedRepos first). If a
+    // repo-drop is the very first event a fresh watch instance sees, the store
+    // has no embedding dimension yet (initializeSchema was never called) and
+    // this used to throw IndexFingerprintError instead of returning 0.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    expect(store.getMeta()).toBeNull();
+    expect(() => store.deleteByRepo("auth")).not.toThrow();
+    expect(store.deleteByRepo("auth")).toBe(0);
+    expect(store.count()).toBe(0);
+    store.close();
+  });
+
   it("initializeSchema writes provider/model/dimension", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));

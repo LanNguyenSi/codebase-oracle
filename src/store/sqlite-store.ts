@@ -601,7 +601,16 @@ export function openSqliteStore(config: Config): SqliteStore {
   function deleteByRepoInternal(repo: string): number {
     let removed = 0;
     const tx = db.transaction(() => {
-      vec().deleteVecByRepo.run(repo);
+      // A never-initialized store (no embedding dimension recorded yet) has
+      // no vec0 table: vecStmts is still null. By invariant it also has no
+      // docs rows, so there is nothing to clean up in the vectors table. Skip
+      // instead of routing through vec(), which would throw
+      // IndexFingerprintError, e.g. when a fresh watch instance's first flush
+      // is a repo-drop (watch.ts flush() calls deleteByRepo before any file
+      // processing). Mirrors the guard in deleteByFileInternal.
+      if (vecStmts) {
+        vecStmts.deleteVecByRepo.run(repo);
+      }
       const deleted = stmts.deleteDocsByRepo.all(repo) as Array<{ rowid: number }>;
       removed = deleted.length;
       if (removed > 0) {
