@@ -536,7 +536,16 @@ export function openSqliteStore(config: Config): SqliteStore {
     let removed = 0;
     const now = new Date().toISOString();
     const tx = db.transaction(() => {
-      vec().deleteVecByFile.run(repo, filePath);
+      // A never-initialized store (no embedding dimension recorded yet) has
+      // no vec0 table: vecStmts is still null. By invariant it also has no
+      // docs rows, since nothing can be inserted before initializeSchema
+      // runs, so there is nothing to clean up in the vectors table. Skip
+      // instead of routing through vec(), which would throw
+      // IndexFingerprintError, e.g. when a fresh watch instance's first
+      // event is a delete/too-large/empty file.
+      if (vecStmts) {
+        vecStmts.deleteVecByFile.run(repo, filePath);
+      }
       const deleted = stmts.deleteDocsByFile.all(repo, filePath) as Array<{ rowid: number }>;
       removed = deleted.length;
       if (removed > 0) {

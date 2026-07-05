@@ -427,8 +427,9 @@ describe("runWatchMode integration", () => {
     try {
       // Embed the normal file first so the store's schema (embedding
       // dimension) is already initialized before the oversized file is
-      // skipped — deleteByFile on a brand-new, never-initialized store is a
-      // separate pre-existing edge case outside this task's scope.
+      // skipped, isolating the loud-warning behaviour from the
+      // never-initialized-store ordering covered by the dedicated tests
+      // below.
       await writeFile(join(repoDir, "small.ts"), "export const small = 1;", "utf8");
       await waitForPending(watcher, 1);
       await watcher.flushOnce();
@@ -449,6 +450,73 @@ describe("runWatchMode integration", () => {
       const repos = await listIndexedRepos(config);
       expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
       expect(embedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
+
+  it("skips an oversized file arriving as the very first watch event on a fresh, never-initialized store", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    // Custom low ceiling so a small fixture file can exercise the "too-large"
+    // path without writing hundreds of KB to disk.
+    const config: Config = { ...testConfig(scanRoot, dataDir), maxFileSizeBytes: 500 };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(" "));
+    });
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      // No file has ever been embedded yet, so the store has no schema
+      // (embedding dimension) when this event's deleteByFile cleanup runs.
+      // That used to throw IndexFingerprintError instead of no-oping.
+      await writeFile(join(repoDir, "big.ts"), "x".repeat(1000), "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+
+      expect(
+        warns.some((w) => w.includes("WARNING: skipped") && w.includes("big.ts")),
+      ).toBe(true);
+      expect(await listIndexedRepos(config)).toEqual([]);
+      expect(embedSpy).not.toHaveBeenCalled();
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
+
+  it("skips an empty file arriving as the very first watch event on a fresh, never-initialized store", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      // Same never-initialized-store ordering as the oversized case above,
+      // but through the "empty" branch instead of "too-large".
+      await writeFile(join(repoDir, "empty.ts"), "   \n", "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+
+      expect(await listIndexedRepos(config)).toEqual([]);
+      expect(embedSpy).not.toHaveBeenCalled();
     } finally {
       await watcher.close();
       logSpy.mockRestore();
