@@ -69,6 +69,22 @@ describe("openSqliteStore basics", () => {
     store.close();
   });
 
+  it("deleteByFile on a never-initialized store is a no-op, not a crash", async () => {
+    // Regression test: watch mode's flush() calls store.deleteByFile for
+    // delete/too-large/empty events before any file has ever been embedded.
+    // If that event is the very first one a fresh watch instance sees, the
+    // store has no embedding dimension yet (initializeSchema was never
+    // called) and this used to throw IndexFingerprintError instead of
+    // returning 0.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    expect(store.getMeta()).toBeNull();
+    expect(() => store.deleteByFile("auth", "auth/a.ts")).not.toThrow();
+    expect(store.deleteByFile("auth", "auth/a.ts")).toBe(0);
+    expect(store.count()).toBe(0);
+    store.close();
+  });
+
   it("initializeSchema writes provider/model/dimension", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
