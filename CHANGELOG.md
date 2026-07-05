@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-07-05
+
+### Fixed
+
+- **A repo-drop as the very first watch event no longer crashes with `IndexFingerprintError`.** `deleteByRepo` now applies the same never-initialized-store guard as its sibling `deleteByFile`: on a fresh watch whose first `flush()` drains a dropped repo before any file was embedded, the vec delete is skipped (the store has no vec0 table yet) instead of routing through the unprepared vec statements.
+
 ## [0.10.0] - 2026-07-04
 
 ### Added

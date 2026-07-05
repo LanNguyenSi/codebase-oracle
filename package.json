@@ -1,6 +1,6 @@
 {
   "name": "@lannguyensi/codebase-oracle",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "RAG-powered codebase Q&A for multi-repo codebases, with LangChain and MCP server",
   "type": "module",
   "bin": {

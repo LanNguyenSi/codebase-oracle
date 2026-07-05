@@ -523,4 +523,37 @@ describe("runWatchMode integration", () => {
       warnSpy.mockRestore();
     }
   }, 15000);
+
+  it("handles a repo-drop arriving as the very first watch event on a fresh, never-initialized store", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+    });
+    try {
+      // The repo was discovered at watch start but nothing was ever embedded,
+      // so the store has no schema (embedding dimension) when the drop's
+      // deleteByRepo cleanup runs. flush() drains droppedRepos before any file
+      // processing, so this is the store's very first mutation. That used to
+      // throw IndexFingerprintError instead of no-oping (reverting the
+      // deleteByRepo guard makes this flush throw).
+      await rm(repoDir, { recursive: true, force: true });
+      await waitForPending(watcher, 1);
+      await expect(watcher.flushOnce()).resolves.not.toThrow();
+
+      expect(await listIndexedRepos(config)).toEqual([]);
+      expect(embedSpy).not.toHaveBeenCalled();
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 15000);
 });
