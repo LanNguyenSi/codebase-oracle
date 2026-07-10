@@ -33,8 +33,9 @@ It exists only in code and code comments.
 Each injected `Document` is minted fresh with a transient `expandedFrom` marker
 carrying the parent's `filePath`: `metadata: { ...chunk.metadata, expandedFrom:
 parentFilePath }` (`src/retrieval/chain.ts:612`). The marker is render-only —
-`renderExpandedFromTag` turns it into a `[expanded from <basename>]` suffix on
-the search output (`:75-87`). Injected Documents are **never persisted**; they
+`formatChunkExpandedTag` (`src/retrieval/chain.ts:81`, called at `:114`) turns it
+into an `[expanded from <basename>]` tag in the search output, spliced alongside
+the `[type]` tag. Injected Documents are **never persisted**; they
 exist only in the returned list for that one call.
 
 **Byte-identical-to-off guarantee.** `expandSourcesInResults` pushes each parent
@@ -81,6 +82,11 @@ repo-prefixed path namespace", verified present via `git log`).
 at `:148`), described as "inject files pointed at by a retrieved doc's OKF
 sources: frontmatter, marked [expanded from ...] (default true)". `docs/mcp.md`
 does **not** document `expand_sources` (grep confirms absence).
+
+**Not to be confused with `oracle_expand`.** That is a separate, unrelated MCP
+tool (`src/mcp-server.ts:189`) that reads a window of lines around a position in
+an indexed file. The `expand_sources` parameter described here is a flag on
+`oracle_search`. Similar names, unrelated mechanisms.
 
 ## What breaks it
 
