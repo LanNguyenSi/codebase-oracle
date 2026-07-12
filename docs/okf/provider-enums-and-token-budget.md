@@ -97,7 +97,7 @@ ORACLE_LLM_MODEL=gemma4-26b-a4b-64k
 
 - `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:111`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`112`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`109`). These are the preferred `openai-compatible` inputs.
 - `createOpenAICompatibleLlm` resolves the base URL as `config.llmBaseUrl ?? config.ollamaBaseUrl` and the key as `config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey` (`chain.ts:378`, `384-385`), where `fallbackKey` is `"ollama"` for the legacy alias and `""` otherwise (`384`). It deliberately does **not** fall back to `openaiApiKey` (`chain.ts:372-373`).
-- Ollama base-url precedence (`config.ts:106`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, then the schema default `http://localhost:11434/v1` (`config.ts:31`). Because `ollamaBaseUrl` always has that default, it is never unset — the `!config.ollamaBaseUrl` guard in the `openai-compatible` branch (`chain.ts:431`) can never actually throw.
+- Ollama base-url precedence (`config.ts:122`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default anymore (`config.ts:47`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard as a real `undefined` and correctly throws (fixed; previously dead code — see task ab6aad16).
 - `ORACLE_LLM_PROVIDER=ollama` is deprecated in favor of `openai-compatible` + `ORACLE_LLM_BASE_URL`/`ORACLE_LLM_API_KEY`; it prints a one-time warning (`chain.ts:394-405`).
 
 ## Authoritative env reference
@@ -115,4 +115,4 @@ No discrepancies. Every asserted fact matched source at the cited line:
 - Ollama base-url precedence `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`: `config.ts:106`.
 - `docs/configuration.md` exists; the `../configuration.md` link assumes the doc is placed one directory below `docs/` (as instructed).
 
-One nuance worth flagging (surfaced, not a doc error): `openai-compatible` inherits the `claude-sonnet-4-6` default model, and the `!config.ollamaBaseUrl` guard at `chain.ts:431` is dead code because `ollamaBaseUrl` always carries a schema default. Both are noted in the doc body.
+One nuance worth flagging (surfaced, not a doc error): `openai-compatible` inherits the `claude-sonnet-4-6` default model (still true). The `!config.ollamaBaseUrl` guard at `chain.ts:441` used to be dead code because `ollamaBaseUrl` always carried a schema default; that has since been fixed (task ab6aad16) by dropping the schema default and resolving the legacy localhost fallback only at the `ollama`-alias call sites, so the guard now throws as intended.

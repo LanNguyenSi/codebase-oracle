@@ -1,7 +1,7 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { Embeddings } from "@langchain/core/embeddings";
 import { createHash } from "node:crypto";
-import type { Config } from "../config.js";
+import { DEFAULT_OLLAMA_BASE_URL, type Config } from "../config.js";
 
 const STUB_DIMENSION = 8;
 
@@ -54,7 +54,9 @@ export function createEmbeddings(config: Config): Embeddings {
       modelName: config.embeddingModel,
       stripNewLines: true,
       configuration: {
-        baseURL: ensureV1BaseUrl(config.ollamaBaseUrl),
+        // `ollamaBaseUrl` has no schema default (see config.ts); this
+        // embedding lane keeps the conventional localhost fallback here.
+        baseURL: ensureV1BaseUrl(config.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL),
       },
     });
   }

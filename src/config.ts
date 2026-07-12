@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+// Legacy Ollama default base URL. NOT a schema default on `ollamaBaseUrl`
+// below — see the comment on that field for why. Exported so the two call
+// sites that still need "unset -> localhost" behavior (the `ollama` LLM
+// alias in retrieval/chain.ts and the `ollama` embedding provider in
+// store/embeddings.ts) share one literal instead of duplicating it.
+export const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1";
+
 const configSchema = z.object({
   // Paths
   // scanRoot is only consumed by the indexer code path: the `index` and
@@ -28,7 +35,16 @@ const configSchema = z.object({
   openaiApiKey: z.string().optional(),
   openaiBaseUrl: z.string().optional(),
   ollamaApiKey: z.string().optional(),
-  ollamaBaseUrl: z.string().default("http://localhost:11434/v1"),
+  // Deliberately no schema default here (unlike most other fields): the
+  // `openai-compatible` LLM branch in retrieval/chain.ts needs to tell
+  // "unset" apart from "resolved to the legacy Ollama default" to fail
+  // loudly when neither ORACLE_LLM_BASE_URL nor an Ollama base URL was
+  // configured. A schema default would make that guard unreachable, since
+  // this field would never actually be falsy. The legacy `ollama` alias
+  // (LLM provider and embedding provider) still gets the conventional
+  // localhost default — via DEFAULT_OLLAMA_BASE_URL, applied at those two
+  // call sites instead of here.
+  ollamaBaseUrl: z.string().optional(),
   embeddingModel: z.string().default("text-embedding-3-small"),
 
   // LLM for answer generation
