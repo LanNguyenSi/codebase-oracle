@@ -4,7 +4,7 @@ import { StringOutputParser } from "@langchain/core/output_parsers";
 import { ChatPromptTemplate } from "@langchain/core/prompts";
 import { Document } from "@langchain/core/documents";
 import picomatch from "picomatch";
-import type { Config } from "../config.js";
+import { DEFAULT_OLLAMA_BASE_URL, type Config } from "../config.js";
 import type { VectorStoreWrapper } from "../store/vector-store.js";
 
 const SYSTEM_PROMPT = `You are Codebase Oracle, an expert on the indexed multi-repo codebase.
@@ -375,7 +375,13 @@ function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
   if (isLegacyOllama) {
     warnOllamaProviderDeprecated();
   }
-  const baseURL = ensureV1BaseUrl(config.llmBaseUrl ?? config.ollamaBaseUrl);
+  // `ollamaBaseUrl` has no schema default (see config.ts), so only the
+  // legacy `ollama` alias falls back to the conventional localhost URL
+  // here. The `openai-compatible` path relies on the guard in createLlm
+  // below having already required llmBaseUrl or ollamaBaseUrl to be set.
+  const ollamaBaseUrl = config.ollamaBaseUrl
+    ?? (isLegacyOllama ? DEFAULT_OLLAMA_BASE_URL : undefined);
+  const baseURL = ensureV1BaseUrl(config.llmBaseUrl ?? ollamaBaseUrl!);
   // For local Ollama the conventional sentinel key is the literal "ollama"
   // (the server ignores it). For openai-compatible we prefer to leave the
   // key blank and let the SDK surface a clear 401 if the endpoint requires
@@ -428,6 +434,10 @@ export function createLlm(config: Config) {
   }
 
   if (config.llmProvider === "openai-compatible") {
+    // Both sides of this guard reflect real "unset" state: `ollamaBaseUrl`
+    // carries no schema default (see config.ts), so a misconfigured
+    // openai-compatible lane fails loudly here instead of silently
+    // resolving to the legacy Ollama localhost default.
     if (!config.llmBaseUrl && !config.ollamaBaseUrl) {
       throw new Error(
         "ORACLE_LLM_PROVIDER=openai-compatible requires ORACLE_LLM_BASE_URL.",

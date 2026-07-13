@@ -8,7 +8,10 @@ describe("loadConfig", () => {
     expect(config.llmProvider).toBe("auto");
     expect(config.embeddingModel).toBe("text-embedding-3-small");
     expect(config.llmModel).toBe("claude-sonnet-4-6");
-    expect(config.ollamaBaseUrl).toBe("http://localhost:11434/v1");
+    // ollamaBaseUrl deliberately has no schema default (see config.ts): the
+    // legacy localhost fallback now lives at the `ollama` alias call sites
+    // in retrieval/chain.ts and store/embeddings.ts instead.
+    expect(config.ollamaBaseUrl).toBeUndefined();
     expect(config.vectorStoreType).toBe("directory");
   });
 

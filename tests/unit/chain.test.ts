@@ -21,6 +21,7 @@ import {
   searchCodebase,
 } from "../../src/retrieval/chain.js";
 import { createVectorStore } from "../../src/store/vector-store.js";
+import { loadConfig } from "../../src/config.js";
 import type { Config } from "../../src/config.js";
 import type { Embeddings } from "@langchain/core/embeddings";
 
@@ -111,11 +112,62 @@ describe("createLlm", () => {
       llmProvider: "openai-compatible",
       llmApiKey: "gsk-test",
       llmModel: "llama-3.3-70b-versatile",
-      // Override the ollamaBaseUrl default to undefined to exercise the
-      // missing-baseUrl path. (Zod normally fills the default; we strip it.)
+      // ollamaBaseUrl has no schema default (config.ts); leaving it unset
+      // here exercises the missing-baseUrl path directly.
+      ollamaBaseUrl: undefined,
     });
-    (config as Partial<Config>).ollamaBaseUrl = undefined;
     expect(() => createLlm(config)).toThrow(/ORACLE_LLM_BASE_URL/);
+  });
+
+  // Regression coverage for the dead-guard bug: `ollamaBaseUrl` used to
+  // carry a zod schema default (config.ts), so `loadConfig()` would fill it
+  // with the legacy localhost URL even when neither ORACLE_LLM_BASE_URL nor
+  // an Ollama base URL was ever configured. That made the
+  // `!config.llmBaseUrl && !config.ollamaBaseUrl` guard above unreachable
+  // through the real config-loading path (it only threw when a test built a
+  // Config object by hand). These two tests go through loadConfig() itself
+  // to pin the fix and the preserved legacy default.
+  describe("with real loadConfig() (regression: schema default made the openai-compatible guard dead code)", () => {
+    const envKeys = [
+      "ORACLE_LLM_PROVIDER",
+      "ORACLE_LLM_BASE_URL",
+      "ORACLE_LLM_API_KEY",
+      "ORACLE_OLLAMA_BASE_URL",
+      "OLLAMA_BASE_URL",
+    ] as const;
+    let savedEnv: Record<string, string | undefined>;
+
+    beforeEach(() => {
+      savedEnv = Object.fromEntries(envKeys.map((k) => [k, process.env[k]]));
+      for (const k of envKeys) delete process.env[k];
+    });
+    afterEach(() => {
+      for (const k of envKeys) {
+        const v = savedEnv[k];
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+
+    it("openai-compatible with nothing set throws mentioning ORACLE_LLM_BASE_URL instead of silently using localhost", () => {
+      process.env.ORACLE_LLM_PROVIDER = "openai-compatible";
+      const config = loadConfig({ scanRoot: "/tmp/test" });
+      expect(config.ollamaBaseUrl).toBeUndefined();
+      expect(() => createLlm(config)).toThrow(/ORACLE_LLM_BASE_URL/);
+    });
+
+    it("legacy provider=ollama with nothing set still falls back to the documented localhost default", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      process.env.ORACLE_LLM_PROVIDER = "ollama";
+      const config = loadConfig({ scanRoot: "/tmp/test" });
+      expect(config.ollamaBaseUrl).toBeUndefined();
+      const llm = createLlm(config) as {
+        clientConfig?: { baseURL?: string };
+        configuration?: { baseURL?: string };
+      } | null;
+      const baseUrl = llm?.clientConfig?.baseURL ?? llm?.configuration?.baseURL;
+      expect(baseUrl).toBe("http://localhost:11434/v1");
+    });
   });
 
   it("provider=openai-compatible builds a ChatOpenAI with llmBaseUrl + llmApiKey", () => {
