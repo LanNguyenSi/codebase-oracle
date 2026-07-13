@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Test files that drift out of type sync with `src/` no longer go unnoticed.** Six `tests/unit/*.test.ts` local `Config` test helpers (chain, embeddings, migrate-store, query-codebase, sqlite-store, vector-store) predated `maxFileSizeBytes` becoming a required `Config` field (0.10.0) and failed `tsc --noEmit`, but nothing ran that check: `npm run build` only typechecks `src/`, and vitest runs tests through esbuild without typechecking. All six helpers now set `maxFileSizeBytes`, and CI gains a "Type check tests" step (`npx tsc --noEmit -p tsconfig.tests.json`, also runnable locally as `npm run test:typecheck`) so a future required-field addition fails the build instead of silently rotting the test suite's types. The new `tsconfig.tests.json` excludes `tests/eval/corpus/`, which is vendored fixture text walked by the eval runner, not real project source.
+
 ## [0.10.1] - 2026-07-05
 
 ### Fixed
