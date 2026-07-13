@@ -24,6 +24,7 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     embeddingModel: "text-embedding-3-small",
     llmModel: "test",
     vectorStoreType: "directory",
+    maxFileSizeBytes: 500_000,
     ...overrides,
   };
 }

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "rootDir": "."
+  },
+  "include": ["tests/**/*.ts", "src/**/*.ts"],
+  // tests/eval/corpus/ is vendored fixture text walked by the eval runner's
+  // indexer at run time, not real TypeScript belonging to this project (it
+  // deliberately references packages that aren't installed, e.g. express,
+  // jsonwebtoken, fastify). See tests/eval/README.md.
+  "exclude": ["node_modules", "dist", "tests/eval/corpus"]
+}

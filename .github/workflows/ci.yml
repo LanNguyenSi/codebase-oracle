@@ -29,5 +29,15 @@ jobs:
       - name: Type check
         run: npx tsc --noEmit
 
+      - name: Type check tests
+        # src/ is type-checked above via the default tsconfig.json (rootDir:
+        # src), which never sees the test tree. vitest runs tests through
+        # esbuild and doesn't typecheck either, so a test file can drift out
+        # of sync with a src/ type change (eg a newly required Config field)
+        # and nothing catches it until someone runs tsc by hand. This closes
+        # that gap; tests/eval/corpus/ is excluded in tsconfig.tests.json
+        # since it's vendored fixture text, not real project source.
+        run: npx tsc --noEmit -p tsconfig.tests.json
+
       - name: Test
         run: npx vitest run --coverage
