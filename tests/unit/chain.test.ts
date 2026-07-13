@@ -1134,6 +1134,26 @@ describe("searchCodebase sources-expansion (stub store)", () => {
     ).toBeUndefined();
   });
 
+  it("reorder: an organic hit ranked below its pointing parent is hoisted next to it even with no limit pressure at all", async () => {
+    // Isolates the reorder/co-location contract from cut-survival: with a
+    // limit far larger than the candidate list, nothing is ever at risk of
+    // being sliced away, yet a below-parent organic hit still moves.
+    const store = stubStore([
+      organicDoc("docs/parent.md", { fmSources: ["src/x.ts"] }),
+      organicDoc("docs/filler.md"),
+      organicDoc("src/x.ts"), // organic, ranked below the parent
+    ]);
+    const out = await searchCodebase("q", store as never, { limit: 100 });
+    expect(filePaths(out)).toEqual([
+      "docs/parent.md",
+      "src/x.ts",
+      "docs/filler.md",
+    ]);
+    expect(
+      (out[1].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+  });
+
   it("hoist: an organic hit below the final cut is moved next to its pointing parent instead of being displaced further by a sibling injection (Q12 dedup-displacement)", async () => {
     // Mirrors the benchmark regression (agent-tasks Q12, task d165ff85):
     // parent's FIRST source is organic but ranks below where a later
@@ -1172,6 +1192,30 @@ describe("searchCodebase sources-expansion (stub store)", () => {
     // filler-1.md (originally rank 2) is displaced off the tail — same
     // limit-cap displacement semantics as a plain injection.
     expect(filePaths(out)).not.toContain("docs/filler-1.md");
+  });
+
+  it("slice: a hoist that itself lands past the caller limit is sliced away like any other row", async () => {
+    // The parent's FIRST fmSources entry resolves as an ordinary
+    // synthesized injection (fills the last slot the limit-2 cap allows);
+    // the SECOND entry resolves as an organic hoist and is pushed right
+    // after it, past the cap. Proves a hoist carries no special exemption
+    // from the limit cut: whichever row lands past the boundary gets
+    // sliced, hoisted or not.
+    const store = stubStore(
+      [
+        organicDoc("docs/parent.md", {
+          fmSources: ["src/non-gt.ts", "src/hoist-target.ts"],
+        }),
+        organicDoc("src/hoist-target.ts"), // organic, below the parent
+      ],
+      { "demo::src/non-gt.ts": fileChunk("src/non-gt.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 2 });
+    expect(filePaths(out)).toEqual(["docs/parent.md", "src/non-gt.ts"]);
+    expect((out[1].metadata as { expandedFrom?: string }).expandedFrom).toBe(
+      "docs/parent.md",
+    );
+    expect(filePaths(out)).not.toContain("src/hoist-target.ts");
   });
 
   it("a second organic chunk of the same file as a hoisted row still surfaces at its own rank (regression: the coarse (repo, filePath) dedup key must not collapse distinct chunks of one file)", async () => {

@@ -583,19 +583,21 @@ function resolveSourceChunk(
 // synthesized first-chunk injection, but "wins" means the file's row keeps
 // its ORGANIC content wherever it ends up in the output, not that expansion
 // leaves it wherever raw retrieval happened to rank it:
-//   - A pointed-at file already PLACED into the output (an organic row at or
-//     above the current parent, or an earlier injection/hoist) is left
-//     untouched — no duplicate, no reorder.
-//   - A pointed-at file that is an organic hit SOMEWHERE in the candidate
-//     list but not yet placed (i.e. ranked below where it would survive the
-//     final `limit` cut once earlier rows and injections fill it) is HOISTED:
-//     its existing organic Document (real chunk, real snippet) is moved to
-//     the injection slot right after the parent instead of being displaced
-//     off the tail by a lower-priority sibling injection, or dropped
-//     entirely because the outer loop never reached its natural rank. A
-//     hoisted row is not tagged `expandedFrom` — it is organic content, not
-//     a synthesized stub, so it renders exactly as it would have at its
-//     natural rank.
+//   - A pointed-at file that is an organic hit ranked AT OR ABOVE its
+//     pointing parent (i.e. already placed into the output by the time the
+//     parent's own fmSources are processed) is left untouched — no
+//     duplicate, no reorder.
+//   - A pointed-at file that is an organic hit ranked BELOW its pointing
+//     parent (not yet placed, regardless of whether it sits inside or past
+//     the caller's `limit`) is HOISTED: its existing organic Document (real
+//     chunk, real snippet) is moved to the injection slot right after the
+//     parent instead of being left at its natural rank, where a
+//     lower-priority sibling injection could displace it further down, or
+//     the outer loop could break before ever reaching it. A hoisted row is
+//     not tagged `expandedFrom` — it is organic content, not a synthesized
+//     stub, so it renders exactly as it would have at its natural rank.
+//     Hoisting only reorders/co-locates the row; it does not exempt it from
+//     the final `limit` cut below.
 //   - Only a file with NO organic hit anywhere falls back to a synthesized
 //     first-chunk injection, tagged `expandedFrom` (the parent's filePath).
 // A hoisted row still counts toward MAX_INJECTIONS_PER_PARENT for its parent,
