@@ -1115,6 +1115,98 @@ describe("searchCodebase sources-expansion (stub store)", () => {
     ).toBeUndefined();
   });
 
+  it("already-in-cut: an organic hit ranked ahead of its pointing parent stays exactly where it is", async () => {
+    // src/x.ts is already placed (rank 1, inside the cut) by the time
+    // docs/b.md (rank 2) points at it. It must not be duplicated or hoisted
+    // next to docs/b.md.
+    const store = stubStore(
+      [
+        organicDoc("src/x.ts"),
+        organicDoc("docs/b.md", { fmSources: ["src/x.ts"] }),
+        organicDoc("docs/c.md"),
+      ],
+      { "demo::src/x.ts": fileChunk("src/x.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual(["src/x.ts", "docs/b.md", "docs/c.md"]);
+    expect(
+      (out[0].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+  });
+
+  it("hoist: an organic hit below the final cut is moved next to its pointing parent instead of being displaced further by a sibling injection (Q12 dedup-displacement)", async () => {
+    // Mirrors the benchmark regression (agent-tasks Q12, task d165ff85):
+    // parent's FIRST source is organic but ranks below where a later
+    // non-ground-truth SECOND source would otherwise inject and push it off
+    // the tail entirely. Old behavior: dedup skips the first source's
+    // injection (organic-anywhere-wins), the second source injects instead,
+    // and the outer loop breaks before ever reaching the organic hit's own
+    // rank — it drops out of the limit-3 output altogether. Fixed behavior:
+    // the organic hit is hoisted into the injection slot, keeping it inside
+    // the cut.
+    const store = stubStore(
+      [
+        organicDoc("docs/parent.md", {
+          fmSources: ["src/organic-gt.ts", "src/non-gt.ts"],
+        }),
+        organicDoc("docs/filler-1.md"),
+        organicDoc("src/organic-gt.ts", {}, "demo"), // below the limit-3 cut without the hoist
+      ],
+      { "demo::src/non-gt.ts": fileChunk("src/non-gt.ts") },
+    );
+    const out = await searchCodebase("q", store as never, { limit: 3 });
+    expect(filePaths(out)).toEqual([
+      "docs/parent.md",
+      "src/organic-gt.ts",
+      "src/non-gt.ts",
+    ]);
+    // Hoisted row is organic content, not a synthesized stub: no marker.
+    expect(
+      (out[1].metadata as { expandedFrom?: string }).expandedFrom,
+    ).toBeUndefined();
+    expect(out[1].pageContent).toBe("// src/organic-gt.ts");
+    // The non-GT sibling still injects (unaffected), tagged as usual.
+    expect((out[2].metadata as { expandedFrom?: string }).expandedFrom).toBe(
+      "docs/parent.md",
+    );
+    // filler-1.md (originally rank 2) is displaced off the tail — same
+    // limit-cap displacement semantics as a plain injection.
+    expect(filePaths(out)).not.toContain("docs/filler-1.md");
+  });
+
+  it("a second organic chunk of the same file as a hoisted row still surfaces at its own rank (regression: the coarse (repo, filePath) dedup key must not collapse distinct chunks of one file)", async () => {
+    // fileKeyOf is (repo, filePath) only, with no chunk/line component, so
+    // two DIFFERENT chunks of the same file (a common shape: a multi-chunk
+    // CHANGELOG.md or source file with several organic hits in one result
+    // set) share a dedup key. The hoist must only ever suppress the exact
+    // canonical (first-occurrence) row it placed, never a distinct sibling
+    // chunk of that same file reached later at its own natural rank.
+    const store = stubStore([
+      organicDoc("docs/parent.md", { fmSources: ["src/shared.ts"] }),
+      new Document({
+        pageContent: "chunk A of shared.ts",
+        metadata: { filePath: "src/shared.ts", repo: "demo" },
+      }),
+      organicDoc("docs/filler.md"),
+      new Document({
+        pageContent: "chunk B of shared.ts",
+        metadata: { filePath: "src/shared.ts", repo: "demo" },
+      }),
+    ]);
+    const out = await searchCodebase("q", store as never, { limit: 10 });
+    expect(filePaths(out)).toEqual([
+      "docs/parent.md",
+      "src/shared.ts",
+      "docs/filler.md",
+      "src/shared.ts",
+    ]);
+    // Chunk A (the first/canonical occurrence) is hoisted next to the
+    // parent; chunk B is a distinct organic row and must survive untouched
+    // at its own rank, not be dropped as a false "already placed" dup.
+    expect(out[1].pageContent).toBe("chunk A of shared.ts");
+    expect(out[3].pageContent).toBe("chunk B of shared.ts");
+  });
+
   it("injects a shared source only once even when two parents point to it", async () => {
     const store = stubStore(
       [

@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.10.2] - 2026-07-13
+
 ### Fixed
 
+- **Sources-expansion no longer displaces a below-cut organic hit off the result list entirely.** The dedup rule used to be organic-anywhere-wins-by-skipping: if a parent's pointed-at file already appeared as an organic hit anywhere in the candidate list, its injection was skipped outright, leaving the file's fate to whichever rank it happened to occupy — and a later, non-ground-truth sibling injection could (and, per the OKF benchmark's Q12 regression, did) fill the freed slot and push the organic row past the caller's `limit` cut before the outer loop ever reached it. The rule is now hoist-not-skip: a pointed-at file that is an organic hit ANYWHERE in the candidate list, but not yet placed into the output, is hoisted into the injection slot right after its parent, preserving its organic content/snippet (no synthesized `[expanded from ...]` stub). A pointed-at file already placed inside the cut is still left untouched, exactly as before. Fixes codebase-oracle `d165ff85`; live-verified against the exact Q12 query (agent-tasks index): `backend/src/routes/tasks.ts` moved from rank 6 (past the cut) to rank 2, carrying its real matched chunk instead of a generic first-chunk stub.
 - **Test files that drift out of type sync with `src/` no longer go unnoticed.** Six `tests/unit/*.test.ts` local `Config` test helpers (chain, embeddings, migrate-store, query-codebase, sqlite-store, vector-store) predated `maxFileSizeBytes` becoming a required `Config` field (0.10.0) and failed `tsc --noEmit`, but nothing ran that check: `npm run build` only typechecks `src/`, and vitest runs tests through esbuild without typechecking. All six helpers now set `maxFileSizeBytes`, and CI gains a "Type check tests" step (`npx tsc --noEmit -p tsconfig.tests.json`, also runnable locally as `npm run test:typecheck`) so a future required-field addition fails the build instead of silently rotting the test suite's types. The new `tsconfig.tests.json` excludes `tests/eval/corpus/`, which is vendored fixture text walked by the eval runner, not real project source.
 
 ## [0.10.1] - 2026-07-05

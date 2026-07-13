@@ -542,33 +542,65 @@ function fileKeyOf(metadata: Record<string, unknown>): string {
 // case), stored paths carry the repo prefix ("agent-tasks/backend/src/app.ts").
 // Resolve against the parent doc's own namespace first — if the parent's
 // filePath is repo-prefixed, the pointed-at file will be too — then fall back
-// to the other form. Caught live: the raw-only lookup silently no-opped on
-// every real repo while fixture-shaped tests passed.
+// to the other form. Shared by the store lookup (resolveSourceChunk) and the
+// organic-hit hoist check in expandSourcesInResults, so both agree on which
+// path form a given fmSources entry means.
+function resolveSourcePathCandidates(
+  repo: string,
+  parentFilePath: string,
+  src: string,
+): [first: string, second: string] {
+  const prefixed = `${repo}/${src}`;
+  const parentIsPrefixed = parentFilePath.startsWith(`${repo}/`);
+  const first = parentIsPrefixed ? prefixed : src;
+  const second = parentIsPrefixed ? src : prefixed;
+  return [first, second];
+}
+
+// Caught live: the raw-only lookup silently no-opped on every real repo
+// while fixture-shaped tests passed.
 function resolveSourceChunk(
   vectorStore: VectorStoreWrapper,
   repo: string,
   parentFilePath: string,
   src: string,
 ): { pageContent: string; metadata: Record<string, unknown> } | null {
-  const prefixed = `${repo}/${src}`;
-  const parentIsPrefixed = parentFilePath.startsWith(`${repo}/`);
-  const first = parentIsPrefixed ? prefixed : src;
-  const second = parentIsPrefixed ? src : prefixed;
+  const [first, second] = resolveSourcePathCandidates(
+    repo,
+    parentFilePath,
+    src,
+  );
   return (
     vectorStore.getFirstChunkByFile(repo, first) ??
     vectorStore.getFirstChunkByFile(repo, second)
   );
 }
 
-// Sources-expansion. For each organic result row that carries fmSources, inject
-// a representative chunk (the file's first chunk) for each pointed-at file
-// immediately after its parent, in fmSources order, at most
-// MAX_INJECTIONS_PER_PARENT per parent. Dedup key is (repo, filePath): a file
-// already present as an organic hit anywhere, or already injected, is skipped —
-// organic wins. Injected Documents carry a transient `expandedFrom` marker
-// (the parent's filePath) and are never persisted. The final list is capped at
-// `limit`, so injections displace tail organic rows; if the limit is already
-// reached by earlier ranks, later injections simply don't fit. When no row
+// Sources-expansion. For each organic result row that carries fmSources,
+// place a representative chunk for each pointed-at file immediately after its
+// parent, in fmSources order, at most MAX_INJECTIONS_PER_PARENT per parent.
+// Dedup key is (repo, filePath), and organic content always wins over a
+// synthesized first-chunk injection, but "wins" means the file's row keeps
+// its ORGANIC content wherever it ends up in the output, not that expansion
+// leaves it wherever raw retrieval happened to rank it:
+//   - A pointed-at file already PLACED into the output (an organic row at or
+//     above the current parent, or an earlier injection/hoist) is left
+//     untouched — no duplicate, no reorder.
+//   - A pointed-at file that is an organic hit SOMEWHERE in the candidate
+//     list but not yet placed (i.e. ranked below where it would survive the
+//     final `limit` cut once earlier rows and injections fill it) is HOISTED:
+//     its existing organic Document (real chunk, real snippet) is moved to
+//     the injection slot right after the parent instead of being displaced
+//     off the tail by a lower-priority sibling injection, or dropped
+//     entirely because the outer loop never reached its natural rank. A
+//     hoisted row is not tagged `expandedFrom` — it is organic content, not
+//     a synthesized stub, so it renders exactly as it would have at its
+//     natural rank.
+//   - Only a file with NO organic hit anywhere falls back to a synthesized
+//     first-chunk injection, tagged `expandedFrom` (the parent's filePath).
+// A hoisted row still counts toward MAX_INJECTIONS_PER_PARENT for its parent,
+// and the final list is still capped at `limit` — a hoist can itself be
+// sliced away if it lands past the cap, same as any other row. When no row
 // carries a resolvable fmSources entry the returned list is the organic list
 // unchanged (byte-identical to expandSources:false).
 function expandSourcesInResults(
@@ -576,15 +608,36 @@ function expandSourcesInResults(
   vectorStore: VectorStoreWrapper,
   limit: number,
 ): Document[] {
-  // Seed dedup with every organic hit so organic always wins over an injection.
-  const seen = new Set<string>();
+  // Every organic hit, keyed by (repo, filePath), first occurrence wins.
+  // Lets a below-cut organic row be hoisted with its real content instead of
+  // re-resolved as a synthetic first-chunk injection.
+  const organicByKey = new Map<string, Document>();
   for (const doc of organic) {
-    seen.add(fileKeyOf(doc.metadata as Record<string, unknown>));
+    const key = fileKeyOf(doc.metadata as Record<string, unknown>);
+    if (!organicByKey.has(key)) organicByKey.set(key, doc);
   }
+
+  // Keys already pushed into `expanded` — organic pushes, hoists, and
+  // synthesized injections all mark themselves here so later lookups (either
+  // a duplicate fmSources pointer, or the outer loop reaching an
+  // already-hoisted row's natural rank) skip instead of duplicating.
+  const placed = new Set<string>();
 
   const expanded: Document[] = [];
   for (const parent of organic) {
+    const parentKey = fileKeyOf(parent.metadata as Record<string, unknown>);
+    // fileKeyOf is (repo, filePath) only — two DIFFERENT chunks of the same
+    // file (e.g. two separate CHANGELOG.md ranges both landing in the
+    // organic top-k) share a key but are distinct organic rows that must
+    // both still be pushed at their own natural rank, same as pre-hoist
+    // behavior. Only ever skip the exact canonical (first-occurrence) row
+    // for a key, and only when it was already placed earlier — i.e. an
+    // earlier parent's fmSources hoisted THIS row ahead of its natural rank.
+    const isCanonicalForKey = organicByKey.get(parentKey) === parent;
+    if (isCanonicalForKey && placed.has(parentKey)) continue;
+
     expanded.push(parent);
+    placed.add(parentKey);
     // Once the cap is already filled, every later parent's push AND every
     // injection would be sliced away below anyway — stop touching the store.
     if (expanded.length >= limit) break;
@@ -604,8 +657,36 @@ function expandSourcesInResults(
       examined++;
       if (injected >= MAX_INJECTIONS_PER_PARENT) break;
       if (typeof src !== "string" || src.length === 0) continue;
-      // A non-matching entry (directory, glob, typo, absent file) resolves to
-      // null and is skipped silently and deterministically.
+
+      const [first, second] = resolveSourcePathCandidates(
+        parentRepo,
+        parentFilePath,
+        src,
+      );
+      const firstKey = `${parentRepo}::${first}`;
+      const secondKey = `${parentRepo}::${second}`;
+      const hoistKey = organicByKey.has(firstKey)
+        ? firstKey
+        : organicByKey.has(secondKey)
+          ? secondKey
+          : null;
+
+      if (hoistKey) {
+        // Organic hit exists somewhere in the candidate list. Already placed
+        // (inside the cut, or hoisted by an earlier parent) -> untouched, no
+        // injection. Not yet placed (below the cut) -> hoist it now,
+        // preserving its organic content/snippet, no expandedFrom marker.
+        if (placed.has(hoistKey)) continue;
+        expanded.push(organicByKey.get(hoistKey)!);
+        placed.add(hoistKey);
+        injected++;
+        continue;
+      }
+
+      // Not organic anywhere in the candidate list — fall back to a
+      // synthesized first-chunk injection. A non-matching entry (directory,
+      // glob, typo, absent file) resolves to null and is skipped silently
+      // and deterministically.
       const chunk = resolveSourceChunk(
         vectorStore,
         parentRepo,
@@ -614,8 +695,8 @@ function expandSourcesInResults(
       );
       if (!chunk) continue;
       const key = fileKeyOf(chunk.metadata);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (placed.has(key)) continue;
+      placed.add(key);
       expanded.push(
         new Document({
           pageContent: chunk.pageContent,
