@@ -2,6 +2,7 @@ import chokidar from "chokidar";
 import { basename, dirname, extname, join, relative, sep } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { EventEmitter } from "node:events";
 import type { Embeddings } from "@langchain/core/embeddings";
 import { assertScanRoot, type Config } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
@@ -26,6 +27,16 @@ export interface RunningWatcher {
   stats: () => { vectors: number; repos: number; pending: number };
   /** Resolves after the next scheduled flush completes. Test hook. */
   flushOnce: () => Promise<void>;
+  /**
+   * Resolves as soon as the accumulated-but-not-yet-flushed event count
+   * reaches minCount. Event-driven (subscribes to the internal pending-count
+   * signal) rather than polling on a fixed cadence, so it settles the
+   * instant chokidar's awaitWriteFinish/debounce actually fires instead of
+   * racing a wall-clock budget against filesystem-event latency under load.
+   * timeoutMs is a generous backstop for a genuinely broken watcher, not a
+   * tightly-tuned deadline for the happy path. Test hook.
+   */
+  waitForPending: (minCount: number, timeoutMs?: number) => Promise<void>;
 }
 
 export interface WatchOptions {
@@ -189,6 +200,9 @@ export async function runWatchMode(
   const skipDirs = mergeSkipDirs(config.skipDirs);
   const embeddings = options.embeddings ?? createEmbeddings(config);
   const pending = new PendingEventMap();
+  // Fires whenever an event is enqueued into `pending` (not on drain), so
+  // waitForPending below can await the real signal instead of polling.
+  const pendingEvents = new EventEmitter();
 
   const initialCount = store.count();
   const meta = store.getMeta();
@@ -335,6 +349,7 @@ export async function runWatchMode(
     } else {
       pending.recordDelete(resolved.repo, resolved.relativePath);
     }
+    pendingEvents.emit("change", pending.size());
     scheduleFlush();
   };
 
@@ -357,6 +372,7 @@ export async function runWatchMode(
     if (!repo) return;
     repoRoots.delete(absDir);
     pending.recordRepoDelete(repo);
+    pendingEvents.emit("change", pending.size());
     scheduleFlush();
   });
 
@@ -386,6 +402,28 @@ export async function runWatchMode(
   await new Promise<void>((resolve) => watcher.once("ready", () => resolve()));
   console.log("watch: ready. Ctrl+C to exit.");
 
+  const waitForPending = (minCount: number, timeoutMs = 20_000): Promise<void> => {
+    if (pending.size() >= minCount) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      let timeoutTimer: NodeJS.Timeout;
+      const onChange = (size: number) => {
+        if (size < minCount) return;
+        clearTimeout(timeoutTimer);
+        pendingEvents.off("change", onChange);
+        resolve();
+      };
+      timeoutTimer = setTimeout(() => {
+        pendingEvents.off("change", onChange);
+        reject(
+          new Error(
+            `timed out waiting for pending events (expected >= ${minCount}, saw ${pending.size()})`,
+          ),
+        );
+      }, timeoutMs);
+      pendingEvents.on("change", onChange);
+    });
+  };
+
   return {
     close: async () => {
       if (timer) {
@@ -408,5 +446,6 @@ export async function runWatchMode(
       }
       await flush();
     },
+    waitForPending,
   };
 }
