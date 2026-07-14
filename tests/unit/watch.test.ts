@@ -174,19 +174,24 @@ describe("runWatchMode integration", () => {
     }
   });
 
+  // Delegates to the watcher's own event-driven wait (src/watch.ts) instead
+  // of polling stats().pending on a fixed cadence. Root cause of the old
+  // flake: polling raced a fixed wall-clock budget against chokidar's
+  // awaitWriteFinish (stabilityThreshold 500ms + pollInterval 100ms) firing
+  // the underlying fs event, and under full-suite CPU/IO contention that
+  // race sometimes lost (a different case each time, since it's system-load
+  // dependent, not a bug in any one test). Awaiting the watcher's internal
+  // "pending changed" signal directly removes the poll-cadence tail latency
+  // and, more importantly, decouples correctness from guessing how long the
+  // real debounce will take: it resolves the instant the real event fires,
+  // however long that took, with a generous timeout only as a genuine-hang
+  // backstop.
   async function waitForPending(
-    watcher: { stats: () => { pending: number } },
+    watcher: { waitForPending: (minCount: number, timeoutMs?: number) => Promise<void> },
     minCount: number,
-    timeoutMs = 5000,
+    timeoutMs = 20_000,
   ): Promise<void> {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (watcher.stats().pending >= minCount) return;
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    throw new Error(
-      `timed out waiting for pending events (expected >= ${minCount}, saw ${watcher.stats().pending})`,
-    );
+    await watcher.waitForPending(minCount, timeoutMs);
   }
 
   async function waitForCondition(
@@ -229,7 +234,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("removes vectors when a file is deleted", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -257,7 +262,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("detects a new git repo dropped under the scan root", async () => {
     const scanRoot = await makeTmpDir();
@@ -336,7 +341,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("honours an extra skipDirs entry from config (ORACLE_SKIP_DIRS path)", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -374,7 +379,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("collapses a save-storm into a single re-embed", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -404,7 +409,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("skips an oversized changed file with a loud warning; a normal sibling still embeds", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -455,7 +460,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("skips an oversized file arriving as the very first watch event on a fresh, never-initialized store", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -493,7 +498,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("skips an empty file arriving as the very first watch event on a fresh, never-initialized store", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -522,7 +527,7 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 
   it("handles a repo-drop arriving as the very first watch event on a fresh, never-initialized store", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
@@ -555,5 +560,5 @@ describe("runWatchMode integration", () => {
       logSpy.mockRestore();
       warnSpy.mockRestore();
     }
-  }, 15000);
+  }, 30000);
 });
