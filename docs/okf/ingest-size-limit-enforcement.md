@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-07-10T08:34:41.256341Z
+timestamp: 2026-07-16T02:36:27Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -28,14 +28,14 @@ edited together.
 ## Config: the size ceiling and its fail-loud parse
 
 `src/config.ts`:
-- `maxFileSizeBytes: z.number().int().positive().default(500_000)` (config.ts:63).
+- `maxFileSizeBytes: z.number().int().positive().default(500_000)` (config.ts:79).
   Positive int required; the default is 500 KB.
-- Env plumbing: `maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE)` (config.ts:115).
-- `parseMaxFileSizeBytes(raw)` (config.ts:145-148): `undefined` or `raw.trim() === ""`
+- Env plumbing: `maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE)` (config.ts:131).
+- `parseMaxFileSizeBytes(raw)` (config.ts:161-164): `undefined` or `raw.trim() === ""`
   returns `undefined` (schema default applies); otherwise `Number(raw)` is handed
   straight to `configSchema.parse`, where `.int().positive()` rejects `NaN`/`0`/negative
   and `loadConfig` throws.
-- The empty-`.env`-line contract is spelled out in the comment at config.ts:137-144:
+- The empty-`.env`-line contract is spelled out in the comment at config.ts:153-160:
   an `ORACLE_MAX_FILE_SIZE=` line "must not crash the CLI" (treated as unset), but
   "A typo'd ORACLE_MAX_FILE_SIZE must fail loudly, not silently resolve to some other limit."
 
@@ -82,23 +82,22 @@ edited together.
 
 ## The load-bearing duplication (watch.ts is a separate enforcement site)
 
-`src/watch.ts` does **not** call `scanner.ts`. `loadScannedFile` (watch.ts:121-154)
+`src/watch.ts` does **not** call `scanner.ts`. `loadScannedFile` (watch.ts:132-165)
 independently reimplements the stat-first gate:
 - `const limit = maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;` then
-  `const st = await stat(absolutePath); if (st.size > limit) return {kind:"too-large", ...}` (watch.ts:132-139).
-- Empty check `if (!content.trim()) return {kind:"empty"}` (watch.ts:141).
-- It is fed the same config value: the caller passes `config.maxFileSizeBytes`
-  into `loadScannedFile(...)` (watch.ts:261).
+  `const st = await stat(absolutePath); if (st.size > limit) return {kind:"too-large", ...}` (watch.ts:143-150).
+- Empty check `if (!content.trim()) return {kind:"empty"}` (watch.ts:152).
+- It is fed the same config value: the caller passes `config.maxFileSizeBytes` into `loadScannedFile(...)` (watch.ts:271-276).
 
 **watch reports too-large loudly too — verified.** In `flush`, `loaded.kind === "too-large"`
 emits `console.warn("WARNING: skipped <path> — <bytes> bytes > ORACLE_MAX_FILE_SIZE=<limit>")`
-and unindexes any stale vectors for that file (watch.ts:271-281). `loaded.kind === "empty"`
-is a **silent** skip (watch.ts:283-292, mirroring scanner.ts), though it still clears
+and unindexes any stale vectors for that file (watch.ts:285-295). `loaded.kind === "empty"`
+is a **silent** skip (watch.ts:297-306, mirroring scanner.ts), though it still clears
 stale vectors. Note watch reports via `console.warn` directly, whereas runner routes
 through an injected `warn` sink — different mechanisms, same "loud" outcome.
 
 **Consequence:** the size/empty gate lives in two places (`scanner.walkRepo`
-scanner.ts:140-157 and `watch.loadScannedFile` watch.ts:132-141). A fix or
+scanner.ts:140-157 and `watch.loadScannedFile` watch.ts:132-152). A fix or
 behaviour change to one does **not** automatically apply to the other. Any change
 to the threshold semantics, the empty-file rule, or the reporting shape must be
 made in **both** files, or full-index and watch-mode behaviour will silently diverge.
@@ -107,17 +106,8 @@ made in **both** files, or full-index and watch-mode behaviour will silently div
 
 Per `CHANGELOG.md` `[0.10.0]` (2026-07-04): `agent-tasks/backend/src/routes/tasks.ts`
 (207,716 bytes) "was silently dropped by the old `content.length > 200_000` check;
-it and any file like it are now reported, not swallowed" (CHANGELOG.md:30). The same
+it and any file like it are now reported, not swallowed" (CHANGELOG.md:37). The same
 release moved the limit to a `stat`-first byte check "in both the scanner and
 `watch.ts`, which previously duplicated the old limit as its own `MAX_FILE_BYTES`
-constant" (CHANGELOG.md:26) — i.e. the duplication predates the fix and was carried
+constant" (CHANGELOG.md:33) — i.e. the duplication predates the fix and was carried
 forward, not introduced by it.
-```
-
----
-
-Verification notes for the caller:
-- Every lead claim held; no DISCREPANCIES section needed.
-- One precision worth flagging: on the MCP path, `runIndex(cfg)` at `src/mcp-server.ts:260` is called with no `warn` sink, so the per-file `WARNING:` lines are NOT emitted to MCP — only the folded skip count (via `formatIndexSummary`) reaches the reindex summary. The doc states this explicitly.
-- watch.ts reports oversize skips via `console.warn` directly (watch.ts:271-275), not through the injected `warn` sink that runner.ts uses — same "loud" outcome, different mechanism. Captured in the doc.
-- CHANGELOG confirms both the 207,716-byte `agent-tasks/backend/src/routes/tasks.ts` incident (line 30) and that watch.ts previously carried its own duplicate `MAX_FILE_BYTES` constant (line 26).
