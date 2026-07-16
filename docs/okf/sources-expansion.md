@@ -1,9 +1,9 @@
 ---
 type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
-description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath) with organic-wins, capped to limit — the repo's one undocumented feature.
+description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit — the repo's one undocumented feature.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-07-10T08:34:41.256341Z
+timestamp: 2026-07-16T02:36:27Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
@@ -21,8 +21,8 @@ docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1`
 (`src/store/sqlite-store.ts:293-295`, exposed via
 `getFirstChunkByFileInternal` at `:638-650`). At most
 `MAX_INJECTIONS_PER_PARENT = 3` chunks are injected per parent
-(`src/retrieval/chain.ts:512`), while at most `MAX_SOURCES_EXAMINED_PER_PARENT
-= 20` raw `fmSources` entries are even looked at per parent (`:520`) — the
+(`src/retrieval/chain.ts:522`), while at most `MAX_SOURCES_EXAMINED_PER_PARENT
+= 20` raw `fmSources` entries are even looked at per parent (`:530`) — the
 second bound caps synchronous store lookups against an adversarial doc that
 lists thousands of sources.
 
@@ -30,34 +30,41 @@ This feature is **undocumented**. Grepping `docs/` and `README.md` for
 `expandSources`, `expand_sources`, or `sources-expansion` returns zero hits.
 It exists only in code and code comments.
 
-Each injected `Document` is minted fresh with a transient `expandedFrom` marker
-carrying the parent's `filePath`: `metadata: { ...chunk.metadata, expandedFrom:
-parentFilePath }` (`src/retrieval/chain.ts:612`). The marker is render-only —
+Each synthesized-injection `Document` is minted fresh with a transient
+`expandedFrom` marker carrying the parent's `filePath`: `metadata: { ...chunk.metadata,
+expandedFrom: parentFilePath }` (`src/retrieval/chain.ts:705`). A hoisted row
+(see below) carries no such marker: it is the existing organic `Document`, moved,
+not a new one. The marker is render-only —
 `formatChunkExpandedTag` (`src/retrieval/chain.ts:81`, called at `:114`) turns it
 into an `[expanded from <basename>]` tag in the search output, spliced alongside
 the `[type]` tag. Injected Documents are **never persisted**; they
 exist only in the returned list for that one call.
 
-**Byte-identical-to-off guarantee.** `expandSourcesInResults` pushes each parent
-and only appends injections when a source actually resolves to a stored chunk. A
-non-matching entry (directory, glob, typo, absent file) resolves to `null` and
-is skipped silently and deterministically (`:597-605`). When no row carries a
-resolvable `fmSources` entry, the returned list is the organic list unchanged —
-identical to `expandSources: false`. `expandSources` defaults to `true`
-(`searchCodebase`, `src/retrieval/chain.ts:628`).
+**Byte-identical-to-off guarantee.** `expandSourcesInResults` pushes each
+parent, then either hoists an organic pointed-at file into place or resolves a
+synthesized injection for one with no organic hit anywhere. On the synthesized
+path, a non-matching entry (directory, glob, typo, absent file) resolves to
+`null` and is skipped silently and deterministically (`:688-698`). When no row
+carries a resolvable `fmSources` entry, the returned list is the organic list
+unchanged — identical to `expandSources: false`. `expandSources` defaults to
+`true` (`searchCodebase`, `src/retrieval/chain.ts:721`).
 
 ## Where it's enforced
 
 `expandSourcesInResults(organic, vectorStore, limit)` at
-`src/retrieval/chain.ts:564-620` is the whole mechanism. It runs after ranking,
+`src/retrieval/chain.ts:608-713` is the whole mechanism. It runs after ranking,
 inside `searchCodebase`.
 
 **Path shape (load-bearing).** `fmSources` entries are **repo-root-relative** by
 OKF convention (e.g. `backend/src/app.ts`). The store's `file_path` namespace
 depends on scan layout: when repos are subdirectories of the scan root (the
 common production case), stored paths carry the **repo prefix** (e.g.
-`agent-tasks/backend/src/app.ts`). `resolveSourceChunk`
-(`src/retrieval/chain.ts:537-551`) bridges this by deriving the namespace from
+`agent-tasks/backend/src/app.ts`). The candidate-order logic now lives in its
+own helper, `resolveSourcePathCandidates` (`src/retrieval/chain.ts:548-558`),
+extracted in 0.10.2 so the store lookup and the organic-hit hoist check share
+one definition of which path form a given `fmSources` entry means.
+`resolveSourceChunk` (`src/retrieval/chain.ts:562-577`) then tries the store
+lookup against both forms in that order. Both derive the namespace from
 the **parent chunk's own path** — parent-namespace-first:
 
 ```
@@ -88,32 +95,43 @@ tool (`src/mcp-server.ts:189`) that reads a window of lines around a position in
 an indexed file. The `expand_sources` parameter described here is a flag on
 `oracle_search`. Similar names, unrelated mechanisms.
 
-## What breaks it
+## What the dedup rule actually does now
 
-**Dedup + cap — current behaviour and a known limitation, not a desirable
-invariant.** The dedup key is `(repo, filePath)` via `fileKeyOf`
-(`src/retrieval/chain.ts:522-527`). The `seen` set is seeded with **every
-organic hit** before any injection (`:569-573`), so a file already retrieved
-organically is never injected — "organic wins" — **even if that organic hit
-sits below the final `limit` cut**. The combined parent+injection list is then
-returned as `.slice(0, limit)` (`:619`).
+**Dedup + hoist — fixed in 0.10.2, not a known limitation anymore.** The dedup
+key is `(repo, filePath)` via `fileKeyOf` (`src/retrieval/chain.ts:532-537`).
+Every organic hit is indexed into an `organicByKey` map, first occurrence wins
+(`:616-620`), and a separate `placed` set tracks every row, organic push,
+hoist, or synthesized injection, that has actually landed in the output
+(`:626`). A pointed-at file that is an organic hit ranked **at or above** its
+pointing parent (already placed by the time the parent's own `fmSources` are
+processed) is left untouched: no duplicate, no reorder. A pointed-at file that
+is an organic hit ranked **below** its pointing parent (not yet placed,
+whether or not it would have survived the `limit` cut on its own) is
+**hoisted**: its existing organic `Document` (real chunk, real snippet) is
+moved into the injection slot right after the parent, with no `expandedFrom`
+marker, instead of being left at its natural rank where a lower-priority
+sibling injection could push it past the cut (`:676-686`). Only a file with
+**no organic hit anywhere** in the candidate list falls back to a synthesized
+first-chunk injection tagged `expandedFrom` (`:688-708`). The combined
+parent+injection+hoist list is still capped with `.slice(0, limit)`
+(`:712`), so a hoist is not exempt from the final cut either.
 
 Consequences:
 
-- Injections push out **tail organic rows**: the slice is applied after
-  injections are interleaved, so injected chunks can displace organic rows that
-  ranked below them. (The word "displace" appears once in this repo, in the code comment at
-  `:560`; "hoist" appears nowhere. Both are otherwise task-tracker vocabulary.)
-- A pointed-at file that is **organically present below the cut** is neither
-  injected (it is in `seen`) nor promoted (there is no reordering) — it stays
-  below the cut and may be sliced away entirely, while a **non-target sibling**
-  gets pushed out instead.
-- Once `expanded.length >= limit`, the loop breaks early (`:578-580`),
+- "Hoist," not "displace," is now the code's own vocabulary: the word
+  appears throughout `expandSourcesInResults` and its comments (e.g. `:592`,
+  `:596`, `:614`, `:622-625`, `:670-684`); "displace" survives only once, in a
+  comment about the exact failure mode this fix closes (`:595`).
+- A pointed-at file that is organically present below the cut is now
+  **promoted** into the injection slot instead of silently left to be sliced
+  away, which was the original regression this mechanism used to have.
+- Once `expanded.length >= limit`, the loop still breaks early (`:643-645`),
   skipping later parents and their store lookups entirely.
 
-Tracked as agent-tasks `d165ff85`. Describe the mechanism in these terms
-(seed-all-organic + `.slice(0, limit)`), not as "hoist/displace" — those are the
-tracker's words.
+Fixed as agent-tasks `d165ff85` / codebase-oracle 0.10.2 (`CHANGELOG.md:14`,
+commit `5b59ec6`, "fix(search): hoist below-cut organic hits instead of
+skipping their injection"). Describe the mechanism in hoist terms: a
+below-parent organic hit is hoisted into place, not silently skipped.
 
 **Do not confuse with `oracle_query`'s pointers section.** `oracle_query`
 appends a text block titled `"Pointers (from OKF sources metadata):"`
