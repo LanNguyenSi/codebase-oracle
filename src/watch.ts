@@ -45,6 +45,21 @@ export interface WatchOptions {
   embeddings?: Embeddings;
   /** Inject a store handle (tests). Defaults to openSqliteStore(config). */
   store?: SqliteStore;
+  /**
+   * Force chokidar into stat-based polling instead of native OS filesystem
+   * events (tests). Native fs.watch can silently miss a change on a
+   * just-created directory: when that happens no chokidar event of any kind
+   * fires (not even the low-level "raw" event) and the watcher waits
+   * forever for a notification the OS never sent, which is what made
+   * tests/unit/watch.test.ts flake even after waitForPending became
+   * event-driven. Confirmed by watching a fresh chokidar instance directly
+   * (outside vitest, no debounce/store involved): roughly 1 in 20-40
+   * lifecycles produced zero events even after a 100s wait. Polling mode
+   * sidesteps the OS notification path entirely. Left off by default so
+   * production `oracle watch` keeps native events (cheaper for large
+   * scan roots); tests opt in for deterministic detection.
+   */
+  usePolling?: boolean;
 }
 
 /** Pure helper: does this filename match the active extension filter? */
@@ -358,6 +373,7 @@ export async function runWatchMode(
       const parts = p.split(sep);
       return parts.some((part) => skipDirs.has(part));
     },
+    usePolling: options.usePolling ?? false,
     ignoreInitial: true,
     persistent: true,
     awaitWriteFinish: { stabilityThreshold: 500, pollInterval: 100 },

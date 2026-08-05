@@ -175,17 +175,19 @@ describe("runWatchMode integration", () => {
   });
 
   // Delegates to the watcher's own event-driven wait (src/watch.ts) instead
-  // of polling stats().pending on a fixed cadence. Root cause of the old
-  // flake: polling raced a fixed wall-clock budget against chokidar's
-  // awaitWriteFinish (stabilityThreshold 500ms + pollInterval 100ms) firing
-  // the underlying fs event, and under full-suite CPU/IO contention that
-  // race sometimes lost (a different case each time, since it's system-load
-  // dependent, not a bug in any one test). Awaiting the watcher's internal
-  // "pending changed" signal directly removes the poll-cadence tail latency
-  // and, more importantly, decouples correctness from guessing how long the
-  // real debounce will take: it resolves the instant the real event fires,
-  // however long that took, with a generous timeout only as a genuine-hang
-  // backstop.
+  // of polling stats().pending on a fixed cadence. That removed the
+  // poll-cadence tail latency, but a residual flake (agent-tasks 0fd8efa0,
+  // ~1 in 20 single-file runs, a different assertion each time) remained:
+  // native fs.watch can silently miss the event for a just-created
+  // directory, so no chokidar event of any kind fires (confirmed by
+  // watching a bare chokidar instance directly, outside vitest: zero add
+  // AND zero low-level "raw" events even after waiting 100s) and the
+  // event-driven wait hangs forever for a notification the OS never sent.
+  // A longer timeout cannot fix this: the event is not late, it never
+  // arrives on that watcher instance. Every runWatchMode() call below
+  // passes usePolling: true (src/watch.ts, WatchOptions.usePolling,
+  // opt-in and off by default in production) so detection relies on
+  // chokidar's own stat polling instead of the unreliable OS notification.
   async function waitForPending(
     watcher: { waitForPending: (minCount: number, timeoutMs?: number) => Promise<void> },
     minCount: number,
@@ -219,6 +221,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fakeEmbeddings(),
       debounceMs: 20_000, // long, so we manually flush
+      usePolling: true, // see waitForPending comment above
     });
     try {
       await writeFile(join(repoDir, "login.ts"), "export function login() { return 1; }", "utf8");
@@ -245,6 +248,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fakeEmbeddings(),
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       const filePath = join(repoDir, "login.ts");
@@ -277,6 +281,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fakeEmbeddings(),
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       const newRepo = join(scanRoot, "fresh");
@@ -311,6 +316,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       // Create a default-skipped vendored cache tree before a "real" source
@@ -355,6 +361,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       await mkdir(join(repoDir, "generated"), { recursive: true });
@@ -393,6 +400,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       const filePath = join(repoDir, "storm.ts");
@@ -428,6 +436,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       // Embed the normal file first so the store's schema (embedding
@@ -479,6 +488,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       // No file has ever been embedded yet, so the store has no schema
@@ -512,6 +522,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       // Same never-initialized-store ordering as the oversized case above,
@@ -541,6 +552,7 @@ describe("runWatchMode integration", () => {
     const watcher = await runWatchMode(config, {
       embeddings: fake,
       debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
     });
     try {
       // The repo was discovered at watch start but nothing was ever embedded,
