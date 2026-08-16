@@ -24,6 +24,33 @@ npm run mcp
 
 From that point on, any Claude Code session on the same machine can call the tools below without a separate scan or API key per session.
 
+## Multi-repo workspace recipe (source checkout, user scope)
+
+The battle-tested registration for a multi-repo workspace like `~/git/pandora`, where sessions start in changing directories and the oracle must be available in all of them (verified on the Mac mini, 2026-08-16):
+
+1. **Prerequisites, once per machine:**
+   - `.env` in the checkout with at least `ORACLE_SCAN_ROOT` (the directory containing your git repos) and the provider keys you use (`OPENAI_API_KEY`, or `ORACLE_EMBEDDING_PROVIDER` / `ORACLE_LLM_PROVIDER` / `ORACLE_LLM_BASE_URL` / `ORACLE_LLM_API_KEY` / `ORACLE_LLM_MODEL` for a local provider). The server resolves `.env` from its **working directory**, which is why the command below cds first.
+   - `npm run build` in the checkout (the recipe runs the compiled `dist/`; rebuild after pulling changes, a stale `dist` serves stale behavior).
+   - An index: `npm run index` (or wait for the first `oracle_reindex` call).
+
+2. **Register at user scope** so the entry loads in every session regardless of cwd, with absolute paths only (the spawn environment's `PATH` is not guaranteed):
+
+   ```bash
+   claude mcp add -s user codebase-oracle -- sh -c 'cd /abs/path/to/codebase-oracle && exec /abs/path/to/node dist/mcp-server.js'
+   ```
+
+   The `sh -c 'cd ... && exec ...'` wrapper exists only to give the server its `.env`/index working directory; both paths inside it must be absolute.
+
+3. **Verify** with `claude mcp list`: the entry must show `✔ Connected` (the health check performs a real stdio handshake). Then restart your Claude Code session: MCP tools only appear in sessions started **after** registration. In the fresh session, `oracle_list_repos` must return your indexed repos; assert that output, not just a silent non-error.
+
+4. **Negative control** (proves the health check cannot silently pass): registering a wrong binary path shows a hard failure, e.g.
+
+   ```
+   oracle-negctl: sh -c exec /nonexistent/node ... - ✘ Failed to connect — CONNECTION_CLOSED
+   ```
+
+**Avoid local-scope registration for this use case.** A project-local entry (created by `claude mcp add` without `-s user` from inside one directory) connects only for sessions starting in that exact directory, and has been observed in a state where `claude mcp list` / `claude mcp get` could not see or remove it even though sessions still loaded it; the only cleanup path was editing `~/.claude.json` (`.projects["<dir>"].mcpServers`) by hand.
+
 ## Tools
 
 | Tool | Description |
