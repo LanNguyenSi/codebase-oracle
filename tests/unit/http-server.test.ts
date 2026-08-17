@@ -8,10 +8,21 @@
  * never collide.
  *
  * Gap covered: auth-gate 401, WWW-Authenticate header, -32001 JSON body,
- * GET /health → 200, unknown path → 404.
+ * GET /health → 200, unknown path → 404, the post-auth 500 error mapping
+ * (IndexFingerprintError → its message; any other throw → generic "Internal
+ * error"), and the per-request releasePair() guard (transport/server closed
+ * on the response stream's "close" and "error" events).
  *
- * The IndexFingerprintError → 500 path requires mocking the store or the
- * MCP tool layer; it is flagged as a risk/open question in the task report.
+ * The 500-mapping and releasePair tests drive their failure by mocking
+ * WebStandardStreamableHTTPServerTransport.prototype.handleRequest for a
+ * single call (vi.spyOn + mockImplementationOnce), rather than mocking the
+ * store: a real IndexFingerprintError thrown by a tool handler is caught and
+ * turned into a normal JSON-RPC error response *inside* the MCP SDK's
+ * request dispatch (transport.onmessage is fire-and-forget, not awaited by
+ * handlePostRequest), so it never reaches createHttpRequestHandler's own
+ * try/catch. Making handleRequest itself throw/return a controllable stream
+ * exercises that outer catch block and the stream-release listeners
+ * directly and deterministically.
  */
 import { createServer } from "node:http";
 import {
@@ -26,6 +37,8 @@ import {
 import { Document } from "@langchain/core/documents";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import type { HttpBindConfig } from "../../src/http-auth.js";
 import { VERSION } from "../../src/version.js";
 
@@ -64,7 +77,10 @@ import {
   createHttpRequestHandler,
   buildServer,
 } from "../../src/http-server.js";
-import { createVectorStore } from "../../src/store/vector-store.js";
+import {
+  createVectorStore,
+  IndexFingerprintError,
+} from "../../src/store/vector-store.js";
 import type { VectorStoreWrapper } from "../../src/store/vector-store.js";
 
 // Undo the vi.stubEnv from the vi.hoisted block above once every test in
@@ -218,6 +234,212 @@ describe("createHttpRequestHandler — unknown paths → 404", () => {
     const res = await fetch(`${url}/unknown`, { method: "POST" });
     expect(res.status).toBe(404);
   });
+});
+
+// ── post-auth 500 error mapping ───────────────────────────────────────────
+//
+// Forces the try/catch in createHttpRequestHandler's POST /mcp branch by
+// making WebStandardStreamableHTTPServerTransport.prototype.handleRequest
+// throw for exactly one call (vi.spyOn + mockImplementationOnce, restored in
+// a finally). Auth passes first (LOOPBACK_NO_TOKEN), then the throw happens
+// on the awaited `transport.handleRequest(request)` call, landing in the
+// catch block that maps IndexFingerprintError -> its message and anything
+// else -> the generic "Internal error" (never leaking the real message).
+describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
+  let url: string;
+  let close: () => Promise<void>;
+
+  beforeEach(async () => {
+    ({ url, close } = await startServer(LOOPBACK_NO_TOKEN));
+  });
+
+  afterEach(async () => {
+    await close();
+  });
+
+  it("IndexFingerprintError from the MCP handler path → 500 with the error's own message", async () => {
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        throw new IndexFingerprintError(
+          "index fingerprint mismatch: rebuild required",
+        );
+      });
+    try {
+      const res = await fetch(`${url}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as {
+        jsonrpc: string;
+        error: { code: number; message: string };
+        id: null;
+      };
+      expect(body.jsonrpc).toBe("2.0");
+      expect(body.error.code).toBe(-32603);
+      expect(body.error.message).toBe(
+        "index fingerprint mismatch: rebuild required",
+      );
+      expect(body.id).toBeNull();
+    } finally {
+      handleRequestSpy.mockRestore();
+    }
+  });
+
+  it("a generic (non-IndexFingerprintError) throw from the MCP handler path → 500 with a generic 'Internal error' message (no internal detail leak)", async () => {
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        throw new Error("some internal detail that must not leak to clients");
+      });
+    try {
+      const res = await fetch(`${url}/mcp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }),
+      });
+      expect(res.status).toBe(500);
+      const body = (await res.json()) as {
+        error: { code: number; message: string };
+      };
+      expect(body.error.code).toBe(-32603);
+      expect(body.error.message).toBe("Internal error");
+      expect(body.error.message).not.toContain("some internal detail");
+    } finally {
+      handleRequestSpy.mockRestore();
+    }
+  });
+
+  // Mutation guard: the two tests above pin both arms of the
+  // `err instanceof IndexFingerprintError ? err.message : "Internal error"`
+  // ternary in src/http-server.ts. Verified by scratch mutation (see task
+  // report): hardcoding the message to "Internal error" fails the first
+  // test; dropping the instanceof check (always using err.message) fails
+  // the second test by leaking the internal detail.
+});
+
+// ── per-request release guard (releasePair) ───────────────────────────────
+//
+// src/http-server.ts wires releasePair() (closes the per-request transport
+// and McpServer) to both the "close" and "error" events of the Node stream
+// wrapping the MCP response body, so a per-request transport/server pair is
+// never left dangling. Rather than relying on a real MCP tool call and race
+// conditions in a real client abort to produce a stream error, this mocks
+// handleRequest to return a Response whose body is a ReadableStream under
+// direct test control: one scenario ends the stream cleanly
+// (controller.close()), the other fails it mid-stream
+// (controller.error(...)). Node's Readable.fromWeb always emits "close"
+// after "error" too (autoDestroy), so the clean-end scenario calls
+// releasePair via "close" only (1 call) while the error scenario calls it
+// via both "error" and the subsequent "close" (2 calls) — both counts were
+// confirmed empirically before being pinned here.
+describe("createHttpRequestHandler — per-request release guard (releasePair)", () => {
+  let url: string;
+  let close: () => Promise<void>;
+
+  beforeEach(async () => {
+    ({ url, close } = await startServer(LOOPBACK_NO_TOKEN));
+  });
+
+  afterEach(async () => {
+    await close();
+  });
+
+  it("closes the per-request transport and server once the response stream ends cleanly", async () => {
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: ok\n\n"));
+            controller.close();
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      });
+    try {
+      const res = await fetch(`${url}/mcp`, { method: "POST", body: "{}" });
+      await res.text();
+      // The stream's "close" event fires asynchronously after the body is
+      // fully drained; give the event loop a tick for the listener to run.
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      handleRequestSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
+    }
+  });
+
+  it("closes the per-request transport and server when the response stream errors mid-flight", async () => {
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: partial\n\n"));
+            // Simulate a mid-response failure (e.g. the store connection
+            // dropping) instead of a clean close.
+            controller.error(new Error("simulated stream failure"));
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      });
+    // Node's pipe(res) does not forward a source error to the destination,
+    // so res.end() is never called on this path and the HTTP response
+    // itself never completes — awaiting the fetch() promise directly would
+    // hang forever (confirmed empirically). The server-side error/close
+    // events (and releasePair) fire independently of whether the client
+    // ever receives a response, so kick off the request without awaiting
+    // it, give the event loop a tick, then abort the still-pending client
+    // request so the connection tears down and afterEach's server.close()
+    // doesn't hang waiting for it.
+    const abortController = new AbortController();
+    const fetchPromise = fetch(`${url}/mcp`, {
+      method: "POST",
+      body: "{}",
+      signal: abortController.signal,
+    }).catch(() => {});
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Both the "error" listener and the subsequent "close" (Node's
+      // autoDestroy emits both) call releasePair, so this fires twice.
+      expect(transportCloseSpy).toHaveBeenCalledTimes(2);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      abortController.abort();
+      await fetchPromise;
+      handleRequestSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
+    }
+  });
+
+  // Mutation guard: removing the `.on("close", releasePair)` registration in
+  // src/http-server.ts fails the clean-end test (0 calls instead of 1).
+  // Removing the `.on("error", releasePair)` registration fails the
+  // mid-flight-error test's expected count (drops from 2 to 1, since only
+  // the subsequent "close" event still fires releasePair). Both verified by
+  // scratch mutation (see task report).
 });
 
 // ── oracle_search type/tags pass-through (OKF metadata) + sources-expansion ──
