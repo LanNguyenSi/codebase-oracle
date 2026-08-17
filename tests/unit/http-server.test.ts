@@ -90,6 +90,14 @@ afterAll(() => {
   vi.unstubAllEnvs();
 });
 
+// Safety net on top of the existing per-test finally blocks: restores any
+// vi.spyOn mock left behind by a failed assertion (which would otherwise
+// skip its finally's mockRestore()) so a spy from one test never leaks into
+// the next.
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 const TOKEN = "test-bearer-token-abc123";
 const LOOPBACK_WITH_TOKEN: HttpBindConfig = { bind: "127.0.0.1", token: TOKEN };
 const LOOPBACK_NO_TOKEN: HttpBindConfig = { bind: "127.0.0.1", token: null };
@@ -258,6 +266,7 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
   });
 
   it("IndexFingerprintError from the MCP handler path → 500 with the error's own message", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const handleRequestSpy = vi
       .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
       .mockImplementationOnce(async () => {
@@ -283,12 +292,17 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
         "index fingerprint mismatch: rebuild required",
       );
       expect(body.id).toBeNull();
+      // Pins that the server also logs the error server-side (not just
+      // maps it to a client-facing response).
+      expect(errSpy).toHaveBeenCalled();
     } finally {
       handleRequestSpy.mockRestore();
+      errSpy.mockRestore();
     }
   });
 
   it("a generic (non-IndexFingerprintError) throw from the MCP handler path → 500 with a generic 'Internal error' message (no internal detail leak)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const handleRequestSpy = vi
       .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
       .mockImplementationOnce(async () => {
@@ -307,8 +321,12 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
       expect(body.error.code).toBe(-32603);
       expect(body.error.message).toBe("Internal error");
       expect(body.error.message).not.toContain("some internal detail");
+      // Pins that the server also logs the error server-side (not just
+      // maps it to a client-facing response).
+      expect(errSpy).toHaveBeenCalled();
     } finally {
       handleRequestSpy.mockRestore();
+      errSpy.mockRestore();
     }
   });
 
@@ -371,8 +389,11 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
       const res = await fetch(`${url}/mcp`, { method: "POST", body: "{}" });
       await res.text();
       // The stream's "close" event fires asynchronously after the body is
-      // fully drained; give the event loop a tick for the listener to run.
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // fully drained; poll until the listener has run instead of a fixed
+      // sleep.
+      await vi.waitFor(() =>
+        expect(transportCloseSpy).toHaveBeenCalledTimes(1),
+      );
       expect(transportCloseSpy).toHaveBeenCalledTimes(1);
       expect(serverCloseSpy).toHaveBeenCalledTimes(1);
     } finally {
@@ -420,9 +441,12 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
       signal: abortController.signal,
     }).catch(() => {});
     try {
-      await new Promise((resolve) => setTimeout(resolve, 50));
       // Both the "error" listener and the subsequent "close" (Node's
-      // autoDestroy emits both) call releasePair, so this fires twice.
+      // autoDestroy emits both) call releasePair, so this fires twice; poll
+      // until both have landed instead of a fixed sleep.
+      await vi.waitFor(() =>
+        expect(transportCloseSpy).toHaveBeenCalledTimes(2),
+      );
       expect(transportCloseSpy).toHaveBeenCalledTimes(2);
       expect(serverCloseSpy).toHaveBeenCalledTimes(2);
     } finally {
@@ -436,10 +460,12 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
 
   // Mutation guard: removing the `.on("close", releasePair)` registration in
   // src/http-server.ts fails the clean-end test (0 calls instead of 1).
-  // Removing the `.on("error", releasePair)` registration fails the
-  // mid-flight-error test's expected count (drops from 2 to 1, since only
-  // the subsequent "close" event still fires releasePair). Both verified by
-  // scratch mutation (see task report).
+  // Removing the `.on("error", releasePair)` registration also fails the
+  // mid-flight-error test, but not by dropping the count from 2 to 1: an
+  // "error" event with no listener becomes an uncaught exception in Node,
+  // which also prevents the stream's "close" event (and thus the surviving
+  // "close" -> releasePair call) from firing, so the count drops from 2 to
+  // 0. Measured/reproduced by the reviewer, not merely inferred.
 });
 
 // ── oracle_search type/tags pass-through (OKF metadata) + sources-expansion ──
