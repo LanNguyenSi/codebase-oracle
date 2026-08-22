@@ -12,8 +12,8 @@ through the very tool they describe.
 
 - [Architecture](architecture-pointer.md), pointer to `../architecture.md` plus
   what it does not cover.
-- [MCP tools](mcp-pointer.md), pointer to `../mcp.md` plus the one parameter it
-  omits (`expand_sources`).
+- [MCP tools](mcp-pointer.md), pointer to `../mcp.md`, plus where the
+  `expand_sources` semantics live.
 - [Configuration](configuration-pointer.md), pointer to `../configuration.md`
   plus the token-budget asymmetry it does not mention.
 
@@ -22,7 +22,8 @@ through the very tool they describe.
 - [Sources-expansion](sources-expansion.md), how an organic hit's `fmSources`
   become injected, retrievable chunks: first chunk, parent-namespace-first path
   resolution, `(repo, filePath)` dedup with organic-wins, and the `limit` cap.
-  The repo's one genuinely undocumented feature.
+  The parameter is documented in README.md and mcp.md; the semantics live
+  only here and in code.
 - [Ingest size limit](ingest-size-limit-enforcement.md), oversize and read-error
   skips are loud while empty-file skips are silent, and the gate is implemented
   independently in `scanner.ts` and `watch.ts`.
