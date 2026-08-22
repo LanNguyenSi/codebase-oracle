@@ -3,7 +3,7 @@ type: overview
 title: MCP tools — where the surface is documented
 description: Pointer doc. ../mcp.md is the authoritative tool reference (five stdio tools, the HTTP parity gap, the type/tags/expand_sources parameters); this entry points to sources-expansion.md for expand_sources semantics.
 tags: [overview, mcp, tools, pointer]
-timestamp: 2026-08-22T04:35:37Z
+timestamp: 2026-08-22T04:51:51Z
 sources:
   - docs/mcp.md
   - src/mcp-server.ts

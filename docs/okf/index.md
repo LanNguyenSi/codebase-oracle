@@ -12,8 +12,8 @@ through the very tool they describe.
 
 - [Architecture](architecture-pointer.md), pointer to `../architecture.md` plus
   what it does not cover.
-- [MCP tools](mcp-pointer.md), pointer to `../mcp.md` for the full tool
-  surface.
+- [MCP tools](mcp-pointer.md), pointer to `../mcp.md`, plus where the
+  `expand_sources` semantics live.
 - [Configuration](configuration-pointer.md), pointer to `../configuration.md`
   plus the token-budget asymmetry it does not mention.
 

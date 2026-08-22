@@ -56,7 +56,7 @@ The battle-tested registration for a multi-repo workspace like `~/git/pandora`, 
 | Tool | Description |
 |------|-------------|
 | `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
-| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts optional `path_glob`, `type`, `tags`, and `expand_sources` filters |
+| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts optional `path_glob`, `type`, and `tags` filters, plus `expand_sources` (boolean, default `true`) to toggle OKF sources-expansion |
 | `oracle_expand` | Read a window of lines around a position in an indexed file (use after `oracle_search` for more context) |
 | `oracle_list_repos` | List repos present in the index with chunk counts, file counts, and the indexed timestamp |
 | `oracle_reindex` | Rebuild the incremental index from disk; new chunks visible to the next `oracle_search` / `oracle_query` call |
@@ -78,7 +78,7 @@ Matching chunks show their `fmType` in the result header (e.g. `[3] docs/okf/bac
 
 ## Example agent prompts
 
-Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus `path_glob` / `type` / `tags` / `expand_sources` for `oracle_search`.
+Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus `path_glob` / `type` / `tags` for `oracle_search`, plus `expand_sources` (boolean, default `true`) for `oracle_search`.
 
 - `oracle_search` with `query="AGENT_TASKS_TOKEN"`: find every repo that reads the token, across all indexed repos.
 - `oracle_search` with `query="tag-driven release"`, `path_glob="**/.github/workflows/*.yml"`: scoped to GitHub Actions workflow files only. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives.
@@ -96,7 +96,7 @@ The returned chunks include file path plus repo name, so the agent can read the 
 
 `npm run serve` starts the MCP server over Streamable HTTP instead of stdio. Defaults: `127.0.0.1:3100`, no authentication. Appropriate for a single local agent on the same machine.
 
-The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, `tags`, and `expand_sources`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
+The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, `tags`, and `expand_sources`, the last a boolean defaulting to `true`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
 
 For LAN or remote use, set both `ORACLE_HTTP_BIND` (to e.g. `0.0.0.0`) **and** `ORACLE_HTTP_TOKEN`. The server refuses to start with an off-loopback bind and no token, so there is no accidental-exposure path. Every `POST /mcp` request must then carry `Authorization: Bearer <token>` (constant-time compare). `GET /health` stays open.
 

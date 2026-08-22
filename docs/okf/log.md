@@ -2,6 +2,16 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-08-22T04:51:51Z, docs-freshness-audit round-2 fix (task cecad947):
+  mcp.md's tool table and both tool-input summaries now state
+  `expand_sources` is a boolean defaulting to `true` rather than just
+  listing it among the narrowing filters; index.md's MCP bullet now
+  names where the `expand_sources` semantics live, matching its
+  siblings' "plus ..." shape; mcp-pointer.md re-verified against the
+  now-final mcp.md and restamped (its 04:35:37Z timestamp went stale
+  again the moment mcp.md was edited further in the prior fix round; no
+  content change needed this time).
+
 - 2026-08-22T04:44:50Z, docs-freshness-audit fix round (task cecad947):
   sources-expansion.md and index.md no longer claim the expand_sources
   parameter itself is undocumented (README.md and mcp.md list it; only the
@@ -14,7 +24,8 @@
   mcp-pointer.md and sources-expansion.md both said docs/mcp.md does not
   document expand_sources; that became false once mcp.md's parameter
   enumeration was fixed in the same pass, so both sentences were updated
-  to match and timestamps bumped.
+  to match and timestamps bumped (mcp-pointer.md's bump was superseded
+  by the next fix round; see the entry above).
 
 - 2026-07-16T02:36:27Z, re-verification sweep (task f0121f17): 4 stale docs re-checked
   against current sources. Substantive: sources-expansion's dedup section
