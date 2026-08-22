@@ -3,7 +3,7 @@ type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
 description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit — the repo's one undocumented feature.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-07-16T02:36:27Z
+timestamp: 2026-08-22T04:35:37Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
@@ -88,7 +88,7 @@ repo-prefixed path namespace", verified present via `git log`).
 (`src/mcp-server.ts:133-138`, threaded to `searchCodebase` as `expandSources`
 at `:148`), described as "inject files pointed at by a retrieved doc's OKF
 sources: frontmatter, marked [expanded from ...] (default true)". `docs/mcp.md`
-does **not** document `expand_sources` (grep confirms absence).
+documents `expand_sources` too (added 2026-08-22).
 
 **Not to be confused with `oracle_expand`.** That is a separate, unrelated MCP
 tool (`src/mcp-server.ts:189`) that reads a window of lines around a position in
