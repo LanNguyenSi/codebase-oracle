@@ -1,9 +1,9 @@
 ---
 type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
-description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit — the repo's one undocumented feature.
+description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in README.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-08-22T04:35:37Z
+timestamp: 2026-08-22T04:44:50Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
@@ -26,9 +26,12 @@ docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1`
 second bound caps synchronous store lookups against an adversarial doc that
 lists thousands of sources.
 
-This feature is **undocumented**. Grepping `docs/` and `README.md` for
-`expandSources`, `expand_sources`, or `sources-expansion` returns zero hits.
-It exists only in code and code comments.
+The `expand_sources` parameter itself is documented: README.md's CLI flag
+table lists `--no-expand-sources`, and `docs/mcp.md` lists `expand_sources` in
+the tool table and the stdio tool-inputs summary. What is documented only here
+and in code is the semantics: the parent-namespace-first resolution, the
+`(repo, filePath)` dedup with organic-wins, the hoist behavior, and the
+per-parent injection and examined-sources caps.
 
 Each synthesized-injection `Document` is minted fresh with a transient
 `expandedFrom` marker carrying the parent's `filePath`: `metadata: { ...chunk.metadata,
@@ -88,7 +91,7 @@ repo-prefixed path namespace", verified present via `git log`).
 (`src/mcp-server.ts:133-138`, threaded to `searchCodebase` as `expandSources`
 at `:148`), described as "inject files pointed at by a retrieved doc's OKF
 sources: frontmatter, marked [expanded from ...] (default true)". `docs/mcp.md`
-documents `expand_sources` too (added 2026-08-22).
+documents `expand_sources` too.
 
 **Not to be confused with `oracle_expand`.** That is a separate, unrelated MCP
 tool (`src/mcp-server.ts:189`) that reads a window of lines around a position in

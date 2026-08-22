@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-08-22T04:44:50Z, docs-freshness-audit fix round (task cecad947):
+  sources-expansion.md and index.md no longer claim the expand_sources
+  parameter itself is undocumented (README.md and mcp.md list it; only the
+  dedup/hoist/cap semantics are doc-only-here); mcp.md's tool table and
+  example-prompts line now list expand_sources for oracle_search;
+  configuration-pointer.md re-verified against docs/configuration.md's
+  .env-cwd fix and restamped (no content change needed).
+
 - 2026-08-22T04:35:37Z, docs-freshness-audit follow-up (task cecad947):
   mcp-pointer.md and sources-expansion.md both said docs/mcp.md does not
   document expand_sources; that became false once mcp.md's parameter
