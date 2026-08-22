@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-07-16T02:36:27Z
+timestamp: 2026-08-22T05:39:39Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -30,7 +30,7 @@ llmProvider: z.enum([
 - `embeddingProvider` — env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:98-100`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only — `config.ts:22-24`.)
 - `llmProvider` — env `ORACLE_LLM_PROVIDER` (`config.ts:101-103`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
 
-They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:52-55` states the keys are deliberately kept separate "so embedding and LLM live on different providers without leaking keys across lanes."
+They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:52-55` says these keys are kept separate because doing so "lets embedding and LLM live on different providers without leaking keys across lanes."
 
 ## Default models (`loadConfig`, `config.ts:105-112`)
 

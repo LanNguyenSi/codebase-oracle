@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-07-16T02:36:27Z
+timestamp: 2026-08-22T05:21:41Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -82,22 +82,22 @@ edited together.
 
 ## The load-bearing duplication (watch.ts is a separate enforcement site)
 
-`src/watch.ts` does **not** call `scanner.ts`. `loadScannedFile` (watch.ts:132-165)
+`src/watch.ts` does **not** call `scanner.ts`. `loadScannedFile` (watch.ts:147-180)
 independently reimplements the stat-first gate:
 - `const limit = maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;` then
-  `const st = await stat(absolutePath); if (st.size > limit) return {kind:"too-large", ...}` (watch.ts:143-150).
-- Empty check `if (!content.trim()) return {kind:"empty"}` (watch.ts:152).
-- It is fed the same config value: the caller passes `config.maxFileSizeBytes` into `loadScannedFile(...)` (watch.ts:271-276).
+  `const st = await stat(absolutePath); if (st.size > limit) return {kind:"too-large", ...}` (watch.ts:158-165).
+- Empty check `if (!content.trim()) return {kind:"empty"}` (watch.ts:167).
+- It is fed the same config value: the caller passes `config.maxFileSizeBytes` into `loadScannedFile(...)` (watch.ts:286-291).
 
 **watch reports too-large loudly too — verified.** In `flush`, `loaded.kind === "too-large"`
 emits `console.warn("WARNING: skipped <path> — <bytes> bytes > ORACLE_MAX_FILE_SIZE=<limit>")`
-and unindexes any stale vectors for that file (watch.ts:285-295). `loaded.kind === "empty"`
-is a **silent** skip (watch.ts:297-306, mirroring scanner.ts), though it still clears
+and unindexes any stale vectors for that file (watch.ts:300-310). `loaded.kind === "empty"`
+is a **silent** skip (watch.ts:312-321, mirroring scanner.ts), though it still clears
 stale vectors. Note watch reports via `console.warn` directly, whereas runner routes
 through an injected `warn` sink — different mechanisms, same "loud" outcome.
 
 **Consequence:** the size/empty gate lives in two places (`scanner.walkRepo`
-scanner.ts:140-157 and `watch.loadScannedFile` watch.ts:132-152). A fix or
+scanner.ts:140-157 and `watch.loadScannedFile` watch.ts:147-167). A fix or
 behaviour change to one does **not** automatically apply to the other. Any change
 to the threshold semantics, the empty-file rule, or the reporting shape must be
 made in **both** files, or full-index and watch-mode behaviour will silently diverge.

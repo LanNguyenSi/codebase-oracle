@@ -2,6 +2,35 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-08-22T05:39:39Z, docs-audit follow-up review round (task dd7c19f2):
+  the prior entry's "everything else matched" / "real drift" claims for
+  index-freshness-vs-code-freshness.md and provider-enums-and-token-budget.md
+  were incomplete; a review pass found two more issues the first pass missed.
+  index-freshness-vs-code-freshness.md:150 cited `package.json:22` for the
+  `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
+  already cited :23 correctly elsewhere, at line 73), fixed, restamped.
+  provider-enums-and-token-budget.md:33 presented a paraphrase as a verbatim
+  quote ("so embedding and LLM live..." vs config.ts:52-55's actual "lets
+  embedding and LLM live...") was reworded so the quoted span matches the
+  source exactly, restamped.
+
+- 2026-08-22T05:21:41Z, docs-audit follow-up (task dd7c19f2): re-verified
+  provider-enums-and-token-budget.md against src/config.ts and
+  src/retrieval/chain.ts line by line; all cited lines still match, no
+  content change, restamped (it went STALE only because its declared
+  source docs/configuration.md changed in PR #83). index-freshness-vs-code-freshness.md
+  re-verified against package.json/src/store/sqlite-store.ts/src/mcp-server.ts/
+  src/version.ts/src/config.ts/src/index.ts/docs/architecture.md: found and
+  fixed one real drift, the CLI `loadConfig()` call-site list was missing the
+  `migrate-store` command (src/index.ts:189), added it; restamped.
+  ingest-size-limit-enforcement.md re-verified against src/config.ts,
+  src/ingest/scanner.ts, src/ingest/runner.ts, src/mcp-server.ts, src/watch.ts,
+  CHANGELOG.md: found and fixed real drift, every watch.ts line reference had
+  shifted +15 lines since the doc was last written (loadScannedFile and its
+  too-large/empty branches in `flush`), corrected all six citations; restamped.
+  README's CLI flag table also gained the missing `-g, --path-glob <glob>` row
+  (src/index.ts:98, verified against `search --help`).
+
 - 2026-08-22T04:51:51Z, docs-freshness-audit round-2 fix (task cecad947):
   mcp.md's tool table and both tool-input summaries now state
   `expand_sources` is a boolean defaulting to `true` rather than just
