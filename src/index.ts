@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Command } from "commander";
 import { loadEnvFromFile } from "./env.js";
@@ -24,8 +25,6 @@ import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
 import { runIndex } from "./ingest/runner.js";
 import { VERSION } from "./version.js";
-
-loadEnvFromFile();
 
 // Builds the commander program without executing it, so tests can inspect
 // the registered commands/options (e.g. to check the README stays in sync)
@@ -227,9 +226,25 @@ export function buildProgram(): Command {
   return program;
 }
 
-const isMainModule = process.argv[1] === fileURLToPath(import.meta.url);
+// process.argv[1] is path.resolve'd but keeps any symlink segment (e.g. the
+// npm bin shim node_modules/.bin/codebase-oracle, or a global/npx install),
+// while import.meta.url is realpath'd by Node, so a strict string compare
+// silently misses "is this the entry module" for every symlinked bin. Resolve
+// argv[1] through the filesystem too before comparing.
+function resolveMainEntryPath(argv1: string | undefined): string | undefined {
+  if (argv1 === undefined) return undefined;
+  try {
+    return realpathSync(argv1);
+  } catch {
+    return undefined;
+  }
+}
+
+const isMainModule =
+  resolveMainEntryPath(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMainModule) {
+  loadEnvFromFile();
   const program = buildProgram();
   program.parseAsync().catch((err: unknown) => {
     if (err instanceof IndexFingerprintError) {

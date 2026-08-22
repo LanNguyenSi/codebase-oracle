@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-08-22T07:23:49Z, review-round fix (task 84dcedaa): the src/index.ts
+  entry-guard fix (`isMainModule` now realpath-resolves `process.argv[1]`
+  before comparing to `import.meta.url`, so the CLI works when reached
+  through a symlink such as the npm bin shim) shifted every subsequent line
+  in the file. index-freshness-vs-code-freshness.md:135's seven `loadConfig()`
+  call-site line numbers (`src/index.ts:...`) and :150's `index` command
+  citation were re-measured against current source and fixed; no other
+  `src/index.ts:NN` citation exists in docs/okf outside this file (checked
+  via `grep -rn 'index.ts:[0-9]' docs/`; the two hits in log.md are dated
+  changelog entries describing past states, not live claims, so left as is).
+  Restamped.
+
 - 2026-08-22T05:39:39Z, docs-audit follow-up review round (task dd7c19f2):
   the prior entry's "everything else matched" / "real drift" claims for
   index-freshness-vs-code-freshness.md and provider-enums-and-token-budget.md
