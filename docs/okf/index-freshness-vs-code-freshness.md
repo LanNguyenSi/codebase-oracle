@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-08-22T05:39:39Z
+timestamp: 2026-08-22T07:23:49Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -132,7 +132,7 @@ fixed store file gets re-opened), **not** to re-reading env vars.
 
 Therefore: changing `.env` / `ORACLE_*` requires reconnecting/restarting the MCP
 server. Every CLI subcommand calls `loadConfig()` fresh per invocation
-(`src/index.ts:51, 65, 114, 145, 168, 189, 205`), so the CLI always reflects current
+(`src/index.ts:55, 69, 118, 149, 172, 193, 209`), so the CLI always reflects current
 env — another reason to verify config-sensitive behavior via the CLI.
 
 Verify: reconnect, then call `oracle_list_repos` / `oracle_search`; a
@@ -147,7 +147,7 @@ both axes: your `src/` edit to the ingest pipeline is invisible until build +
 reconnect (axis 2), while any pre-existing store data is served fresh (axis 1) —
 so the server can show old *behavior* for a new reason and you chase a phantom.
 Verify ingest changes via the **CLI** instead: `npm run index` runs `tsx
-src/index.ts index` (`package.json:23`, `src/index.ts:47-52`), transpiling your
+src/index.ts index` (`package.json:23`, `src/index.ts:51-56`), transpiling your
 edited source on the spot and driving the same `runIndex` the MCP tool uses
 (`src/ingest/runner.ts:3-4`). That isolates "did my ingest change work" from
 "is the server running new code." Once the CLI proves the store is correct, the
