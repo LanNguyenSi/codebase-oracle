@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-07-16T02:36:27Z
+timestamp: 2026-08-22T05:21:41Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -132,7 +132,7 @@ fixed store file gets re-opened), **not** to re-reading env vars.
 
 Therefore: changing `.env` / `ORACLE_*` requires reconnecting/restarting the MCP
 server. Every CLI subcommand calls `loadConfig()` fresh per invocation
-(`src/index.ts:51, 65, 114, 145, 168, 205`), so the CLI always reflects current
+(`src/index.ts:51, 65, 114, 145, 168, 189, 205`), so the CLI always reflects current
 env — another reason to verify config-sensitive behavior via the CLI.
 
 Verify: reconnect, then call `oracle_list_repos` / `oracle_search`; a

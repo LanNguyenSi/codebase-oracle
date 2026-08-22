@@ -147,6 +147,7 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 |------|-------------|
 | `-r, --repo <name>` | Filter results to a specific repo |
 | `-k, --limit <n>` | Number of chunks to retrieve (default: 12 for `query`, 10 for `search`) |
+| `-g, --path-glob <glob>` | (`search` only) Filter results by file path glob (e.g. `**/.github/workflows/*.yml`) |
 | `-t, --type <type>` | (`search` only) Filter to chunks whose `fmType` OKF frontmatter metadata strictly equals this value. Excludes chunks without frontmatter metadata. |
 | `--tags <tags>` | (`search` only) Comma-separated; filter to chunks whose `fmTags` OKF frontmatter metadata contains ALL listed tags. Excludes chunks without frontmatter metadata. |
 | `--no-expand-sources` | (`search` only) Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter); expansion is on by default. |
