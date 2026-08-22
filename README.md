@@ -127,7 +127,7 @@ sources: agent-tasks/backend/src/config.ts, agent-tasks/backend/src/server.ts
 
 ## CLI reference
 
-The CLI auto-loads `.env` from the repo root if present.
+The CLI auto-loads `.env` from the current working directory if present (the repo root when run via the `npm run` scripts below).
 
 ```bash
 npm run index                            # build/refresh the index over ORACLE_SCAN_ROOT
@@ -146,9 +146,10 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 | Flag | Description |
 |------|-------------|
 | `-r, --repo <name>` | Filter results to a specific repo |
-| `-k, --limit <n>` | Number of chunks to retrieve (default: 12) |
+| `-k, --limit <n>` | Number of chunks to retrieve (default: 12 for `query`, 10 for `search`) |
 | `-t, --type <type>` | (`search` only) Filter to chunks whose `fmType` OKF frontmatter metadata strictly equals this value. Excludes chunks without frontmatter metadata. |
 | `--tags <tags>` | (`search` only) Comma-separated; filter to chunks whose `fmTags` OKF frontmatter metadata contains ALL listed tags. Excludes chunks without frontmatter metadata. |
+| `--no-expand-sources` | (`search` only) Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter); expansion is on by default. |
 
 Watch mode runs a chokidar watcher over the scan root and re-embeds changed files after a short debounce. Newly dropped `.git` roots need one explicit `npm run index` to back-fill before watch mode picks up subsequent edits. See [docs/architecture.md](docs/architecture.md#watch-mode) for details.
 

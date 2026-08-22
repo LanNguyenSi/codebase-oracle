@@ -96,7 +96,7 @@ The returned chunks include file path plus repo name, so the agent can read the 
 
 `npm run serve` starts the MCP server over Streamable HTTP instead of stdio. Defaults: `127.0.0.1:3100`, no authentication. Appropriate for a single local agent on the same machine.
 
-The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, and `tags`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
+The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, `tags`, and `expand_sources`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
 
 For LAN or remote use, set both `ORACLE_HTTP_BIND` (to e.g. `0.0.0.0`) **and** `ORACLE_HTTP_TOKEN`. The server refuses to start with an off-loopback bind and no token, so there is no accidental-exposure path. Every `POST /mcp` request must then carry `Authorization: Bearer <token>` (constant-time compare). `GET /health` stays open.
 

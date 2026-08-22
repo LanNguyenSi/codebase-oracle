@@ -1,6 +1,6 @@
 # Configuration
 
-All configuration is via environment variables. The CLI and MCP server auto-load `.env` from the repo root if present.
+All configuration is via environment variables. The CLI and MCP server auto-load `.env` from the current working directory if present (the repo root when run via `npm run` scripts).
 
 ## Prerequisites
 
