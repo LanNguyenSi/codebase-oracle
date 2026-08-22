@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-08-22T05:39:39Z, docs-audit follow-up review round (task dd7c19f2):
+  the prior entry's "everything else matched" / "real drift" claims for
+  index-freshness-vs-code-freshness.md and provider-enums-and-token-budget.md
+  were incomplete; a review pass found two more issues the first pass missed.
+  index-freshness-vs-code-freshness.md:150 cited `package.json:22` for the
+  `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
+  already cited :23 correctly elsewhere, at line 73), fixed, restamped.
+  provider-enums-and-token-budget.md:33 presented a paraphrase as a verbatim
+  quote ("so embedding and LLM live..." vs config.ts:52-55's actual "lets
+  embedding and LLM live...") was reworded so the quoted span matches the
+  source exactly, restamped.
+
 - 2026-08-22T05:21:41Z, docs-audit follow-up (task dd7c19f2): re-verified
   provider-enums-and-token-budget.md against src/config.ts and
   src/retrieval/chain.ts line by line; all cited lines still match, no
