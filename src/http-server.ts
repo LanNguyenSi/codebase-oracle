@@ -286,6 +286,24 @@ export function createHttpRequestHandler(
         return;
       }
 
+      // Holds the per-request server/transport pair once created, so the
+      // catch block below can release it even when the failure happens
+      // after connect() but before (or during) handleRequest() — the pair
+      // is created and connected up front specifically so a post-connect
+      // throw still has something in scope to release. releasePair() is
+      // guarded against double-invocation (it can be reached from both a
+      // stream event and, on some paths, the catch block) so the
+      // transport/server are each closed at most once per request.
+      let server: ReturnType<typeof buildServer> | undefined;
+      let transport: WebStandardStreamableHTTPServerTransport | undefined;
+      let released = false;
+      const releasePair = () => {
+        if (released) return;
+        released = true;
+        void transport?.close().catch(() => {});
+        void server?.close().catch(() => {});
+      };
+
       try {
         // Collect request body
         const chunks: Buffer[] = [];
@@ -309,21 +327,13 @@ export function createHttpRequestHandler(
         // across requests fails on the second POST ("Already connected to a
         // transport") because the SDK never clears server._transport on a normal
         // stateless POST.
-        const server = buildServer();
-        const transport = new WebStandardStreamableHTTPServerTransport({
+        server = buildServer();
+        transport = new WebStandardStreamableHTTPServerTransport({
           sessionIdGenerator: undefined,
         });
 
         await server.connect(transport);
         const response = await transport.handleRequest(request);
-
-        // Release the per-request server/transport once the body has been fully
-        // streamed (or immediately when there is no body), so we don't leak a
-        // connected transport per request.
-        const releasePair = () => {
-          void transport.close().catch(() => {});
-          void server.close().catch(() => {});
-        };
 
         // Forward response headers
         res.writeHead(
@@ -335,13 +345,30 @@ export function createHttpRequestHandler(
         if (response.body) {
           const nodeStream = Readable.fromWeb(response.body as any);
           nodeStream.on("close", releasePair);
-          nodeStream.on("error", releasePair);
+          nodeStream.on("error", (streamErr) => {
+            // pipe() does not forward a source-stream error to the
+            // destination, so without this the client connection is never
+            // torn down here and hangs until its own timeout. Destroying
+            // the response (rather than relying on res.end()) ends the
+            // client connection even though headers were already sent.
+            releasePair();
+            res.destroy(
+              streamErr instanceof Error
+                ? streamErr
+                : new Error(String(streamErr)),
+            );
+          });
           nodeStream.pipe(res);
         } else {
           releasePair();
           res.end();
         }
       } catch (err) {
+        // Release the per-request pair on every failure path, including a
+        // throw that happens after server.connect(transport) but before (or
+        // during) transport.handleRequest() — otherwise every 500 leaks the
+        // connected transport/server pair releasePair() exists to prevent.
+        releasePair();
         console.error("[http-mcp] Error:", err);
         if (!res.headersSent) {
           res.writeHead(500, { "Content-Type": "application/json" });
