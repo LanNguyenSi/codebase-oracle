@@ -265,8 +265,13 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
     await close();
   });
 
-  it("IndexFingerprintError from the MCP handler path → 500 with the error's own message", async () => {
+  it("IndexFingerprintError from the MCP handler path → 500 with the error's own message, and releases the per-request transport/server pair", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
     const handleRequestSpy = vi
       .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
       .mockImplementationOnce(async () => {
@@ -295,14 +300,28 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
       // Pins that the server also logs the error server-side (not just
       // maps it to a client-facing response).
       expect(errSpy).toHaveBeenCalled();
+      // The throw happens on the awaited transport.handleRequest() call,
+      // i.e. AFTER server.connect(transport) already created and connected
+      // the per-request pair. The catch block must release it (exactly
+      // once each — no double-release) or every 500 leaks a connected
+      // transport/server pair.
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
     } finally {
       handleRequestSpy.mockRestore();
       errSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
     }
   });
 
-  it("a generic (non-IndexFingerprintError) throw from the MCP handler path → 500 with a generic 'Internal error' message (no internal detail leak)", async () => {
+  it("a generic (non-IndexFingerprintError) throw from the MCP handler path → 500 with a generic 'Internal error' message (no internal detail leak), and releases the per-request transport/server pair", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
     const handleRequestSpy = vi
       .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
       .mockImplementationOnce(async () => {
@@ -324,9 +343,63 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
       // Pins that the server also logs the error server-side (not just
       // maps it to a client-facing response).
       expect(errSpy).toHaveBeenCalled();
+      // Same leak guard as the IndexFingerprintError case above, exercised
+      // via the generic-throw arm instead.
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
     } finally {
       handleRequestSpy.mockRestore();
       errSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
+    }
+  });
+
+  it("a throw that lands in the catch AFTER res.writeHead() already sent headers does not attempt a second writeHead, and still releases the pair", async () => {
+    // Drives the `if (!res.headersSent)` branch's FALSE arm: res.writeHead()
+    // runs first (forwarding the mocked response's real status/headers),
+    // then Readable.fromWeb(response.body) throws synchronously because
+    // `body` here is not a real ReadableStream (Node: "argument must be an
+    // instance of ReadableStream") — landing in the SAME outer catch as the
+    // 500-mapping tests above, but this time with headersSent already true.
+    // Node's http server surfaces an attempted second writeHead as a
+    // "Cannot set headers after they are sent" throw; the observable proof
+    // this test pins is that the ORIGINAL headers (200, text/event-stream)
+    // reach the client rather than a 500, since node:http silently keeps
+    // the already-sent status/headers when a later writeHead is skipped.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        return {
+          status: 200,
+          headers: new Headers({ "Content-Type": "text/event-stream" }),
+          // Not a real ReadableStream: Readable.fromWeb(body) throws
+          // synchronously, AFTER res.writeHead() already ran above it.
+          body: {},
+        } as unknown as Response;
+      });
+    try {
+      const res = await fetch(`${url}/mcp`, { method: "POST", body: "{}" });
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toBe("text/event-stream");
+      // The server-side error is still logged even though headers were
+      // already sent.
+      expect(errSpy).toHaveBeenCalled();
+      // The pair was already created and connected before the throw, so
+      // the catch block must still release it exactly once each.
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      handleRequestSpy.mockRestore();
+      errSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
     }
   });
 
@@ -341,18 +414,20 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
 // ── per-request release guard (releasePair) ───────────────────────────────
 //
 // src/http-server.ts wires releasePair() (closes the per-request transport
-// and McpServer) to both the "close" and "error" events of the Node stream
-// wrapping the MCP response body, so a per-request transport/server pair is
-// never left dangling. Rather than relying on a real MCP tool call and race
-// conditions in a real client abort to produce a stream error, this mocks
-// handleRequest to return a Response whose body is a ReadableStream under
-// direct test control: one scenario ends the stream cleanly
-// (controller.close()), the other fails it mid-stream
-// (controller.error(...)). Node's Readable.fromWeb always emits "close"
-// after "error" too (autoDestroy), so the clean-end scenario calls
-// releasePair via "close" only (1 call) while the error scenario calls it
-// via both "error" and the subsequent "close" (2 calls) — both counts were
-// confirmed empirically before being pinned here.
+// and McpServer) to the "close" and "error" events of the Node stream
+// wrapping the MCP response body, AND to the response's own "close" event
+// (which also fires on a client mid-stream abort, when the wrapped stream's
+// own events never fire), so a per-request transport/server pair is never
+// left dangling. releasePair() itself is guarded against
+// double-invocation (a `released` flag), so it closes the transport/server
+// at most once per request even though "error" and the subsequent "close"
+// (Node's autoDestroy emits both) can each call it. Rather than relying on
+// a real MCP tool call and race conditions in a real client abort to
+// produce a stream error, this mocks handleRequest to return a Response
+// whose body is a ReadableStream under direct test control: one scenario
+// ends the stream cleanly (controller.close()), the other fails it
+// mid-stream (controller.error(...)) — both counts (1 close/server-close
+// call each) were confirmed empirically before being pinned here.
 describe("createHttpRequestHandler — per-request release guard (releasePair)", () => {
   let url: string;
   let close: () => Promise<void>;
@@ -403,7 +478,16 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
     }
   });
 
-  it("closes the per-request transport and server when the response stream errors mid-flight", async () => {
+  it("tears the client connection down (instead of hanging) and releases the pair once, when the response stream errors mid-flight", async () => {
+    // Regression probe: before this task, Readable.fromWeb(...).pipe(res)
+    // never forwarded the source stream's "error" to the response, so
+    // res.end() was never reached and the client connection stayed open
+    // until its own timeout (a probed fetch hung >2000ms, per the task
+    // spec). res.destroy(err) in the stream's "error" listener now tears
+    // the connection down, so reading the body must settle (reject, since
+    // the stream failed mid-flight) well inside a bounded wait instead of
+    // hanging — replacing the previous abandon-the-fetch-and-abort-it
+    // documentation of that hang.
     const transportCloseSpy = vi.spyOn(
       WebStandardStreamableHTTPServerTransport.prototype,
       "close",
@@ -425,33 +509,100 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
           headers: { "Content-Type": "text/event-stream" },
         });
       });
-    // Node's pipe(res) does not forward a source error to the destination,
-    // so res.end() is never called on this path and the HTTP response
-    // itself never completes — awaiting the fetch() promise directly would
-    // hang forever (confirmed empirically). The server-side error/close
-    // events (and releasePair) fire independently of whether the client
-    // ever receives a response, so kick off the request without awaiting
-    // it, give the event loop a tick, then abort the still-pending client
-    // request so the connection tears down and afterEach's server.close()
-    // doesn't hang waiting for it.
-    const abortController = new AbortController();
-    const fetchPromise = fetch(`${url}/mcp`, {
-      method: "POST",
-      body: "{}",
-      signal: abortController.signal,
-    }).catch(() => {});
     try {
-      // Both the "error" listener and the subsequent "close" (Node's
-      // autoDestroy emits both) call releasePair, so this fires twice; poll
-      // until both have landed instead of a fixed sleep.
+      // Race the WHOLE request/response cycle (not just body reading)
+      // against a 2000ms bound as a hang guard: destroying the response
+      // after headers were sent has been measured to deterministically
+      // yield fetch() resolving (headers already arrived) and res.text()
+      // rejecting with a TypeError ("other side closed") around 31ms —
+      // never a hang. Assert that outcome exactly; the race is only there
+      // to fail fast (with a clear message) instead of hanging forever if
+      // that regresses.
+      const settled: "resolved" | "rejected" = await Promise.race([
+        (async () => {
+          const res = await fetch(`${url}/mcp`, { method: "POST", body: "{}" });
+          try {
+            await res.text();
+            return "resolved" as const;
+          } catch {
+            return "rejected" as const;
+          }
+        })().catch(() => "rejected" as const),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "the client request did not settle within 2000ms — connection hung",
+                ),
+              ),
+            2000,
+          ),
+        ),
+      ]);
+      expect(settled).toBe("rejected");
+      // releasePair() is guarded against double-invocation, so even though
+      // both the "error" listener and the subsequent "close" (Node's
+      // autoDestroy emits both) call it, the transport/server are each
+      // closed exactly once.
       await vi.waitFor(() =>
-        expect(transportCloseSpy).toHaveBeenCalledTimes(2),
+        expect(transportCloseSpy).toHaveBeenCalledTimes(1),
       );
-      expect(transportCloseSpy).toHaveBeenCalledTimes(2);
-      expect(serverCloseSpy).toHaveBeenCalledTimes(2);
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
     } finally {
-      abortController.abort();
-      await fetchPromise;
+      handleRequestSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
+    }
+  });
+
+  it("releases the pair when the client aborts mid-stream (never lets the response stream itself close)", async () => {
+    // Regression probe: a client disconnect mid-stream only unpipes the
+    // legacy pipe() (Readable.fromWeb(...).pipe(res)) — the paused
+    // Readable.fromWeb never emits its own "close"/"error" in that case, so
+    // the "close"/"error" listeners on nodeStream (covered by the two tests
+    // above) never fire and releasePair() would never run without the
+    // separate `res.on("close", ...)` handler this task adds. Keep the web
+    // stream open indefinitely (never close/error it) so the ONLY way this
+    // test can observe a release is via that res-level handler.
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: first\n\n"));
+            // Deliberately never close() or error() this controller: the
+            // stream stays open until the client (or the res-level "close"
+            // handler under test) tears it down.
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      });
+    const controller = new AbortController();
+    try {
+      const res = await fetch(`${url}/mcp`, {
+        method: "POST",
+        body: "{}",
+        signal: controller.signal,
+      });
+      const reader = res.body!.getReader();
+      await reader.read(); // wait for the first chunk to arrive
+      controller.abort(); // simulate the client disconnecting mid-stream
+      await vi.waitFor(() =>
+        expect(transportCloseSpy).toHaveBeenCalledTimes(1),
+      );
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
+    } finally {
       handleRequestSpy.mockRestore();
       transportCloseSpy.mockRestore();
       serverCloseSpy.mockRestore();
@@ -460,12 +611,13 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
 
   // Mutation guard: removing the `.on("close", releasePair)` registration in
   // src/http-server.ts fails the clean-end test (0 calls instead of 1).
-  // Removing the `.on("error", releasePair)` registration also fails the
-  // mid-flight-error test, but not by dropping the count from 2 to 1: an
-  // "error" event with no listener becomes an uncaught exception in Node,
-  // which also prevents the stream's "close" event (and thus the surviving
-  // "close" -> releasePair call) from firing, so the count drops from 2 to
-  // 0. Measured/reproduced by the reviewer, not merely inferred.
+  // Removing the `res.destroy(err)` call from the "error" listener fails
+  // the mid-flight-error test above: releasePair() still runs, but the
+  // client connection is never torn down, so res.text() hangs past the
+  // 2000ms bound instead of rejecting. Removing the `res.on("close", ...)`
+  // handler added by this task fails the client-abort test above: the
+  // response stream never closes/errors on its own, so releasePair() never
+  // runs and the wait for transportCloseSpy times out.
 });
 
 // ── oracle_search type/tags pass-through (OKF metadata) + sources-expansion ──
