@@ -286,11 +286,12 @@ export function createHttpRequestHandler(
         return;
       }
 
-      // Holds the per-request server/transport pair once created, so the
-      // catch block below can release it even when the failure happens
-      // after connect() but before (or during) handleRequest() — the pair
-      // is created and connected up front specifically so a post-connect
-      // throw still has something in scope to release. releasePair() is
+      // Declared here (not created) so the catch block below can release
+      // the pair even when the failure happens after connect() but before
+      // (or during) handleRequest(). Creation and connect() stay inside the
+      // try so that buildServer() or connect() throwing is caught by the
+      // same catch, and the optional chaining in releasePair() covers the
+      // half-created case (only one of the two assigned). releasePair() is
       // guarded against double-invocation (it can be reached from both a
       // stream event and, on some paths, the catch block) so the
       // transport/server are each closed at most once per request.
@@ -300,8 +301,12 @@ export function createHttpRequestHandler(
       const releasePair = () => {
         if (released) return;
         released = true;
-        void transport?.close().catch(() => {});
-        void server?.close().catch(() => {});
+        void Promise.resolve()
+          .then(() => transport?.close())
+          .catch(() => {});
+        void Promise.resolve()
+          .then(() => server?.close())
+          .catch(() => {});
       };
 
       try {
@@ -359,6 +364,16 @@ export function createHttpRequestHandler(
             );
           });
           nodeStream.pipe(res);
+          // Legacy pipe() only unpipes on client disconnect; the paused
+          // Readable.fromWeb never emits its own 'close'/'error' in that
+          // case, so releasePair() above never runs. Destroying the Node
+          // stream cancels the underlying web stream and lets it settle;
+          // releasePair() is idempotent so this is safe alongside the
+          // 'close'/'error' listeners on nodeStream.
+          res.on("close", () => {
+            nodeStream.destroy();
+            releasePair();
+          });
         } else {
           releasePair();
           res.end();

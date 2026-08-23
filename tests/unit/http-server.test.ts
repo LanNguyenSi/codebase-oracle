@@ -414,9 +414,11 @@ describe("createHttpRequestHandler — post-auth 500 error mapping", () => {
 // ── per-request release guard (releasePair) ───────────────────────────────
 //
 // src/http-server.ts wires releasePair() (closes the per-request transport
-// and McpServer) to both the "close" and "error" events of the Node stream
-// wrapping the MCP response body, so a per-request transport/server pair is
-// never left dangling. releasePair() itself is guarded against
+// and McpServer) to the "close" and "error" events of the Node stream
+// wrapping the MCP response body, AND to the response's own "close" event
+// (which also fires on a client mid-stream abort, when the wrapped stream's
+// own events never fire), so a per-request transport/server pair is never
+// left dangling. releasePair() itself is guarded against
 // double-invocation (a `released` flag), so it closes the transport/server
 // at most once per request even though "error" and the subsequent "close"
 // (Node's autoDestroy emits both) can each call it. Rather than relying on
@@ -509,11 +511,13 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
       });
     try {
       // Race the WHOLE request/response cycle (not just body reading)
-      // against a 2000ms bound: destroying the response after headers were
-      // sent can also surface as fetch() itself rejecting (the underlying
-      // socket closing before the client finishes parsing), rather than
-      // fetch() resolving and res.text() rejecting — both are an
-      // acceptable "settled, did not hang" outcome for this probe.
+      // against a 2000ms bound as a hang guard: destroying the response
+      // after headers were sent has been measured to deterministically
+      // yield fetch() resolving (headers already arrived) and res.text()
+      // rejecting with a TypeError ("other side closed") around 31ms —
+      // never a hang. Assert that outcome exactly; the race is only there
+      // to fail fast (with a clear message) instead of hanging forever if
+      // that regresses.
       const settled: "resolved" | "rejected" = await Promise.race([
         (async () => {
           const res = await fetch(`${url}/mcp`, { method: "POST", body: "{}" });
@@ -536,11 +540,63 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
           ),
         ),
       ]);
-      expect(["resolved", "rejected"]).toContain(settled);
+      expect(settled).toBe("rejected");
       // releasePair() is guarded against double-invocation, so even though
       // both the "error" listener and the subsequent "close" (Node's
       // autoDestroy emits both) call it, the transport/server are each
       // closed exactly once.
+      await vi.waitFor(() =>
+        expect(transportCloseSpy).toHaveBeenCalledTimes(1),
+      );
+      expect(transportCloseSpy).toHaveBeenCalledTimes(1);
+      expect(serverCloseSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      handleRequestSpy.mockRestore();
+      transportCloseSpy.mockRestore();
+      serverCloseSpy.mockRestore();
+    }
+  });
+
+  it("releases the pair when the client aborts mid-stream (never lets the response stream itself close)", async () => {
+    // Regression probe: a client disconnect mid-stream only unpipes the
+    // legacy pipe() (Readable.fromWeb(...).pipe(res)) — the paused
+    // Readable.fromWeb never emits its own "close"/"error" in that case, so
+    // the "close"/"error" listeners on nodeStream (covered by the two tests
+    // above) never fire and releasePair() would never run without the
+    // separate `res.on("close", ...)` handler this task adds. Keep the web
+    // stream open indefinitely (never close/error it) so the ONLY way this
+    // test can observe a release is via that res-level handler.
+    const transportCloseSpy = vi.spyOn(
+      WebStandardStreamableHTTPServerTransport.prototype,
+      "close",
+    );
+    const serverCloseSpy = vi.spyOn(McpServer.prototype, "close");
+    const handleRequestSpy = vi
+      .spyOn(WebStandardStreamableHTTPServerTransport.prototype, "handleRequest")
+      .mockImplementationOnce(async () => {
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode("data: first\n\n"));
+            // Deliberately never close() or error() this controller: the
+            // stream stays open until the client (or the res-level "close"
+            // handler under test) tears it down.
+          },
+        });
+        return new Response(body, {
+          status: 200,
+          headers: { "Content-Type": "text/event-stream" },
+        });
+      });
+    const controller = new AbortController();
+    try {
+      const res = await fetch(`${url}/mcp`, {
+        method: "POST",
+        body: "{}",
+        signal: controller.signal,
+      });
+      const reader = res.body!.getReader();
+      await reader.read(); // wait for the first chunk to arrive
+      controller.abort(); // simulate the client disconnecting mid-stream
       await vi.waitFor(() =>
         expect(transportCloseSpy).toHaveBeenCalledTimes(1),
       );
@@ -558,7 +614,10 @@ describe("createHttpRequestHandler — per-request release guard (releasePair)",
   // Removing the `res.destroy(err)` call from the "error" listener fails
   // the mid-flight-error test above: releasePair() still runs, but the
   // client connection is never torn down, so res.text() hangs past the
-  // 2000ms bound instead of rejecting.
+  // 2000ms bound instead of rejecting. Removing the `res.on("close", ...)`
+  // handler added by this task fails the client-abort test above: the
+  // response stream never closes/errors on its own, so releasePair() never
+  // runs and the wait for transportCloseSpy times out.
 });
 
 // ── oracle_search type/tags pass-through (OKF metadata) + sources-expansion ──
