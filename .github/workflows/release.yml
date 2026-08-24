@@ -67,6 +67,13 @@ jobs:
             exit 1
           fi
 
+      # npm Trusted Publishing (OIDC) needs npm >= 11.5.1; node 22 bundles
+      # npm 10, so upgrade right before the publish step (wave standard:
+      # install/build/test run under the node-bundled npm, matching ci.yml).
+      # Auth comes from the GitHub OIDC token (id-token: write above) matched
+      # against the package's Trusted Publisher entry on npmjs.com (repo
+      # LanNguyenSi/codebase-oracle, workflow release.yml) — no NPM_TOKEN.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@11
+
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
