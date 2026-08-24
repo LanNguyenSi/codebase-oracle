@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The release workflow (`release.yml`) publishes to npm via Trusted
+  Publishing (OIDC, `id-token: write`); the `NPM_TOKEN` repo secret is no
+  longer required for publishing (supersedes the requirement noted in the
+  0.6.0 entry below).
+
 ## [0.10.2] - 2026-07-13
 
 ### Fixed
