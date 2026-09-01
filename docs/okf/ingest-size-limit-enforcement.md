@@ -114,7 +114,7 @@ the per-type ceiling existed) produce a WARNING telling the operator to raise th
   skipped files (sqlite-store.ts's `listRepos` compiled statement). A second
   sweep, `pruneOrphanRepoSkipMeta(discoveredRepos)` (runner.ts:94-104),
   removes `repo_skip_meta` rows for repos no longer discovered on disk at
-  all — it deliberately does NOT key off `docs` the way `pruneOrphanRepoMeta`
+  all; it deliberately does NOT key off `docs` the way `pruneOrphanRepoMeta`
   does, since an all-skipped repo has zero docs while still being live.
 
 ## MCP: only the count reaches oracle_reindex, not the per-file lines

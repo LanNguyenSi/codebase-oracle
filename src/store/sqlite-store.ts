@@ -122,7 +122,7 @@ export interface SqliteStore {
   setRepoSkipSummary(repo: string, summary: RepoSkipSummary): void;
   /**
    * Drop `repo_skip_meta` rows for repos NOT in `discoveredRepos`. Unlike
-   * `pruneOrphanRepoMeta`, this cannot key off `docs` — a repo whose files
+   * `pruneOrphanRepoMeta`, this cannot key off `docs`: a repo whose files
    * were ALL skipped legitimately has zero docs while still being a live,
    * on-disk repo, so pruning by "no docs" would delete its skip tally out
    * from under it every single run. `discoveredRepos` (the current run's
@@ -316,7 +316,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     // matter how the JOIN is widened. The UNION ALL branch surfaces such a
     // repo directly from repo_skip_meta (chunkCount/fileCount 0, no
     // freshness data) whenever its skip tally is non-zero, so it isn't
-    // simply missing from list-repos — see docs/okf/ingest-size-limit-enforcement.md.
+    // simply missing from list-repos; see docs/okf/ingest-size-limit-enforcement.md.
     // A repo with a flat-0 skip tally and no docs (e.g. every file was
     // empty, silently skipped) is excluded from both branches: there is
     // nothing worth surfacing about it.
@@ -711,7 +711,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     // files were ALL skipped this run legitimately has zero docs while
     // still being live on disk (see the listRepos UNION ALL branch above).
     // The only correct orphan signal here is the current run's discovered
-    // repo list — a row is an orphan once its repo is no longer discovered
+    // repo list: a row is an orphan once its repo is no longer discovered
     // at all, not merely once it has no docs.
     let changes = 0;
     const tx = db.transaction(() => {

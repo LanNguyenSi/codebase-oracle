@@ -42,7 +42,7 @@ export function formatRelativeFreshness(
  * which all share this function. The suffix breaks the total down by reason
  * (too large vs. read error) and, when `skippedExamples` is non-empty,
  * lists them (already capped by the writer, see runner.ts
- * SKIP_EXAMPLES_LIMIT — this function renders whatever it's given, it does
+ * SKIP_EXAMPLES_LIMIT; this function renders whatever it's given, it does
  * not re-cap).
  *
  * `prefix` lets callers pick the leading marker (default `"- "` for the

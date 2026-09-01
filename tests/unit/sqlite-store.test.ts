@@ -447,7 +447,7 @@ describe("CRUD + similarity", () => {
   it("pruneOrphanRepoSkipMeta does NOT drop a row for a repo that is discovered but has zero docs (all-skipped)", async () => {
     // Companion to the prune test above: a repo whose files are ALL skipped
     // is still "discovered" this run (it exists on disk), so it must
-    // survive even though it has no docs row — the exact case that rules
+    // survive even though it has no docs row: the exact case that rules
     // out reusing pruneOrphanRepoMeta's "no docs" test for this table.
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
@@ -694,7 +694,7 @@ describe("CRUD + similarity", () => {
     const sqliteVec = await import("sqlite-vec");
     const raw = new Database(dbPath);
     sqliteVec.load(raw);
-    // Pre-rollout schema: meta, docs, repo_meta only — no repo_skip_meta.
+    // Pre-rollout schema: meta, docs, repo_meta only, no repo_skip_meta.
     raw.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
       CREATE TABLE docs (

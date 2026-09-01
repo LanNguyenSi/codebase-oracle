@@ -3,7 +3,7 @@
 <!-- Add new entries at the top, newest first. -->
 
 - 2026-09-01T07:30:00Z, review-round fix (task ee173398, round 2, follow-up):
-  `okf-kit check` after the round-2 commit flagged three more docs STALE —
+  `okf-kit check` after the round-2 commit flagged three more docs STALE:
   architecture-pointer.md, configuration-pointer.md, and
   provider-enums-and-token-budget.md all list docs/architecture.md and/or
   docs/configuration.md in `sources:`, both of which the round-2 commit
@@ -11,7 +11,7 @@
   watch-mode skip-persistence sentence). Checked all three against the
   current doc content: none of their claims (topic coverage, the two
   provider enums, the token-budget asymmetry) were affected by those two
-  sentences, so no citation needed re-pointing — restamped only. Separately,
+  sentences, so no citation needed re-pointing; restamped only. Separately,
   the same round-2 CHANGELOG.md edit (net +7 lines in `[Unreleased]`) shifted
   two citations in ingest-size-limit-enforcement.md's historical section that
   the first check run had missed (only sources-fresh and the new prune
@@ -39,7 +39,7 @@
   118-128, 185-199 → 196-210, 377-388 → 388-399, 201-221 → 212-232); added a
   citation for the new prune sweep (runner.ts:94-104). SKIP_EXAMPLES_LIMIT
   (runner.ts:32), the IndexSummary interface (runner.ts:34-55), and the
-  `warn` no-op default (runner.ts:79) were unaffected — the new code was
+  `warn` no-op default (runner.ts:79) were unaffected; the new code was
   inserted after them. Restamped.
 
 - 2026-08-22T07:23:49Z, review-round fix (task 84dcedaa): the src/index.ts

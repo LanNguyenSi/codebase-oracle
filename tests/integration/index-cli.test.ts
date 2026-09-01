@@ -385,7 +385,7 @@ describe("oracle index CLI integration", () => {
       expect(result.status, `index failed: ${result.stderr}`).toBe(0);
 
       const store = readStore(dataDir);
-      // allbig has no docs at all — the exact case the widened query covers.
+      // allbig has no docs at all, the exact case the widened query covers.
       expect(store.filesByRepo.get("allbig")).toBeUndefined();
       expect(store.repos.map((r) => r.repo)).toEqual(["normal"]);
       expect(store.skipMeta).toContainEqual({
@@ -419,7 +419,7 @@ describe("oracle index CLI integration", () => {
       expect(first.status, `first index failed: ${first.stderr}`).toBe(0);
       expect(readStore(dataDir).skipMeta.map((s) => s.repo)).toEqual(["goneSoon", "kept"]);
 
-      // Delete the repo that skipped a file entirely — its repo_skip_meta
+      // Delete the repo that skipped a file entirely: its repo_skip_meta
       // row must not survive forever like the pre-fix repo_meta orphans did.
       await rm(join(scanRoot, "goneSoon"), { recursive: true, force: true });
 
@@ -466,7 +466,7 @@ describe("oracle index CLI integration", () => {
     { timeout: 30_000 },
     async () => {
       // Root (and some CI containers) bypass file permission bits entirely,
-      // which would make this test silently pass for the wrong reason —
+      // which would make this test silently pass for the wrong reason;
       // skip it rather than assert a false positive.
       if (process.getuid && process.getuid() === 0) {
         return;
