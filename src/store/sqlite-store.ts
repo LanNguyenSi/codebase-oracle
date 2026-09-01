@@ -706,6 +706,11 @@ export function openSqliteStore(config: Config): SqliteStore {
     return changes;
   }
 
+  // Builds one bound parameter per discovered repo for a single NOT IN
+  // clause. SQLite's default bound-parameter ceiling is 999, so a scan root
+  // with more repos than that would need the clause chunked; the corpora this
+  // indexer serves are two orders of magnitude below that, so the ceiling is
+  // documented here rather than engineered around.
   function pruneOrphanRepoSkipMetaInternal(discoveredRepos: string[]): number {
     // Cannot reuse pruneOrphanRepoMetaStmt's "no docs" test: a repo whose
     // files were ALL skipped this run legitimately has zero docs while

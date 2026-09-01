@@ -2,6 +2,19 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-01T07:43:40Z, review-round-2 verification fix (task ee173398): the style
+  commit that removed em dashes from round-2 prose touched
+  `src/store/sqlite-store.ts` and `docs/configuration.md` after the
+  previous re-stamp, so `okf-kit check` flagged configuration-pointer.md,
+  provider-enums-and-token-budget.md, index-freshness-vs-code-freshness.md
+  and sources-expansion.md STALE again. The touched lines were punctuation
+  only; re-verified that no cited span or claim moved, re-stamped all four.
+  Also added a rule-level comment on `pruneOrphanRepoSkipMeta` naming the
+  SQLite bound-parameter ceiling its NOT IN clause would hit at roughly a
+  thousand discovered repos (reviewer low finding), which does not change
+  any claim these docs carry. Verdict after this commit: 0 errors,
+  0 warnings, the 5 pre-existing notices.
+
 - 2026-09-01T07:30:00Z, review-round fix (task ee173398, round 2, follow-up):
   `okf-kit check` after the round-2 commit flagged three more docs STALE:
   architecture-pointer.md, configuration-pointer.md, and
