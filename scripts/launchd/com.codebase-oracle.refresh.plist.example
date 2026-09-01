@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  codebase-oracle: scheduled refresh agent for macOS (launchd).
+
+  Runs scripts/oracle-refresh.sh on an interval: fast-forwards every clean
+  checkout under ORACLE_SCAN_ROOT, then runs the incremental index. Meant
+  for a machine that serves as the index source of truth.
+
+  Install:
+    mkdir -p CHANGE_ME_HOME/Library/Logs/codebase-oracle
+    cp scripts/launchd/com.codebase-oracle.refresh.plist.example \
+       CHANGE_ME_HOME/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+    # Edit the file: replace CHANGE_ME_CHECKOUT with the absolute path to
+    # your codebase-oracle checkout, and CHANGE_ME_HOME with your absolute
+    # home directory. launchd does not expand $HOME or ~ inside a plist.
+    launchctl bootstrap gui/$UID \
+      CHANGE_ME_HOME/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+
+  Inspect:
+    launchctl print gui/$UID/com.codebase-oracle.refresh
+    tail -f CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.out.log
+
+  Unload:
+    launchctl bootout gui/$UID/com.codebase-oracle.refresh
+
+  StartInterval (not KeepAlive) is used so the job fires once per interval
+  and exits, rather than being kept continuously running or immediately
+  relaunched on exit; the default below is hourly (3600 seconds).
+
+  .env is read from WorkingDirectory by the CLI's own dotenv loader, so no
+  secrets need to be duplicated into this file.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.codebase-oracle.refresh</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>CHANGE_ME_CHECKOUT/scripts/oracle-refresh.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>CHANGE_ME_CHECKOUT</string>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>

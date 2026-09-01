@@ -103,6 +103,29 @@ systemctl --user enable --now codebase-oracle-index.timer
 
 Inspect with `systemctl --user list-timers codebase-oracle-index.timer` and `journalctl --user -u codebase-oracle-index.service --since today`. The default schedule is daily at 04:00 local with a 15-minute random delay; `Persistent=true` catches up after a missed window (laptop asleep).
 
+On a machine that serves as the index source of truth, `ExecStart` may point at `scripts/oracle-refresh.sh` instead of `npm run index` directly, for the same pull-then-index behaviour described below.
+
+### Scheduled refresh (macOS launchd)
+
+On a machine that serves as the index source of truth for several repos, `scripts/oracle-refresh.sh` fast-forwards every clean checkout directly under `ORACLE_SCAN_ROOT` before running the incremental index. A checkout is skipped (not touched) when it is dirty, has a detached `HEAD`, or its current branch has no upstream; a failed `git pull --ff-only` is reported and the loop continues rather than aborting the run. The index step always runs afterward and its exit status becomes the script's exit status.
+
+Two env knobs beyond the usual configuration:
+
+- `ORACLE_REFRESH_PULL=0` skips the pull phase entirely and only runs the index step.
+- `ORACLE_REFRESH_INDEX_CMD` overrides the index command (defaults to `npm run index`), run via `bash -c` in the checkout directory.
+
+Ship template lives under `scripts/launchd/`. Copy it into `~/Library/LaunchAgents/`, replace the `CHANGE_ME_CHECKOUT` and `CHANGE_ME_HOME` placeholders with absolute paths, then:
+
+```bash
+mkdir -p ~/Library/Logs/codebase-oracle
+cp scripts/launchd/com.codebase-oracle.refresh.plist.example \
+   ~/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+# edit the CHANGE_ME_CHECKOUT and CHANGE_ME_HOME placeholders
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+```
+
+Inspect with `launchctl print gui/$UID/com.codebase-oracle.refresh` and by tailing `~/Library/Logs/codebase-oracle/refresh.out.log`. Unload with `launchctl bootout gui/$UID/com.codebase-oracle.refresh`. The default interval is hourly (`StartInterval=3600`); `.env` is read from `WorkingDirectory` by the CLI's own dotenv loader, so no secrets go into the plist.
+
 ### On-demand from an agent (MCP `oracle_reindex`)
 
 The MCP server exposes `oracle_reindex` (no arguments). Agents can call it after merging a relevant PR so the new chunks land in the index without waiting for the next scheduled run. The verb closes the live store handle, runs the same incremental pipeline as `npm run index`, and returns a one-line summary (`Reindex complete in 8.7s. Repos: 39, files: …`). Subsequent `oracle_search` / `oracle_query` calls reopen the store transparently.
