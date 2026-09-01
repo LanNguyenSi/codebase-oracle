@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **`scripts/oracle-refresh.sh`** for a machine that serves as the index source of truth: fast-forwards every clean, non-detached checkout with an upstream directly under `ORACLE_SCAN_ROOT` (skipping dirty checkouts, detached `HEAD`s, and branches with no upstream, and reporting rather than aborting on a failed pull), then runs the incremental index. `ORACLE_REFRESH_PULL=0` skips the pull phase; `ORACLE_REFRESH_INDEX_CMD` overrides the index command. A macOS launchd template (`scripts/launchd/com.codebase-oracle.refresh.plist.example`) mirrors the existing systemd unit, using `StartInterval` for periodic ticks.
+- **`scripts/oracle-refresh.sh`** for a machine that serves as the index
+  source of truth: fast-forwards clean checkouts under `ORACLE_SCAN_ROOT`,
+  then runs the incremental index (`ORACLE_REFRESH_PULL` and
+  `ORACLE_REFRESH_INDEX_CMD` env knobs; see docs/configuration.md for skip
+  rules and install steps). A macOS launchd template
+  (`scripts/launchd/com.codebase-oracle.refresh.plist.example`) mirrors
+  the existing systemd unit.
 
 ### Changed
 

@@ -7,9 +7,13 @@
 # be driven by a scheduler (systemd timer, launchd job, cron) so the index
 # host stays current without a human running `npm run index` by hand.
 #
-# A dirty checkout, a detached HEAD, or a branch with no upstream is skipped
-# rather than touched; a failed pull is reported and the loop continues so
-# one bad repo doesn't block the rest. The index step always runs afterward
+# A dirty checkout, a detached HEAD, an unreadable checkout, or a branch with
+# no upstream is skipped rather than touched; a failed pull is reported (with
+# git's stderr reason) and the loop continues so one bad repo doesn't block
+# the rest. Hidden directories directly under ORACLE_SCAN_ROOT are not seen
+# by the pull loop (the glob below skips dotfiles the same way the
+# indexer's own discoverRepos does in src/ingest/scanner.ts), so parity with
+# what actually gets indexed holds. The index step always runs afterward
 # (unless ORACLE_REFRESH_PULL=0 is set to skip the pull phase entirely), and
 # its exit status is this script's exit status.
 #
@@ -20,7 +24,13 @@
 #   ORACLE_REFRESH_PULL     Set to 0 to skip the pull phase and only index.
 #   ORACLE_REFRESH_INDEX_CMD  Command to run for the index step, executed via
 #                           `bash -c` in the checkout directory. Defaults to
-#                           `npm run index`.
+#                           `npm run index`. This is operator-controlled and
+#                           executed as a shell command; treat it as the same
+#                           trust tier as the plist or unit file that invokes
+#                           this script.
+#   ORACLE_REFRESH_ENV_FILE  Testing aid only: overrides the .env path used
+#                           by the ORACLE_SCAN_ROOT fallback below (default
+#                           "<checkout>/.env").
 set -u
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
@@ -33,13 +43,20 @@ resolve_scan_root() {
     return 0
   fi
 
-  local env_file="${checkout_dir}/.env"
+  local env_file="${ORACLE_REFRESH_ENV_FILE:-${checkout_dir}/.env}"
   if [ -f "${env_file}" ]; then
     local line value
-    line="$(grep -m1 '^ORACLE_SCAN_ROOT=' "${env_file}" || true)"
+    # Match src/env.ts's own .env parser: allow whitespace around the key
+    # and the "=", take everything after the first "=" (grep -o with the
+    # anchored key), strip a trailing CR (CRLF files), trim surrounding
+    # whitespace, then strip one matching pair of quotes.
+    line="$(grep -m1 -E '^[[:space:]]*ORACLE_SCAN_ROOT[[:space:]]*=' "${env_file}" || true)"
     if [ -n "${line}" ]; then
-      value="${line#ORACLE_SCAN_ROOT=}"
-      # Strip a single layer of matching surrounding quotes.
+      value="${line#*=}"
+      value="${value%$'\r'}"
+      # Trim leading/trailing whitespace.
+      value="${value#"${value%%[![:space:]]*}"}"
+      value="${value%"${value##*[![:space:]]}"}"
       case "${value}" in
         \"*\") value="${value#\"}"; value="${value%\"}" ;;
         \'*\') value="${value#\'}"; value="${value%\'}" ;;
@@ -54,7 +71,7 @@ resolve_scan_root() {
 
 scan_root="$(resolve_scan_root)"
 if [ -z "${scan_root:-}" ]; then
-  echo "oracle-refresh: ORACLE_SCAN_ROOT is not set and no ORACLE_SCAN_ROOT= line was found in ${checkout_dir}/.env" >&2
+  echo "oracle-refresh: ORACLE_SCAN_ROOT is not set and no ORACLE_SCAN_ROOT= line was found in ${ORACLE_REFRESH_ENV_FILE:-${checkout_dir}/.env}" >&2
   exit 1
 fi
 
@@ -80,7 +97,14 @@ else
       continue
     fi
 
-    if [ -n "$(git -C "${repo_dir}" status --porcelain 2>/dev/null)" ]; then
+    status_output=""
+    if ! status_output="$(git -C "${repo_dir}" status --porcelain 2>/dev/null)"; then
+      echo "${repo_name}: skipped (unreadable)"
+      skipped=$((skipped + 1))
+      continue
+    fi
+
+    if [ -n "${status_output}" ]; then
       echo "${repo_name}: skipped (dirty)"
       skipped=$((skipped + 1))
       continue
@@ -99,7 +123,8 @@ else
     fi
 
     old_sha="$(git -C "${repo_dir}" rev-parse HEAD 2>/dev/null)"
-    if git -C "${repo_dir}" pull --ff-only --quiet 2>/dev/null; then
+    pull_err=""
+    if pull_err="$(git -C "${repo_dir}" pull --ff-only --quiet 2>&1 >/dev/null)"; then
       new_sha="$(git -C "${repo_dir}" rev-parse HEAD 2>/dev/null)"
       if [ "${old_sha}" = "${new_sha}" ]; then
         echo "${repo_name}: up-to-date"
@@ -110,6 +135,10 @@ else
       fi
     else
       echo "${repo_name}: failed"
+      reason="$(printf '%s\n' "${pull_err}" | grep -m1 -v '^[[:space:]]*$' || true)"
+      if [ -n "${reason}" ]; then
+        echo "  reason: ${reason}"
+      fi
       failed=$((failed + 1))
     fi
   done

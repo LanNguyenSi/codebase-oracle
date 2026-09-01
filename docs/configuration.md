@@ -103,20 +103,21 @@ systemctl --user enable --now codebase-oracle-index.timer
 
 Inspect with `systemctl --user list-timers codebase-oracle-index.timer` and `journalctl --user -u codebase-oracle-index.service --since today`. The default schedule is daily at 04:00 local with a 15-minute random delay; `Persistent=true` catches up after a missed window (laptop asleep).
 
-On a machine that serves as the index source of truth, `ExecStart` may point at `scripts/oracle-refresh.sh` instead of `npm run index` directly, for the same pull-then-index behaviour described below.
+On a machine that serves as the index source of truth, `ExecStart` may point at `scripts/oracle-refresh.sh` instead of `npm run index` directly (e.g. `ExecStart=/home/CHANGE_ME/git/codebase-oracle/scripts/oracle-refresh.sh`), for the same pull-then-index behaviour described below.
 
 ### Scheduled refresh (macOS launchd)
 
-On a machine that serves as the index source of truth for several repos, `scripts/oracle-refresh.sh` fast-forwards every clean checkout directly under `ORACLE_SCAN_ROOT` before running the incremental index. A checkout is skipped (not touched) when it is dirty, has a detached `HEAD`, or its current branch has no upstream; a failed `git pull --ff-only` is reported and the loop continues rather than aborting the run. The index step always runs afterward and its exit status becomes the script's exit status.
+On a machine that serves as the index source of truth for several repos, `scripts/oracle-refresh.sh` fast-forwards every clean checkout directly under `ORACLE_SCAN_ROOT` before running the incremental index. A checkout is skipped (not touched) when it is dirty, unreadable, has a detached `HEAD`, or its current branch has no upstream; a failed `git pull --ff-only` is reported with the first line of git's stderr and the loop continues rather than aborting the run. Hidden directories directly under `ORACLE_SCAN_ROOT` are not seen by the pull loop, matching the indexer's own repo discovery (`discoverRepos` in `src/ingest/scanner.ts` also skips dotfiles). The index step always runs afterward and its exit status becomes the script's exit status.
 
 Two env knobs beyond the usual configuration:
 
 - `ORACLE_REFRESH_PULL=0` skips the pull phase entirely and only runs the index step.
-- `ORACLE_REFRESH_INDEX_CMD` overrides the index command (defaults to `npm run index`), run via `bash -c` in the checkout directory.
+- `ORACLE_REFRESH_INDEX_CMD` overrides the index command (defaults to `npm run index`), run via `bash -c` in the checkout directory. This is operator-controlled and executed as a shell command; treat it as the same trust tier as the plist or unit file that invokes the script.
 
 Ship template lives under `scripts/launchd/`. Copy it into `~/Library/LaunchAgents/`, replace the `CHANGE_ME_CHECKOUT` and `CHANGE_ME_HOME` placeholders with absolute paths, then:
 
 ```bash
+mkdir -p ~/Library/LaunchAgents
 mkdir -p ~/Library/Logs/codebase-oracle
 cp scripts/launchd/com.codebase-oracle.refresh.plist.example \
    ~/Library/LaunchAgents/com.codebase-oracle.refresh.plist
@@ -124,7 +125,9 @@ cp scripts/launchd/com.codebase-oracle.refresh.plist.example \
 launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.codebase-oracle.refresh.plist
 ```
 
-Inspect with `launchctl print gui/$UID/com.codebase-oracle.refresh` and by tailing `~/Library/Logs/codebase-oracle/refresh.out.log`. Unload with `launchctl bootout gui/$UID/com.codebase-oracle.refresh`. The default interval is hourly (`StartInterval=3600`); `.env` is read from `WorkingDirectory` by the CLI's own dotenv loader, so no secrets go into the plist.
+Inspect with `launchctl print gui/$UID/com.codebase-oracle.refresh` and by tailing `~/Library/Logs/codebase-oracle/refresh.out.log`. Unload with `launchctl bootout gui/$UID/com.codebase-oracle.refresh`. The default interval is hourly (`StartInterval=3600`); `RunAtLoad` also fires one run immediately at login and at bootstrap time, in addition to the interval ticks. `.env` is read from `WorkingDirectory` by the CLI's own dotenv loader, so no secrets go into the plist.
+
+The plist's `PATH` is a plain launchd session `PATH`, not a login-shell one; if `npm` lives under nvm/fnm/volta, edit it in to avoid a "command not found" failure, or point `ORACLE_REFRESH_INDEX_CMD` at the absolute node binary and `dist/index.js`, mirroring the systemd unit's own PATH note above.
 
 ### On-demand from an agent (MCP `oracle_reindex`)
 
