@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-09-01T06:58:38Z
+timestamp: 2026-09-01T07:26:06Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -40,12 +40,12 @@ Verified cross-process visibility:
 
 - The store is a single SQLite file opened with WAL:
   `db.pragma("journal_mode = WAL")` plus `synchronous = NORMAL` and
-  `busy_timeout = 5000` (`src/store/sqlite-store.ts:207-213`). WAL lets readers
+  `busy_timeout = 5000` (`src/store/sqlite-store.ts:218-224`). WAL lets readers
   and a separate writer share one store; the header comment states exactly this
-  (`src/store/sqlite-store.ts:209-213`).
+  (`src/store/sqlite-store.ts:220-224`).
 - Every read runs a **fresh prepared statement** each call — `listRepos.all()`,
   the `similaritySearch` `db.prepare(sql).all(...)`
-  (`src/store/sqlite-store.ts:441, 496, 519`). There is no long-lived read
+  (`src/store/sqlite-store.ts:476, 531, 554`). There is no long-lived read
   transaction and no JS-level result cache, so each query observes the latest
   committed state, including writes committed by *another* process (a CLI
   `npm run index`, `npm run watch`, or a systemd reindex).
@@ -61,8 +61,8 @@ indexer does not contend for the write lock; the next tool call re-opens it
 (`src/mcp-server.ts:246-260`).
 
 Note on `writeEpoch`: the store exposes a `bumpWriteEpoch()` / `getWriteEpoch()`
-heartbeat bumped on every mutation (`src/store/sqlite-store.ts:148-150,
-561, 585, 749-758`). It is written but **no reader in `src/` currently consumes
+heartbeat bumped on every mutation (`src/store/sqlite-store.ts:159-161,
+596, 620, 810-818`). It is written but **no reader in `src/` currently consumes
 `getWriteEpoch()` to invalidate a cache** — the freshness guarantee rests on WAL
 plus per-statement reads, not on epoch polling. Do not rely on the epoch as the
 mechanism; it is a hook, not the load-bearing part.
@@ -73,7 +73,7 @@ mechanism; it is a hook, not the load-bearing part.
    `npm run index` (which is `tsx src/index.ts index`, `package.json:23`).
 2. From the still-running MCP session call `oracle_list_repos` and check the
    per-repo chunk/file counts and the indexed timestamp (rendered from
-   `last_indexed_at`; `src/store/sqlite-store.ts:303-316`,
+   `last_indexed_at`; `src/store/sqlite-store.ts:323-351`,
    `src/format-freshness.ts`). Or call `oracle_search` for a string you know is
    only in the new content. A hit without any restart confirms DATA freshness.
 
@@ -138,7 +138,7 @@ env — another reason to verify config-sensitive behavior via the CLI.
 Verify: reconnect, then call `oracle_list_repos` / `oracle_search`; a
 provider/model mismatch against the store fails loud with an
 `IndexFingerprintError` naming the expected values
-(`src/store/sqlite-store.ts:425-437`, `docs/architecture.md:52-56`).
+(`src/store/sqlite-store.ts:460-473`, `docs/architecture.md:52-56`).
 
 ## The repeated operator trap
 

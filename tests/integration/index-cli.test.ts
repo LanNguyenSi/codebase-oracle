@@ -1,5 +1,5 @@
 import { afterEach, describe, it, expect } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -357,6 +357,148 @@ describe("oracle index CLI integration", () => {
       const listedSecond = runListRepos(dataDir);
       expect(listedSecond.status, listedSecond.stderr).toBe(0);
       expect(listedSecond.stdout).not.toContain("skipped");
+    },
+  );
+
+  it(
+    "a repo whose only file blows the size ceiling has zero docs but still appears in list-repos with its skip count",
+    { timeout: 30_000 },
+    async () => {
+      // Reproduces the reviewer's finding verbatim: a scan root containing a
+      // repo with a single oversized file persists a repo_skip_meta row
+      // (tally {size_count: 1}) but has NO docs row at all, since nothing of
+      // it ever entered the store. Before the listRepos widening this repo
+      // was entirely absent from list-repos output.
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      await makeRepo(scanRoot, "allbig", {
+        "big.ts": "x".repeat(2000) + "\n",
+      });
+      await makeRepo(scanRoot, "normal", {
+        "a.ts": "export const a = 1;\n",
+      });
+
+      const result = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(result.status, `index failed: ${result.stderr}`).toBe(0);
+
+      const store = readStore(dataDir);
+      // allbig has no docs at all — the exact case the widened query covers.
+      expect(store.filesByRepo.get("allbig")).toBeUndefined();
+      expect(store.repos.map((r) => r.repo)).toEqual(["normal"]);
+      expect(store.skipMeta).toContainEqual({
+        repo: "allbig",
+        size_count: 1,
+        error_count: 0,
+        examples: JSON.stringify(["allbig/big.ts"]),
+      });
+
+      const listed = runListRepos(dataDir);
+      expect(listed.status, `list-repos failed: ${listed.stderr}`).toBe(0);
+      expect(listed.stdout).toMatch(
+        /allbig — 0 chunks across 0 files; 1 file\(s\) skipped in the last index run \(1 too large; e\.g\. allbig\/big\.ts\)/,
+      );
+    },
+  );
+
+  it(
+    "a repo deleted from the scan root loses its repo_skip_meta row on the next run",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      await makeRepo(scanRoot, "kept", { "a.ts": "export const a = 1;\n" });
+      await makeRepo(scanRoot, "goneSoon", { "big.ts": "x".repeat(2000) + "\n" });
+
+      const first = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(first.status, `first index failed: ${first.stderr}`).toBe(0);
+      expect(readStore(dataDir).skipMeta.map((s) => s.repo)).toEqual(["goneSoon", "kept"]);
+
+      // Delete the repo that skipped a file entirely — its repo_skip_meta
+      // row must not survive forever like the pre-fix repo_meta orphans did.
+      await rm(join(scanRoot, "goneSoon"), { recursive: true, force: true });
+
+      const second = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(second.status, `second index failed: ${second.stderr}`).toBe(0);
+      expect(second.stdout).toMatch(/Cleared 1 orphan repo_skip_meta row/);
+
+      const afterSecond = readStore(dataDir);
+      expect(afterSecond.skipMeta.map((s) => s.repo)).toEqual(["kept"]);
+    },
+  );
+
+  it(
+    "caps persisted skip examples at SKIP_EXAMPLES_LIMIT (5) even when more files were skipped",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      const files: Record<string, string> = {};
+      for (let i = 0; i < 7; i++) {
+        files[`big${i}.ts`] = "x".repeat(2000) + "\n";
+      }
+      await makeRepo(scanRoot, "manybig", files);
+
+      const result = runIndex(scanRoot, dataDir, { ORACLE_MAX_FILE_SIZE: "500" });
+      expect(result.status, `index failed: ${result.stderr}`).toBe(0);
+
+      const skipMeta = readStore(dataDir).skipMeta.find((s) => s.repo === "manybig")!;
+      expect(skipMeta.size_count).toBe(7);
+      const examples = JSON.parse(skipMeta.examples) as string[];
+      expect(examples).toHaveLength(5);
+
+      const listed = runListRepos(dataDir);
+      expect(listed.status, listed.stderr).toBe(0);
+      expect(listed.stdout).toMatch(/7 file\(s\) skipped in the last index run \(7 too large;/);
+    },
+  );
+
+  it(
+    "a real unreadable file (chmod 000) is skipped as a read-error and counted end to end",
+    { timeout: 30_000 },
+    async () => {
+      // Root (and some CI containers) bypass file permission bits entirely,
+      // which would make this test silently pass for the wrong reason —
+      // skip it rather than assert a false positive.
+      if (process.getuid && process.getuid() === 0) {
+        return;
+      }
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+
+      await makeRepo(scanRoot, "locked", {
+        "readable.ts": "export const readable = 1;\n",
+        "secret.ts": "export const secret = 1;\n",
+      });
+      await chmod(join(scanRoot, "locked", "secret.ts"), 0o000);
+
+      try {
+        const result = runIndex(scanRoot, dataDir);
+        expect(result.status, `index failed: ${result.stderr}`).toBe(0);
+        expect(result.stderr).toMatch(/WARNING: skipped locked\/secret\.ts — read error:/);
+
+        const store = readStore(dataDir);
+        expect(store.filesByRepo.get("locked")).toEqual(["locked/readable.ts"]);
+        expect(store.skipMeta).toContainEqual({
+          repo: "locked",
+          size_count: 0,
+          error_count: 1,
+          examples: JSON.stringify(["locked/secret.ts"]),
+        });
+      } finally {
+        // Restore permissions so the afterEach rm() can clean up the tree.
+        await chmod(join(scanRoot, "locked", "secret.ts"), 0o644);
+      }
     },
   );
 });

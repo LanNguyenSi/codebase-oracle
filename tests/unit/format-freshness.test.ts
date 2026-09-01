@@ -101,7 +101,7 @@ describe("formatRepoLine", () => {
     ).toBe("- scaffoldkit — 234 chunks across 59 files");
   });
 
-  it("appends a skipped-file count when the last index run skipped files (size + error combined)", () => {
+  it("appends a skipped-file count broken down by reason when the last index run skipped files", () => {
     expect(
       formatRepoLine(
         {
@@ -114,7 +114,81 @@ describe("formatRepoLine", () => {
         },
         now,
       ),
-    ).toBe("- scaffoldkit — 234 chunks across 59 files; 3 file(s) skipped in the last index run");
+    ).toBe(
+      "- scaffoldkit — 234 chunks across 59 files; 3 file(s) skipped in the last index run (2 too large, 1 read error)",
+    );
+  });
+
+  it("singularizes 'read error' for a count of exactly 1 and renders only the too-large reason when errorCount is 0", () => {
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: null,
+          skippedSizeCount: 1,
+          skippedErrorCount: 0,
+        },
+        now,
+      ),
+    ).toBe(
+      "- scaffoldkit — 234 chunks across 59 files; 1 file(s) skipped in the last index run (1 too large)",
+    );
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: null,
+          skippedSizeCount: 0,
+          skippedErrorCount: 1,
+        },
+        now,
+      ),
+    ).toBe(
+      "- scaffoldkit — 234 chunks across 59 files; 1 file(s) skipped in the last index run (1 read error)",
+    );
+  });
+
+  it("lists skippedExamples after the breakdown, matching the documented shape", () => {
+    expect(
+      formatRepoLine(
+        {
+          repo: "harness",
+          chunkCount: 400,
+          fileCount: 80,
+          lastIndexedAt: null,
+          skippedSizeCount: 2,
+          skippedErrorCount: 1,
+          skippedExamples: ["harness/CHANGELOG.md", "harness/big.ts", "harness/locked.ts"],
+        },
+        now,
+      ),
+    ).toBe(
+      "- harness — 400 chunks across 80 files; 3 file(s) skipped in the last index run "
+        + "(2 too large, 1 read error; e.g. harness/CHANGELOG.md, harness/big.ts, harness/locked.ts)",
+    );
+  });
+
+  it("omits the examples clause when skippedExamples is omitted or empty (back-compat)", () => {
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: null,
+          skippedSizeCount: 1,
+          skippedErrorCount: 0,
+          skippedExamples: [],
+        },
+        now,
+      ),
+    ).toBe(
+      "- scaffoldkit — 234 chunks across 59 files; 1 file(s) skipped in the last index run (1 too large)",
+    );
   });
 
   it("combines the indexedAt suffix and the skipped-file suffix", () => {
@@ -132,7 +206,7 @@ describe("formatRepoLine", () => {
         now,
       ),
     ).toBe(
-      `- scaffoldkit — 234 chunks across 59 files (indexed ${ts}, 12 min ago); 1 file(s) skipped in the last index run`,
+      `- scaffoldkit — 234 chunks across 59 files (indexed ${ts}, 12 min ago); 1 file(s) skipped in the last index run (1 too large)`,
     );
   });
 });

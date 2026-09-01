@@ -2,6 +2,24 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-01T07:25:32Z, review-round fix (task ee173398, round 2): sqlite-store.ts
+  edits (widened `listRepos`, added `pruneOrphanRepoSkipMeta`) shifted every
+  cited line at or below the `SqliteStore` interface. Re-pointed
+  index-freshness-vs-code-freshness.md's WAL pragma citations (207-213 →
+  218-224, 209-213 → 220-224), listRepos/similaritySearch read citations
+  (441,496,519 → 476,531,554), writeEpoch citations (148-150,561,585,749-758
+  → 159-161,596,620,810-818), the `last_indexed_at` listRepos citation
+  (303-316 → 323-351), and the assertCompatibleWithConfig citation (425-437 →
+  460-473). Re-pointed sources-expansion.md's getFirstChunkByFile citations
+  (336-338 → 371-373, 711-723 → 772-784). runner.ts edits (new
+  pruneOrphanRepoSkipMeta call) shifted ingest-size-limit-enforcement.md's
+  onSkip/warning-loop/formatIndexSummary/skip-tally citations (107-117 →
+  118-128, 185-199 → 196-210, 377-388 → 388-399, 201-221 → 212-232); added a
+  citation for the new prune sweep (runner.ts:94-104). SKIP_EXAMPLES_LIMIT
+  (runner.ts:32), the IndexSummary interface (runner.ts:34-55), and the
+  `warn` no-op default (runner.ts:79) were unaffected — the new code was
+  inserted after them. Restamped.
+
 - 2026-08-22T07:23:49Z, review-round fix (task 84dcedaa): the src/index.ts
   entry-guard fix (`isMainModule` now realpath-resolves `process.argv[1]`
   before comparing to `import.meta.url`, so the CLI works when reached

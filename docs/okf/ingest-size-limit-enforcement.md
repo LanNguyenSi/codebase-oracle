@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together. Since the per-type ceiling was added, the applicable env var name travels with each skip so the WARNING names the knob that actually needs raising.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-09-01T06:58:38Z
+timestamp: 2026-09-01T07:26:06Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -90,25 +90,32 @@ the per-type ceiling existed) produce a WARNING telling the operator to raise th
 
 `src/ingest/runner.ts`:
 - `IndexSummary` carries `filesSkipped: number` and `skippedFiles: Array<{repo, relativePath, reason, sizeBytes?, limitBytes?, limitEnvVar?, message?}>` (runner.ts:34-55).
-- `walkOptions.onSkip` pushes each skip into `skippedFiles` (runner.ts:107-117).
-- **Loud per-file + total reporting** (runner.ts:185-199): for each skip, `warn(...)`
+- `walkOptions.onSkip` pushes each skip into `skippedFiles` (runner.ts:118-128).
+- **Loud per-file + total reporting** (runner.ts:196-210): for each skip, `warn(...)`
   emits `WARNING: skipped <path> — <bytes> bytes > <limitEnvVar>=<limit>`
   (too-large; the env var name is per-skip, not hardcoded) or `WARNING: skipped <path> — read error: <message>`, then a one-line
   total naming both env vars as candidates to raise.
 - The `warn` sink defaults to a no-op (runner.ts:79); the CLI routes it to stderr,
   MCP and zero-skip runs stay quiet.
-- `formatIndexSummary` folds the count into the **files** segment (runner.ts:377-388):
+- `formatIndexSummary` folds the count into the **files** segment (runner.ts:388-399):
   `... ${summary.filesNew} new, ${summary.filesPruned} pruned, ${summary.filesSkipped} skipped).`
 - **As of this revision**, after the WARNING loop, `runIndex` also tallies skips per
   repo (`sizeCount`, `errorCount`, up to `SKIP_EXAMPLES_LIMIT = 5` example
-  paths; runner.ts:32, 201-221) and calls `store.setRepoSkipSummary(repo.name, ...)`
+  paths; runner.ts:32, 212-232) and calls `store.setRepoSkipSummary(repo.name, ...)`
   for **every** discovered repo, including a flat-0 summary for repos that
   skipped nothing this run. That flat-0 overwrite (not a conditional "only
   write when > 0") is what makes the persisted count reflect the LAST run
   rather than accumulate — see sqlite-store.ts's `repo_skip_meta` table and
   `oracle_list_repos` / CLI `list-repos`, which surface it via
   `format-freshness.ts`'s `formatRepoLine` whenever a repo's skipped total is
-  non-zero.
+  non-zero, broken down by reason with up to five example paths. A repo whose
+  files were skipped in their entirety (no docs at all) is now surfaced too
+  by `listRepos`' widened query, not just repos with a mix of indexed and
+  skipped files (sqlite-store.ts's `listRepos` compiled statement). A second
+  sweep, `pruneOrphanRepoSkipMeta(discoveredRepos)` (runner.ts:94-104),
+  removes `repo_skip_meta` rows for repos no longer discovered on disk at
+  all — it deliberately does NOT key off `docs` the way `pruneOrphanRepoMeta`
+  does, since an all-skipped repo has zero docs while still being live.
 
 ## MCP: only the count reaches oracle_reindex, not the per-file lines
 

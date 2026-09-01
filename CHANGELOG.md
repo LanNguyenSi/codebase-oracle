@@ -20,12 +20,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the same per-type ceiling. Skip WARNING lines now name whichever env var
   actually produced the limit, instead of always naming
   `ORACLE_MAX_FILE_SIZE`.
-- Per-repo skipped-file counts from the last index run (broken down by
-  size-ceiling vs. read-error, with a few example paths), persisted
+- Per-repo skipped-file counts from the last full index run, persisted
   alongside each repo's freshness timestamp and surfaced by
   `oracle_list_repos` / CLI `list-repos` whenever a repo has anything
-  skipped. Reflects only the most recent run, not an accumulation across
-  runs: a file that stops being skipped makes the count go back down.
+  skipped: the total broken down by reason (size-ceiling vs. read-error)
+  followed by up to five example paths, e.g. "3 file(s) skipped in the
+  last index run (2 too large, 1 read error; e.g. harness/CHANGELOG.md,
+  ...)". Reflects only the most recent run, not an accumulation across
+  runs: a file that stops being skipped makes the count go back down. A
+  repo whose files were skipped in their entirety (zero indexed chunks)
+  still appears in the listing with this count, rather than being omitted
+  for having nothing else to show. `npm run watch` reports skips live on
+  the console only; it does not update this persisted count. Orphan
+  `repo_skip_meta` rows for repos no longer discovered on disk are swept
+  at the start of every full index run, mirroring the existing
+  `repo_meta` orphan sweep.
 - **`scripts/oracle-refresh.sh`** for a machine that serves as the index
   source of truth: fast-forwards clean checkouts under `ORACLE_SCAN_ROOT`,
   then runs the incremental index (`ORACLE_REFRESH_PULL` and

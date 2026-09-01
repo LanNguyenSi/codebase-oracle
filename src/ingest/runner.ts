@@ -91,6 +91,17 @@ export async function runIndex(
     if (orphanedMeta > 0) {
       log(`Cleared ${orphanedMeta} orphan repo_meta row(s) left over from earlier prunes.\n`);
     }
+    // Unlike pruneOrphanRepoMeta (keyed off `docs`), repo_skip_meta orphans
+    // must be keyed off THIS run's discovered repo list: a repo whose files
+    // were all skipped has zero docs while still being live on disk, so a
+    // "no docs" test would delete its skip tally every run. See the
+    // pruneOrphanRepoSkipMeta doc comment in sqlite-store.ts.
+    const orphanedSkipMeta = store.pruneOrphanRepoSkipMeta(repos.map((r) => r.name));
+    if (orphanedSkipMeta > 0) {
+      log(
+        `Cleared ${orphanedSkipMeta} orphan repo_skip_meta row(s) for repos no longer on disk.\n`,
+      );
+    }
     const existingSignatures = store.fileSignatures();
     if (existingSignatures.size > 0) {
       log(

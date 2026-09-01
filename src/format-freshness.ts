@@ -39,7 +39,11 @@ export function formatRelativeFreshness(
  * this repo (both `skippedSizeCount` and `skippedErrorCount` omitted or 0
  * renders nothing extra) — this is what surfaces the size-ceiling skip
  * count from repo_skip_meta on the CLI, MCP, and HTTP list-repos surfaces,
- * which all share this function.
+ * which all share this function. The suffix breaks the total down by reason
+ * (too large vs. read error) and, when `skippedExamples` is non-empty,
+ * lists them (already capped by the writer, see runner.ts
+ * SKIP_EXAMPLES_LIMIT — this function renders whatever it's given, it does
+ * not re-cap).
  *
  * `prefix` lets callers pick the leading marker (default `"- "` for the
  * MCP/HTTP markdown-ish output; the CLI passes `"  "` for plain indent).
@@ -52,6 +56,7 @@ export function formatRepoLine(
     lastIndexedAt: string | null;
     skippedSizeCount?: number;
     skippedErrorCount?: number;
+    skippedExamples?: string[];
   },
   optionsOrNow?: Date | { now?: Date; prefix?: string },
 ): string {
@@ -63,9 +68,21 @@ export function formatRepoLine(
     const relative = formatRelativeFreshness(repo.lastIndexedAt, opts.now);
     line += ` (indexed ${repo.lastIndexedAt}, ${relative})`;
   }
-  const skippedTotal = (repo.skippedSizeCount ?? 0) + (repo.skippedErrorCount ?? 0);
+  const skippedSizeCount = repo.skippedSizeCount ?? 0;
+  const skippedErrorCount = repo.skippedErrorCount ?? 0;
+  const skippedTotal = skippedSizeCount + skippedErrorCount;
   if (skippedTotal > 0) {
-    line += `; ${skippedTotal} file(s) skipped in the last index run`;
+    const reasons: string[] = [];
+    if (skippedSizeCount > 0) reasons.push(`${skippedSizeCount} too large`);
+    if (skippedErrorCount > 0) {
+      reasons.push(`${skippedErrorCount} read error${skippedErrorCount === 1 ? "" : "s"}`);
+    }
+    let detail = reasons.join(", ");
+    const examples = repo.skippedExamples ?? [];
+    if (examples.length > 0) {
+      detail += `; e.g. ${examples.join(", ")}`;
+    }
+    line += `; ${skippedTotal} file(s) skipped in the last index run (${detail})`;
   }
   return line;
 }

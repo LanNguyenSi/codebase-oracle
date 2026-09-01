@@ -120,6 +120,17 @@ export interface SqliteStore {
    * full index run rather than accumulating across runs.
    */
   setRepoSkipSummary(repo: string, summary: RepoSkipSummary): void;
+  /**
+   * Drop `repo_skip_meta` rows for repos NOT in `discoveredRepos`. Unlike
+   * `pruneOrphanRepoMeta`, this cannot key off `docs` — a repo whose files
+   * were ALL skipped legitimately has zero docs while still being a live,
+   * on-disk repo, so pruning by "no docs" would delete its skip tally out
+   * from under it every single run. `discoveredRepos` (the current run's
+   * `discoverRepos()` result) is the only correct orphan signal: a repo is
+   * an orphan here only once it stops being discovered on disk at all.
+   * Returns the number of rows removed. Idempotent.
+   */
+  pruneOrphanRepoSkipMeta(discoveredRepos: string[]): number;
   fileSignatures(): Map<string, FileSignature>;
   /**
    * Returns the metadata payload from any one chunk for the given file, or
@@ -300,19 +311,43 @@ export function openSqliteStore(config: Config): SqliteStore {
       "INSERT INTO meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
     ),
     countDocs: db.prepare("SELECT COUNT(*) AS c FROM docs"),
+    // A repo whose files were ALL skipped (too-large / read-error) has no
+    // docs row, so it can't come out of the docs-driven branch below no
+    // matter how the JOIN is widened. The UNION ALL branch surfaces such a
+    // repo directly from repo_skip_meta (chunkCount/fileCount 0, no
+    // freshness data) whenever its skip tally is non-zero, so it isn't
+    // simply missing from list-repos — see docs/okf/ingest-size-limit-enforcement.md.
+    // A repo with a flat-0 skip tally and no docs (e.g. every file was
+    // empty, silently skipped) is excluded from both branches: there is
+    // nothing worth surfacing about it.
     listRepos: db.prepare(
-      `SELECT d.repo AS repo,
-              COUNT(*) AS chunkCount,
-              COUNT(DISTINCT d.file_path) AS fileCount,
-              r.last_indexed_at AS lastIndexedAt,
-              COALESCE(s.size_count, 0) AS skippedSizeCount,
-              COALESCE(s.error_count, 0) AS skippedErrorCount,
-              COALESCE(s.examples, '[]') AS skippedExamplesJson
-       FROM docs d
-       LEFT JOIN repo_meta r ON r.repo = d.repo
-       LEFT JOIN repo_skip_meta s ON s.repo = d.repo
-       GROUP BY d.repo
-       ORDER BY d.repo`,
+      `SELECT repo, chunkCount, fileCount, lastIndexedAt,
+              skippedSizeCount, skippedErrorCount, skippedExamplesJson
+       FROM (
+         SELECT d.repo AS repo,
+                COUNT(*) AS chunkCount,
+                COUNT(DISTINCT d.file_path) AS fileCount,
+                r.last_indexed_at AS lastIndexedAt,
+                COALESCE(s.size_count, 0) AS skippedSizeCount,
+                COALESCE(s.error_count, 0) AS skippedErrorCount,
+                COALESCE(s.examples, '[]') AS skippedExamplesJson
+         FROM docs d
+         LEFT JOIN repo_meta r ON r.repo = d.repo
+         LEFT JOIN repo_skip_meta s ON s.repo = d.repo
+         GROUP BY d.repo
+         UNION ALL
+         SELECT s.repo AS repo,
+                0 AS chunkCount,
+                0 AS fileCount,
+                NULL AS lastIndexedAt,
+                s.size_count AS skippedSizeCount,
+                s.error_count AS skippedErrorCount,
+                s.examples AS skippedExamplesJson
+         FROM repo_skip_meta s
+         WHERE (s.size_count > 0 OR s.error_count > 0)
+           AND s.repo NOT IN (SELECT DISTINCT repo FROM docs)
+       )
+       ORDER BY repo`,
     ),
     touchRepo: db.prepare(
       "INSERT INTO repo_meta(repo, last_indexed_at) VALUES(?, ?) ON CONFLICT(repo) DO UPDATE SET last_indexed_at=excluded.last_indexed_at",
@@ -671,6 +706,32 @@ export function openSqliteStore(config: Config): SqliteStore {
     return changes;
   }
 
+  function pruneOrphanRepoSkipMetaInternal(discoveredRepos: string[]): number {
+    // Cannot reuse pruneOrphanRepoMetaStmt's "no docs" test: a repo whose
+    // files were ALL skipped this run legitimately has zero docs while
+    // still being live on disk (see the listRepos UNION ALL branch above).
+    // The only correct orphan signal here is the current run's discovered
+    // repo list — a row is an orphan once its repo is no longer discovered
+    // at all, not merely once it has no docs.
+    let changes = 0;
+    const tx = db.transaction(() => {
+      const result =
+        discoveredRepos.length === 0
+          ? db.prepare("DELETE FROM repo_skip_meta").run()
+          : db
+              .prepare(
+                `DELETE FROM repo_skip_meta WHERE repo NOT IN (${discoveredRepos
+                  .map(() => "?")
+                  .join(",")})`,
+              )
+              .run(...discoveredRepos);
+      changes = result.changes;
+      if (changes > 0) bumpEpochInternal();
+    });
+    tx();
+    return changes;
+  }
+
   function deleteByRepoInternal(repo: string): number {
     let removed = 0;
     const tx = db.transaction(() => {
@@ -770,6 +831,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     deleteByRepo: deleteByRepoInternal,
     touchRepo: touchRepoExternal,
     pruneOrphanRepoMeta: pruneOrphanRepoMetaInternal,
+    pruneOrphanRepoSkipMeta: pruneOrphanRepoSkipMetaInternal,
     setRepoSkipSummary: setRepoSkipSummaryInternal,
     fileSignatures: fileSignaturesInternal,
     getFileMetadata: getFileMetadataInternal,
