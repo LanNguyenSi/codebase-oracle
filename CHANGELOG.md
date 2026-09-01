@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`ORACLE_MAX_TEXT_FILE_SIZE`** (default 2 MB): a separate, larger
+  per-file size ceiling applied to text/doc file types (currently just
+  `.md`) instead of `ORACLE_MAX_FILE_SIZE` (default 500 KB). A large
+  markdown file (a CHANGELOG, a design doc) is harmless to read fully into
+  memory — the splitter chunks it downstream regardless of file size — so
+  it no longer competes with the ceiling sized for arbitrary source files.
+  Same fail-loud parse contract as `ORACLE_MAX_FILE_SIZE` (unset falls back
+  to the default, an invalid set value throws). `npm run watch` applies
+  the same per-type ceiling. Skip WARNING lines now name whichever env var
+  actually produced the limit, instead of always naming
+  `ORACLE_MAX_FILE_SIZE`.
+- Per-repo skipped-file counts from the last index run (broken down by
+  size-ceiling vs. read-error, with a few example paths), persisted
+  alongside each repo's freshness timestamp and surfaced by
+  `oracle_list_repos` / CLI `list-repos` whenever a repo has anything
+  skipped. Reflects only the most recent run, not an accumulation across
+  runs: a file that stops being skipped makes the count go back down.
 - **`scripts/oracle-refresh.sh`** for a machine that serves as the index
   source of truth: fast-forwards clean checkouts under `ORACLE_SCAN_ROOT`,
   then runs the incremental index (`ORACLE_REFRESH_PULL` and

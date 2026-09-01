@@ -75,4 +75,64 @@ describe("formatRepoLine", () => {
       ),
     ).toBe("  scaffoldkit — 234 chunks across 59 files");
   });
+
+  it("appends nothing when skippedSizeCount/skippedErrorCount are omitted (back-compat)", () => {
+    expect(
+      formatRepoLine(
+        { repo: "scaffoldkit", chunkCount: 234, fileCount: 59, lastIndexedAt: null },
+        now,
+      ),
+    ).toBe("- scaffoldkit — 234 chunks across 59 files");
+  });
+
+  it("appends nothing when skippedSizeCount and skippedErrorCount are both 0", () => {
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: null,
+          skippedSizeCount: 0,
+          skippedErrorCount: 0,
+        },
+        now,
+      ),
+    ).toBe("- scaffoldkit — 234 chunks across 59 files");
+  });
+
+  it("appends a skipped-file count when the last index run skipped files (size + error combined)", () => {
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: null,
+          skippedSizeCount: 2,
+          skippedErrorCount: 1,
+        },
+        now,
+      ),
+    ).toBe("- scaffoldkit — 234 chunks across 59 files; 3 file(s) skipped in the last index run");
+  });
+
+  it("combines the indexedAt suffix and the skipped-file suffix", () => {
+    const ts = new Date(now.getTime() - 12 * 60 * 1000).toISOString();
+    expect(
+      formatRepoLine(
+        {
+          repo: "scaffoldkit",
+          chunkCount: 234,
+          fileCount: 59,
+          lastIndexedAt: ts,
+          skippedSizeCount: 1,
+          skippedErrorCount: 0,
+        },
+        now,
+      ),
+    ).toBe(
+      `- scaffoldkit — 234 chunks across 59 files (indexed ${ts}, 12 min ago); 1 file(s) skipped in the last index run`,
+    );
+  });
 });

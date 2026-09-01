@@ -30,6 +30,7 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     llmModel: "test",
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
+    maxTextFileSizeBytes: 2_000_000,
     ...overrides,
   };
 }
@@ -490,6 +491,62 @@ describe("CRUD + similarity", () => {
     expect(new Date(after!).getTime()).toBeGreaterThan(
       new Date(before).getTime(),
     );
+    store.close();
+  });
+
+  it("listRepos exposes 0 skipped counts and an empty examples array by default", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    const [repo] = store.listRepos();
+    expect(repo.skippedSizeCount).toBe(0);
+    expect(repo.skippedErrorCount).toBe(0);
+    expect(repo.skippedExamples).toEqual([]);
+    store.close();
+  });
+
+  it("setRepoSkipSummary surfaces the tally (and examples) via listRepos", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    store.setRepoSkipSummary("r", {
+      sizeCount: 2,
+      errorCount: 1,
+      examples: ["r/big.ts", "r/big2.md", "r/locked.ts"],
+    });
+
+    const [repo] = store.listRepos();
+    expect(repo.skippedSizeCount).toBe(2);
+    expect(repo.skippedErrorCount).toBe(1);
+    expect(repo.skippedExamples).toEqual(["r/big.ts", "r/big2.md", "r/locked.ts"]);
+    store.close();
+  });
+
+  it("setRepoSkipSummary reflects only the LAST call, not an accumulation across runs", async () => {
+    // Mutation probe target: dropping the overwrite-with-zero write in
+    // runner.ts (calling setRepoSkipSummary only for repos WITH skips) would
+    // leave a stale non-zero count here once the underlying file stops being
+    // skipped. Verified at the store layer: a second call with a flat-0
+    // summary must zero out a previously non-zero one, not add to it or
+    // leave it untouched.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    store.setRepoSkipSummary("r", { sizeCount: 5, errorCount: 2, examples: ["r/x.ts"] });
+    expect(store.listRepos()[0]).toMatchObject({ skippedSizeCount: 5, skippedErrorCount: 2 });
+
+    // Next run: nothing skipped this time.
+    store.setRepoSkipSummary("r", { sizeCount: 0, errorCount: 0, examples: [] });
+    const repo = store.listRepos()[0];
+    expect(repo.skippedSizeCount).toBe(0);
+    expect(repo.skippedErrorCount).toBe(0);
+    expect(repo.skippedExamples).toEqual([]);
     store.close();
   });
 

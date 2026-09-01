@@ -25,6 +25,27 @@ export interface IndexedRepo {
    * pick up a value on their next re-index.
    */
   lastIndexedAt: string | null;
+  /**
+   * Files skipped in the LAST full index run for this repo (too-large /
+   * read-error), broken down by reason. Both 0 when the last run skipped
+   * nothing, or for a repo indexed before this rollout / never touched by a
+   * full `runIndex` run (watch-mode-only skips are still reported loudly on
+   * the console but do not update these counts). Not an accumulation across
+   * runs: setRepoSkipSummary overwrites the row every run, including with a
+   * flat 0, so a file that stopped being oversized makes the count go back
+   * down.
+   */
+  skippedSizeCount: number;
+  skippedErrorCount: number;
+  /** Up to a few example relative paths from the last run's skips (either
+   * reason), capped by the writer (see runner.ts SKIP_EXAMPLES_LIMIT). */
+  skippedExamples: string[];
+}
+
+export interface RepoSkipSummary {
+  sizeCount: number;
+  errorCount: number;
+  examples: string[];
 }
 
 export interface StoredEntry {
@@ -92,6 +113,13 @@ export interface SqliteStore {
    * Idempotent — a no-op when there is nothing to prune.
    */
   pruneOrphanRepoMeta(): number;
+  /**
+   * Overwrite `repo_skip_meta` for `repo` with this run's skip tally. Called
+   * by `runIndex` for every discovered repo (including a flat-0 summary for
+   * repos that skipped nothing), so the stored row always reflects the LAST
+   * full index run rather than accumulating across runs.
+   */
+  setRepoSkipSummary(repo: string, summary: RepoSkipSummary): void;
   fileSignatures(): Map<string, FileSignature>;
   /**
    * Returns the metadata payload from any one chunk for the given file, or
@@ -162,6 +190,7 @@ interface CompiledStatements {
   upsertEpoch: Database.Statement;
   touchRepo: Database.Statement<[string, string]>;
   deleteRepoMeta: Database.Statement<[string]>;
+  upsertSkipMeta: Database.Statement<[string, number, number, string]>;
 }
 
 /** Statements that depend on the vec0 virtual table existing. Compiled lazily. */
@@ -203,6 +232,12 @@ export function openSqliteStore(config: Config): SqliteStore {
     CREATE TABLE IF NOT EXISTS repo_meta (
       repo TEXT PRIMARY KEY,
       last_indexed_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS repo_skip_meta (
+      repo TEXT PRIMARY KEY,
+      size_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      examples TEXT NOT NULL DEFAULT '[]'
     );
   `);
 
@@ -269,9 +304,13 @@ export function openSqliteStore(config: Config): SqliteStore {
       `SELECT d.repo AS repo,
               COUNT(*) AS chunkCount,
               COUNT(DISTINCT d.file_path) AS fileCount,
-              r.last_indexed_at AS lastIndexedAt
+              r.last_indexed_at AS lastIndexedAt,
+              COALESCE(s.size_count, 0) AS skippedSizeCount,
+              COALESCE(s.error_count, 0) AS skippedErrorCount,
+              COALESCE(s.examples, '[]') AS skippedExamplesJson
        FROM docs d
        LEFT JOIN repo_meta r ON r.repo = d.repo
+       LEFT JOIN repo_skip_meta s ON s.repo = d.repo
        GROUP BY d.repo
        ORDER BY d.repo`,
     ),
@@ -279,6 +318,10 @@ export function openSqliteStore(config: Config): SqliteStore {
       "INSERT INTO repo_meta(repo, last_indexed_at) VALUES(?, ?) ON CONFLICT(repo) DO UPDATE SET last_indexed_at=excluded.last_indexed_at",
     ),
     deleteRepoMeta: db.prepare("DELETE FROM repo_meta WHERE repo=?"),
+    upsertSkipMeta: db.prepare(
+      "INSERT INTO repo_skip_meta(repo, size_count, error_count, examples) VALUES(?, ?, ?, ?) "
+        + "ON CONFLICT(repo) DO UPDATE SET size_count=excluded.size_count, error_count=excluded.error_count, examples=excluded.examples",
+    ),
     deleteDocsByFile: db.prepare("DELETE FROM docs WHERE repo=? AND file_path=? RETURNING rowid"),
     deleteDocsByRepo: db.prepare("DELETE FROM docs WHERE repo=? RETURNING rowid"),
     insertDoc: db.prepare(
@@ -395,7 +438,24 @@ export function openSqliteStore(config: Config): SqliteStore {
   }
 
   function listReposInternal(): IndexedRepo[] {
-    return stmts.listRepos.all() as IndexedRepo[];
+    const rows = stmts.listRepos.all() as Array<{
+      repo: string;
+      chunkCount: number;
+      fileCount: number;
+      lastIndexedAt: string | null;
+      skippedSizeCount: number;
+      skippedErrorCount: number;
+      skippedExamplesJson: string;
+    }>;
+    return rows.map((row) => ({
+      repo: row.repo,
+      chunkCount: row.chunkCount,
+      fileCount: row.fileCount,
+      lastIndexedAt: row.lastIndexedAt,
+      skippedSizeCount: row.skippedSizeCount,
+      skippedErrorCount: row.skippedErrorCount,
+      skippedExamples: JSON.parse(row.skippedExamplesJson) as string[],
+    }));
   }
 
   function similaritySearchInternal(
@@ -575,6 +635,19 @@ export function openSqliteStore(config: Config): SqliteStore {
     tx();
   }
 
+  function setRepoSkipSummaryInternal(repo: string, summary: RepoSkipSummary): void {
+    const tx = db.transaction(() => {
+      stmts.upsertSkipMeta.run(
+        repo,
+        summary.sizeCount,
+        summary.errorCount,
+        JSON.stringify(summary.examples),
+      );
+      bumpEpochInternal();
+    });
+    tx();
+  }
+
   const pruneOrphanRepoMetaStmt = db.prepare(
     "DELETE FROM repo_meta WHERE repo NOT IN (SELECT DISTINCT repo FROM docs)",
   );
@@ -697,6 +770,7 @@ export function openSqliteStore(config: Config): SqliteStore {
     deleteByRepo: deleteByRepoInternal,
     touchRepo: touchRepoExternal,
     pruneOrphanRepoMeta: pruneOrphanRepoMetaInternal,
+    setRepoSkipSummary: setRepoSkipSummaryInternal,
     fileSignatures: fileSignaturesInternal,
     getFileMetadata: getFileMetadataInternal,
     getFirstChunkByFile: getFirstChunkByFileInternal,

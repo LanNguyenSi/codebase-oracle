@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-08-22T05:39:39Z
+timestamp: 2026-09-01T06:58:38Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -27,12 +27,12 @@ llmProvider: z.enum([
 ]).default("auto"),
 ```
 
-- `embeddingProvider` — env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:98-100`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only — `config.ts:22-24`.)
-- `llmProvider` — env `ORACLE_LLM_PROVIDER` (`config.ts:101-103`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
+- `embeddingProvider` — env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:110-112`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only — `config.ts:22-24`.)
+- `llmProvider` — env `ORACLE_LLM_PROVIDER` (`config.ts:113-115`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
 
 They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:52-55` says these keys are kept separate because doing so "lets embedding and LLM live on different providers without leaking keys across lanes."
 
-## Default models (`loadConfig`, `config.ts:105-112`)
+## Default models (`loadConfig`, `config.ts:117-124`)
 
 ```ts
 const defaultEmbeddingModel = embeddingProvider === "ollama"
@@ -95,9 +95,9 @@ ORACLE_LLM_MODEL=gemma4-26b-a4b-64k
 
 ## Other LLM knobs
 
-- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:127`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`128`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`125`). These are the preferred `openai-compatible` inputs.
+- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:139`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`140`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`137`). These are the preferred `openai-compatible` inputs.
 - `createOpenAICompatibleLlm` resolves the base URL through an intermediate `ollamaBaseUrl` local: `config.ollamaBaseUrl`, falling back to `DEFAULT_OLLAMA_BASE_URL` only for the legacy `ollama` alias (`chain.ts:382-383`), then `config.llmBaseUrl ?? ollamaBaseUrl!` (`chain.ts:384`). This indirection is the `ab6aad16` fix: `config.ollamaBaseUrl` no longer carries a schema default, so an `openai-compatible` lane with nothing configured genuinely resolves `ollamaBaseUrl` to `undefined` here instead of silently landing on localhost. The key resolves as `config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey` (`chain.ts:391`), where `fallbackKey` is `"ollama"` for the legacy alias and `""` otherwise (`chain.ts:390`). It deliberately does **not** fall back to `openaiApiKey` (`chain.ts:372-373`).
-- Ollama base-url precedence (`config.ts:122`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default anymore (`config.ts:47`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard as a real `undefined` and correctly throws (fixed; previously dead code — see task ab6aad16).
+- Ollama base-url precedence (`config.ts:134`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default anymore (`config.ts:47`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard as a real `undefined` and correctly throws (fixed; previously dead code — see task ab6aad16).
 - `ORACLE_LLM_PROVIDER=ollama` is deprecated in favor of `openai-compatible` + `ORACLE_LLM_BASE_URL`/`ORACLE_LLM_API_KEY`; it prints a one-time warning (`chain.ts:401-411`).
 
 ## Authoritative env reference

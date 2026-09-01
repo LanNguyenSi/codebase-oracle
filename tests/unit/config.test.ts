@@ -105,6 +105,55 @@ describe("loadConfig maxFileSizeBytes / ORACLE_MAX_FILE_SIZE", () => {
   );
 });
 
+describe("loadConfig maxTextFileSizeBytes / ORACLE_MAX_TEXT_FILE_SIZE", () => {
+  const prevEnv = process.env.ORACLE_MAX_TEXT_FILE_SIZE;
+
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.ORACLE_MAX_TEXT_FILE_SIZE;
+    else process.env.ORACLE_MAX_TEXT_FILE_SIZE = prevEnv;
+  });
+
+  it("defaults to 2_000_000 when unset", () => {
+    delete process.env.ORACLE_MAX_TEXT_FILE_SIZE;
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxTextFileSizeBytes).toBe(2_000_000);
+  });
+
+  it("parses a set env var as an integer", () => {
+    process.env.ORACLE_MAX_TEXT_FILE_SIZE = "3000000";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxTextFileSizeBytes).toBe(3_000_000);
+  });
+
+  it("treats an empty string as unset (an `ORACLE_MAX_TEXT_FILE_SIZE=` .env line must not crash)", () => {
+    process.env.ORACLE_MAX_TEXT_FILE_SIZE = "";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.maxTextFileSizeBytes).toBe(2_000_000);
+  });
+
+  it.each(["abc", "0", "-5"])(
+    "throws for an invalid value (%s) instead of silently falling back",
+    (raw) => {
+      process.env.ORACLE_MAX_TEXT_FILE_SIZE = raw;
+      expect(() => loadConfig({ scanRoot: "/tmp/repos" })).toThrow();
+    },
+  );
+
+  it("is independent from ORACLE_MAX_FILE_SIZE (setting one does not move the other)", () => {
+    const prevGeneral = process.env.ORACLE_MAX_FILE_SIZE;
+    try {
+      process.env.ORACLE_MAX_FILE_SIZE = "1000";
+      delete process.env.ORACLE_MAX_TEXT_FILE_SIZE;
+      const config = loadConfig({ scanRoot: "/tmp/repos" });
+      expect(config.maxFileSizeBytes).toBe(1000);
+      expect(config.maxTextFileSizeBytes).toBe(2_000_000);
+    } finally {
+      if (prevGeneral === undefined) delete process.env.ORACLE_MAX_FILE_SIZE;
+      else process.env.ORACLE_MAX_FILE_SIZE = prevGeneral;
+    }
+  });
+});
+
 describe("assertScanRoot", () => {
   it("throws a friendly error when scanRoot is undefined", () => {
     const prev = process.env.ORACLE_SCAN_ROOT;

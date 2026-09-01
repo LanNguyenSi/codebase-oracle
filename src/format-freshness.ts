@@ -34,7 +34,12 @@ export function formatRelativeFreshness(
 /**
  * Render a single repo line for `oracle_list_repos` output. Includes the
  * indexedAt suffix only when a timestamp is present so legacy stores keep
- * showing the bare `<repo> — N chunks across M files` form.
+ * showing the bare `<repo> — N chunks across M files` form. Appends a
+ * `skipped` suffix only when the last index run actually skipped a file for
+ * this repo (both `skippedSizeCount` and `skippedErrorCount` omitted or 0
+ * renders nothing extra) — this is what surfaces the size-ceiling skip
+ * count from repo_skip_meta on the CLI, MCP, and HTTP list-repos surfaces,
+ * which all share this function.
  *
  * `prefix` lets callers pick the leading marker (default `"- "` for the
  * MCP/HTTP markdown-ish output; the CLI passes `"  "` for plain indent).
@@ -45,14 +50,22 @@ export function formatRepoLine(
     chunkCount: number;
     fileCount: number;
     lastIndexedAt: string | null;
+    skippedSizeCount?: number;
+    skippedErrorCount?: number;
   },
   optionsOrNow?: Date | { now?: Date; prefix?: string },
 ): string {
   const opts =
     optionsOrNow instanceof Date ? { now: optionsOrNow } : optionsOrNow ?? {};
   const prefix = opts.prefix ?? "- ";
-  const base = `${prefix}${repo.repo} — ${repo.chunkCount} chunks across ${repo.fileCount} files`;
-  if (!repo.lastIndexedAt) return base;
-  const relative = formatRelativeFreshness(repo.lastIndexedAt, opts.now);
-  return `${base} (indexed ${repo.lastIndexedAt}, ${relative})`;
+  let line = `${prefix}${repo.repo} — ${repo.chunkCount} chunks across ${repo.fileCount} files`;
+  if (repo.lastIndexedAt) {
+    const relative = formatRelativeFreshness(repo.lastIndexedAt, opts.now);
+    line += ` (indexed ${repo.lastIndexedAt}, ${relative})`;
+  }
+  const skippedTotal = (repo.skippedSizeCount ?? 0) + (repo.skippedErrorCount ?? 0);
+  if (skippedTotal > 0) {
+    line += `; ${skippedTotal} file(s) skipped in the last index run`;
+  }
+  return line;
 }

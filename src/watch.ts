@@ -9,6 +9,8 @@ import { createEmbeddings } from "./store/embeddings.js";
 import {
   DEFAULT_INCLUDE_EXTENSIONS,
   DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
+  TEXT_FILE_EXTENSIONS,
   discoverRepos,
   type ScannedFile,
 } from "./ingest/scanner.js";
@@ -142,30 +144,44 @@ export class PendingEventMap {
 type LoadResult =
   | { kind: "ok"; file: ScannedFile }
   | { kind: "empty" }
-  | { kind: "too-large"; sizeBytes: number; limitBytes: number };
+  | { kind: "too-large"; sizeBytes: number; limitBytes: number; limitEnvVar: string };
 
 async function loadScannedFile(
   absolutePath: string,
   relativePath: string,
   repo: string,
   maxFileSizeBytes: number | undefined,
+  maxTextFileSizeBytes: number | undefined,
 ): Promise<LoadResult> {
-  // Mirrors walkRepo's fallback (scanner.ts). Config.maxFileSizeBytes is
-  // required after loadConfig, but tests hand-build Config literals and are
-  // not typechecked (tsconfig only includes src/) — an undefined limit here
-  // would make `st.size > undefined` always false and silently re-open the
-  // very drop this feature closes.
+  // Mirrors walkRepo's fallback (scanner.ts). Config.maxFileSizeBytes /
+  // maxTextFileSizeBytes are required after loadConfig, but tests
+  // hand-build Config literals and are not typechecked (tsconfig only
+  // includes src/) — an undefined limit here would make `st.size >
+  // undefined` always false and silently re-open the very drop this
+  // feature closes.
   const limit = maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+  const textLimit = maxTextFileSizeBytes ?? DEFAULT_MAX_TEXT_FILE_SIZE_BYTES;
+  // Per-type ceiling, mirroring scanner.ts's walkRepo: TEXT_FILE_EXTENSIONS
+  // (.md) get the larger textLimit instead of the general limit. ext is
+  // computed up front (rather than after the read, as before) so the size
+  // check can pick the right ceiling before stat'ing.
+  const ext = extname(absolutePath);
+  const isTextType = TEXT_FILE_EXTENSIONS.has(ext);
+  const effectiveLimit = isTextType ? textLimit : limit;
   // Stat-first in true bytes, same reasoning as scanner.ts: decide before
   // reading the file into memory, and measure real bytes rather than
   // UTF-16 string length.
   const st = await stat(absolutePath);
-  if (st.size > limit) {
-    return { kind: "too-large", sizeBytes: st.size, limitBytes: limit };
+  if (st.size > effectiveLimit) {
+    return {
+      kind: "too-large",
+      sizeBytes: st.size,
+      limitBytes: effectiveLimit,
+      limitEnvVar: isTextType ? "ORACLE_MAX_TEXT_FILE_SIZE" : "ORACLE_MAX_FILE_SIZE",
+    };
   }
   const content = await readFile(absolutePath, "utf-8");
   if (!content.trim()) return { kind: "empty" };
-  const ext = extname(absolutePath);
   return {
     kind: "ok",
     file: {
@@ -288,6 +304,7 @@ export async function runWatchMode(
             ev.relativePath,
             ev.repo,
             config.maxFileSizeBytes,
+            config.maxTextFileSizeBytes,
           );
         } catch (err) {
           console.warn(
@@ -300,7 +317,7 @@ export async function runWatchMode(
         if (loaded.kind === "too-large") {
           console.warn(
             `WARNING: skipped ${ev.relativePath} — ${loaded.sizeBytes} bytes > `
-              + `ORACLE_MAX_FILE_SIZE=${loaded.limitBytes}`,
+              + `${loaded.limitEnvVar}=${loaded.limitBytes}`,
           );
           const removed = store.deleteByFile(ev.repo, ev.relativePath);
           if (removed > 0) {

@@ -9,6 +9,7 @@ import { Document } from "@langchain/core/documents";
 import { assertScanRoot, type Config } from "../config.js";
 import {
   DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
   discoverRepos,
   walkRepo,
   type SkippedFile,
@@ -17,7 +18,18 @@ import {
 import { mergeSkipDirs } from "./skip-dirs.js";
 import { splitFile } from "./splitter.js";
 import { createEmbeddings } from "../store/embeddings.js";
-import { openSqliteStore, type StoredEntry } from "../store/sqlite-store.js";
+import {
+  openSqliteStore,
+  type RepoSkipSummary,
+  type StoredEntry,
+} from "../store/sqlite-store.js";
+
+// Cap on how many example relative paths are kept per repo for
+// repo_skip_meta / oracle_list_repos. Every skip is still counted (and, for
+// the CLI/full run, still gets its own WARNING line); this only bounds how
+// many example paths are persisted and rendered, so a repo with thousands of
+// oversized files doesn't blow up the stored row or the list-repos line.
+export const SKIP_EXAMPLES_LIMIT = 5;
 
 export interface IndexSummary {
   reposScanned: number;
@@ -33,6 +45,7 @@ export interface IndexSummary {
     reason: string;
     sizeBytes?: number;
     limitBytes?: number;
+    limitEnvVar?: string;
     message?: string;
   }>;
   chunksTotal: number;
@@ -90,6 +103,7 @@ export async function runIndex(
     const walkOptions: WalkRepoOptions = {
       skipDirs,
       maxFileSizeBytes: config.maxFileSizeBytes,
+      maxTextFileSizeBytes: config.maxTextFileSizeBytes,
       onSkip: (skip: SkippedFile) => {
         skippedFiles.push({
           repo: skip.repo,
@@ -97,6 +111,7 @@ export async function runIndex(
           reason: skip.reason,
           sizeBytes: skip.sizeBytes,
           limitBytes: skip.limitBytes,
+          limitEnvVar: skip.limitEnvVar,
           message: skip.message,
         });
       },
@@ -113,6 +128,11 @@ export async function runIndex(
     if (config.maxFileSizeBytes !== DEFAULT_MAX_FILE_SIZE_BYTES) {
       log(
         `Using ORACLE_MAX_FILE_SIZE override: ${config.maxFileSizeBytes} bytes\n`,
+      );
+    }
+    if (config.maxTextFileSizeBytes !== DEFAULT_MAX_TEXT_FILE_SIZE_BYTES) {
+      log(
+        `Using ORACLE_MAX_TEXT_FILE_SIZE override: ${config.maxTextFileSizeBytes} bytes\n`,
       );
     }
 
@@ -166,14 +186,37 @@ export async function runIndex(
       for (const skip of skippedFiles) {
         if (skip.reason === "too-large") {
           warn(
-            `WARNING: skipped ${skip.relativePath} — ${skip.sizeBytes} bytes > ORACLE_MAX_FILE_SIZE=${skip.limitBytes}\n`,
+            `WARNING: skipped ${skip.relativePath} — ${skip.sizeBytes} bytes > ${skip.limitEnvVar}=${skip.limitBytes}\n`,
           );
         } else {
           warn(`WARNING: skipped ${skip.relativePath} — read error: ${skip.message}\n`);
         }
       }
       warn(
-        `WARNING: ${skippedFiles.length} file(s) skipped during scan; raise ORACLE_MAX_FILE_SIZE to index larger files.\n`,
+        `WARNING: ${skippedFiles.length} file(s) skipped during scan; raise ORACLE_MAX_FILE_SIZE `
+          + `(or ORACLE_MAX_TEXT_FILE_SIZE for markdown/text files) to index larger files.\n`,
+      );
+    }
+
+    // Persist each repo's skip tally from THIS run so oracle_list_repos /
+    // list-repos can surface it. Written for every discovered repo, not just
+    // ones with skips this time — an upsert with a flat 0 for a repo that
+    // skipped nothing this run is what makes the stored count reflect the
+    // LAST run rather than accumulate: a file that stopped being oversized
+    // (or was deleted) must make the count go back down, not stay stuck at
+    // whatever a previous run recorded.
+    const skipByRepo = new Map<string, RepoSkipSummary>();
+    for (const skip of skippedFiles) {
+      const entry = skipByRepo.get(skip.repo) ?? { sizeCount: 0, errorCount: 0, examples: [] };
+      if (skip.reason === "too-large") entry.sizeCount++;
+      else entry.errorCount++;
+      if (entry.examples.length < SKIP_EXAMPLES_LIMIT) entry.examples.push(skip.relativePath);
+      skipByRepo.set(skip.repo, entry);
+    }
+    for (const repo of repos) {
+      store.setRepoSkipSummary(
+        repo.name,
+        skipByRepo.get(repo.name) ?? { sizeCount: 0, errorCount: 0, examples: [] },
       );
     }
 
