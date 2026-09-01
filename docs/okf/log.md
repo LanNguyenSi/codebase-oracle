@@ -2,6 +2,28 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-01T07:30:00Z, review-round fix (task ee173398, round 2, follow-up):
+  `okf-kit check` after the round-2 commit flagged three more docs STALE —
+  architecture-pointer.md, configuration-pointer.md, and
+  provider-enums-and-token-budget.md all list docs/architecture.md and/or
+  docs/configuration.md in `sources:`, both of which the round-2 commit
+  edited (the ORACLE_MAX_TEXT_FILE_SIZE trade-off sentence and the
+  watch-mode skip-persistence sentence). Checked all three against the
+  current doc content: none of their claims (topic coverage, the two
+  provider enums, the token-budget asymmetry) were affected by those two
+  sentences, so no citation needed re-pointing — restamped only. Separately,
+  the same round-2 CHANGELOG.md edit (net +7 lines in `[Unreleased]`) shifted
+  two citations in ingest-size-limit-enforcement.md's historical section that
+  the first check run had missed (only sources-fresh and the new prune
+  citation were checked by hand there): the "was silently dropped" 0.10.0
+  quote's line number moved from 71 to CHANGELOG.md:80, and the "MAX_FILE_BYTES
+  constant" quote's moved from 67 to CHANGELOG.md:76. `okf-kit check` (0.8.0)
+  now reports 0 errors, 0 warnings; the 5 remaining NOTICEs are pre-existing bare
+  `runner.ts:NN` / `config.ts:NN` ambiguous-citation notices in THIS log's
+  own historical entries, already flagged this way before round 2 (see the
+  first log entry's own note that such citations describe past states, not
+  live claims, and are left as is).
+
 - 2026-09-01T07:25:32Z, review-round fix (task ee173398, round 2): sqlite-store.ts
   edits (widened `listRepos`, added `pruneOrphanRepoSkipMeta`) shifted every
   cited line at or below the `SqliteStore` interface. Re-pointed

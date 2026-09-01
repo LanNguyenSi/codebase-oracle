@@ -3,7 +3,7 @@ type: overview
 title: Architecture — where the pipeline is documented
 description: Pointer doc — ../architecture.md is the authoritative pipeline overview (ingest, chunking, OKF frontmatter metadata, embeddings, store, incremental indexing, watch); this entry only names what it does NOT cover.
 tags: [overview, architecture, pointer]
-timestamp: 2026-09-01T06:58:38Z
+timestamp: 2026-09-01T07:30:00Z
 sources:
   - docs/architecture.md
 ---

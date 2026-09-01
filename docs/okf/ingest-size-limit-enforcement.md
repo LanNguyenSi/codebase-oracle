@@ -166,10 +166,10 @@ logic is duplicated.
 
 Per `CHANGELOG.md` `[0.10.0]` (2026-07-04): `agent-tasks/backend/src/routes/tasks.ts`
 (207,716 bytes) "was silently dropped by the old `content.length > 200_000` check;
-it and any file like it are now reported, not swallowed" (CHANGELOG.md:71). The same
+it and any file like it are now reported, not swallowed" (CHANGELOG.md:80). The same
 release moved the limit to a `stat`-first byte check "in both the scanner and
 `watch.ts`, which previously duplicated the old limit as its own `MAX_FILE_BYTES`
-constant" (CHANGELOG.md:67) — i.e. the duplication predates the fix and was carried
+constant" (CHANGELOG.md:76) — i.e. the duplication predates the fix and was carried
 forward, not introduced by it. The per-type ceiling (`[Unreleased]` in
 CHANGELOG.md at the time of this revision) is the direct descendant of that
 same "don't silently drop large files" invariant, applied to the specific case
