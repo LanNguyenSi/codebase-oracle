@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together. Since the per-type ceiling was added, the applicable env var name travels with each skip so the WARNING names the knob that actually needs raising.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-09-01T07:26:06Z
+timestamp: 2026-09-01T10:43:55Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -166,12 +166,12 @@ logic is duplicated.
 
 Per `CHANGELOG.md` `[0.10.0]` (2026-07-04): `agent-tasks/backend/src/routes/tasks.ts`
 (207,716 bytes) "was silently dropped by the old `content.length > 200_000` check;
-it and any file like it are now reported, not swallowed" (CHANGELOG.md:80). The same
+it and any file like it are now reported, not swallowed" (CHANGELOG.md:82). The same
 release moved the limit to a `stat`-first byte check "in both the scanner and
 `watch.ts`, which previously duplicated the old limit as its own `MAX_FILE_BYTES`
-constant" (CHANGELOG.md:76) — i.e. the duplication predates the fix and was carried
-forward, not introduced by it. The per-type ceiling (`[Unreleased]` in
-CHANGELOG.md at the time of this revision) is the direct descendant of that
+constant" (CHANGELOG.md:78) — i.e. the duplication predates the fix and was carried
+forward, not introduced by it. The per-type ceiling (`[0.11.0]` in
+CHANGELOG.md as of this revision) is the direct descendant of that
 same "don't silently drop large files" invariant, applied to the specific case
 of a large markdown file that the general ceiling had no reason to treat like
 an oversized generated JS bundle.

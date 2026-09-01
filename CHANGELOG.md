@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-01
+
 ### Added
 
 - **`ORACLE_MAX_TEXT_FILE_SIZE`** (default 2 MB): a separate, larger
