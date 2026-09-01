@@ -15,6 +15,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     llmModel: "claude-sonnet-4-6",
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
+    maxTextFileSizeBytes: 2_000_000,
     ...overrides,
   };
 }

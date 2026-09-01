@@ -30,6 +30,7 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     llmModel: "test",
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
+    maxTextFileSizeBytes: 2_000_000,
     ...overrides,
   };
 }
@@ -424,6 +425,52 @@ describe("CRUD + similarity", () => {
     store2.close();
   });
 
+  it("pruneOrphanRepoSkipMeta drops rows for repos absent from the current run's discovered set", async () => {
+    // Mutation probe target: removing this prune (or wiring it to the
+    // docs-driven test like pruneOrphanRepoMeta) must leave "vanished"'s row
+    // behind forever, since it has no docs to key off of even while live.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.setRepoSkipSummary("kept", { sizeCount: 1, errorCount: 0, examples: ["kept/big.ts"] });
+    store.setRepoSkipSummary("vanished", { sizeCount: 2, errorCount: 0, examples: ["vanished/big.ts"] });
+
+    // "vanished" is no longer discovered on disk this run; "kept" still is.
+    expect(store.pruneOrphanRepoSkipMeta(["kept"])).toBe(1);
+    expect(store.pruneOrphanRepoSkipMeta(["kept"])).toBe(0); // idempotent
+
+    const listed = store.listRepos();
+    expect(listed.map((r) => r.repo)).toEqual(["kept"]);
+    store.close();
+  });
+
+  it("pruneOrphanRepoSkipMeta does NOT drop a row for a repo that is discovered but has zero docs (all-skipped)", async () => {
+    // Companion to the prune test above: a repo whose files are ALL skipped
+    // is still "discovered" this run (it exists on disk), so it must
+    // survive even though it has no docs row: the exact case that rules
+    // out reusing pruneOrphanRepoMeta's "no docs" test for this table.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.setRepoSkipSummary("allbig", { sizeCount: 1, errorCount: 0, examples: ["allbig/big.ts"] });
+
+    expect(store.pruneOrphanRepoSkipMeta(["allbig"])).toBe(0);
+    expect(store.listRepos().map((r) => r.repo)).toEqual(["allbig"]);
+    store.close();
+  });
+
+  it("pruneOrphanRepoSkipMeta with an empty discovered set clears every row", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.setRepoSkipSummary("a", { sizeCount: 1, errorCount: 0, examples: [] });
+    store.setRepoSkipSummary("b", { sizeCount: 0, errorCount: 1, examples: [] });
+
+    expect(store.pruneOrphanRepoSkipMeta([])).toBe(2);
+    expect(store.listRepos()).toEqual([]);
+    store.close();
+  });
+
   it("reindex sequence: prune-by-file + touchRepo(liveRepos) does not re-create orphan rows", async () => {
     // End-to-end-ish regression for the index command's flow. Mirrors the
     // post-walk sequence in src/index.ts: prune files no longer on disk
@@ -493,6 +540,102 @@ describe("CRUD + similarity", () => {
     store.close();
   });
 
+  it("listRepos exposes 0 skipped counts and an empty examples array by default", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    const [repo] = store.listRepos();
+    expect(repo.skippedSizeCount).toBe(0);
+    expect(repo.skippedErrorCount).toBe(0);
+    expect(repo.skippedExamples).toEqual([]);
+    store.close();
+  });
+
+  it("setRepoSkipSummary surfaces the tally (and examples) via listRepos", async () => {
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    store.setRepoSkipSummary("r", {
+      sizeCount: 2,
+      errorCount: 1,
+      examples: ["r/big.ts", "r/big2.md", "r/locked.ts"],
+    });
+
+    const [repo] = store.listRepos();
+    expect(repo.skippedSizeCount).toBe(2);
+    expect(repo.skippedErrorCount).toBe(1);
+    expect(repo.skippedExamples).toEqual(["r/big.ts", "r/big2.md", "r/locked.ts"]);
+    store.close();
+  });
+
+  it("listRepos surfaces a repo that exists ONLY in repo_skip_meta (every file skipped, no docs)", async () => {
+    // Mutation probe target: reverting the listRepos widening back to a
+    // docs-only query must make this repo vanish from listRepos entirely,
+    // even though its skip tally is non-zero and persisted. Reproduces the
+    // reviewer's finding: a repo whose single 700 KB file blows the ceiling
+    // has a repo_skip_meta row but no docs row, so the old docs-driven
+    // GROUP BY never surfaced it.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    // A sibling repo WITH docs, so the all-skipped repo isn't the only row.
+    store.insertBatch([entry("normal", "normal/a.ts", normalized([1, 0, 0]))]);
+    store.setRepoSkipSummary("normal", { sizeCount: 0, errorCount: 0, examples: [] });
+    store.setRepoSkipSummary("allbig", { sizeCount: 1, errorCount: 0, examples: ["allbig/big.ts"] });
+
+    const listed = store.listRepos();
+    expect(listed.map((r) => r.repo)).toEqual(["allbig", "normal"]);
+    const allbig = listed.find((r) => r.repo === "allbig")!;
+    expect(allbig.chunkCount).toBe(0);
+    expect(allbig.fileCount).toBe(0);
+    expect(allbig.lastIndexedAt).toBeNull();
+    expect(allbig.skippedSizeCount).toBe(1);
+    expect(allbig.skippedErrorCount).toBe(0);
+    expect(allbig.skippedExamples).toEqual(["allbig/big.ts"]);
+    store.close();
+  });
+
+  it("listRepos does NOT surface a repo with a flat-0 skip tally and no docs", async () => {
+    // A repo that was discovered but skipped nothing (e.g. every file was
+    // empty, silently skipped) gets a flat-0 repo_skip_meta row from
+    // runIndex's per-discovered-repo upsert. Nothing worth surfacing there.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.setRepoSkipSummary("empty-repo", { sizeCount: 0, errorCount: 0, examples: [] });
+
+    expect(store.listRepos()).toEqual([]);
+    store.close();
+  });
+
+  it("setRepoSkipSummary reflects only the LAST call, not an accumulation across runs", async () => {
+    // Mutation probe target: dropping the overwrite-with-zero write in
+    // runner.ts (calling setRepoSkipSummary only for repos WITH skips) would
+    // leave a stale non-zero count here once the underlying file stops being
+    // skipped. Verified at the store layer: a second call with a flat-0
+    // summary must zero out a previously non-zero one, not add to it or
+    // leave it untouched.
+    const dir = await makeTmpDir();
+    const store = openSqliteStore(testConfig(dir));
+    store.initializeSchema({ embeddingProvider: "openai", embeddingModel: "m", dimension: 3 });
+    store.insertBatch([entry("r", "r/a.ts", normalized([1, 0, 0]))]);
+
+    store.setRepoSkipSummary("r", { sizeCount: 5, errorCount: 2, examples: ["r/x.ts"] });
+    expect(store.listRepos()[0]).toMatchObject({ skippedSizeCount: 5, skippedErrorCount: 2 });
+
+    // Next run: nothing skipped this time.
+    store.setRepoSkipSummary("r", { sizeCount: 0, errorCount: 0, examples: [] });
+    const repo = store.listRepos()[0];
+    expect(repo.skippedSizeCount).toBe(0);
+    expect(repo.skippedErrorCount).toBe(0);
+    expect(repo.skippedExamples).toEqual([]);
+    store.close();
+  });
+
   it("fileSignatures returns the latest per-file hash", async () => {
     const dir = await makeTmpDir();
     const store = openSqliteStore(testConfig(dir));
@@ -537,6 +680,58 @@ describe("CRUD + similarity", () => {
     // Miss: unknown file and wrong-repo scoping both return null.
     expect(store.getFirstChunkByFile("r", "r/missing.ts")).toBeNull();
     expect(store.getFirstChunkByFile("other", "r/a.ts")).toBeNull();
+    store.close();
+  });
+
+  it("opening a legacy store predating repo_skip_meta does not throw, and listRepos reports zeros", async () => {
+    // Regression for the LEFT JOIN / UNION ALL widening in listRepos: a
+    // store file created before repo_skip_meta existed (no ALTER TABLE, no
+    // migration was shipped for it) must still open and list cleanly once
+    // openSqliteStore's CREATE TABLE IF NOT EXISTS adds the missing table.
+    const dir = await makeTmpDir();
+    const dbPath = join(dir, "store.db");
+    const Database = (await import("better-sqlite3")).default;
+    const sqliteVec = await import("sqlite-vec");
+    const raw = new Database(dbPath);
+    sqliteVec.load(raw);
+    // Pre-rollout schema: meta, docs, repo_meta only, no repo_skip_meta.
+    raw.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
+      CREATE TABLE docs (
+        rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+        repo TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        page_content TEXT NOT NULL,
+        metadata TEXT NOT NULL,
+        file_hash TEXT
+      );
+      CREATE TABLE repo_meta (repo TEXT PRIMARY KEY, last_indexed_at TEXT NOT NULL);
+      CREATE VIRTUAL TABLE vectors USING vec0(embedding float[3] distance_metric=cosine);
+    `);
+    raw.prepare("INSERT INTO meta(key, value) VALUES(?, ?)").run("embeddingProvider", "openai");
+    raw.prepare("INSERT INTO meta(key, value) VALUES(?, ?)").run("embeddingModel", "m");
+    raw.prepare("INSERT INTO meta(key, value) VALUES(?, ?)").run("dimension", "3");
+    raw
+      .prepare(
+        "INSERT INTO docs(repo, file_path, page_content, metadata, file_hash) VALUES(?, ?, ?, ?, ?)",
+      )
+      .run("legacy", "legacy/a.ts", "x", JSON.stringify({ repo: "legacy", filePath: "legacy/a.ts" }), "h1");
+    raw
+      .prepare("INSERT INTO repo_meta(repo, last_indexed_at) VALUES(?, ?)")
+      .run("legacy", new Date().toISOString());
+    raw.close();
+
+    expect(() => openSqliteStore(testConfig(dir))).not.toThrow();
+    const store = openSqliteStore(testConfig(dir));
+    let listed: ReturnType<typeof store.listRepos> = [];
+    expect(() => {
+      listed = store.listRepos();
+    }).not.toThrow();
+    expect(listed).toHaveLength(1);
+    expect(listed[0].repo).toBe("legacy");
+    expect(listed[0].skippedSizeCount).toBe(0);
+    expect(listed[0].skippedErrorCount).toBe(0);
+    expect(listed[0].skippedExamples).toEqual([]);
     store.close();
   });
 

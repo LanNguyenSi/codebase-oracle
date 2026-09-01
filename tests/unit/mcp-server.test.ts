@@ -61,6 +61,7 @@ const testConfig: Config = {
   llmModel: "claude-sonnet-4-6",
   vectorStoreType: "directory",
   maxFileSizeBytes: 500_000,
+  maxTextFileSizeBytes: 2_000_000,
 };
 
 const fakeSummary: IndexSummary = {
@@ -279,6 +280,16 @@ describe("oracle_reindex close-before-reindex", () => {
 
 // ── 4. happy-path oracle_list_repos ──────────────────────────────────────────
 
+// This file mocks src/store/vector-store.js at the top (module-level
+// vi.mock), so createMcpServer's store handle is a fake for every test
+// below, including the two skip-related ones. Exercising the real
+// openSqliteStore-backed path (real repo_skip_meta row -> oracle_list_repos
+// text) would mean un-mocking vector-store.js for just this describe block,
+// which the mutex/rejection-not-cached tests earlier in this file depend on
+// staying mocked. That real-store path (a real SQLite store with a written
+// repo_skip_meta row, read back through list-repos) is instead covered by
+// tests/integration/index-cli.test.ts, which drives the actual CLI binary
+// against a real store.db.
 describe("oracle_list_repos happy path", () => {
   it("returns the empty-index message when the store has no repos", async () => {
     vi.mocked(createVectorStore).mockResolvedValue(
@@ -296,6 +307,74 @@ describe("oracle_list_repos happy path", () => {
         (result.content as Array<{ type: string; text: string }>)[0]?.text ??
         "";
       expect(text).toContain("No repos in the index yet");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("surfaces per-repo skipped-file counts from the last index run", async () => {
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({
+        listRepos: vi.fn(() => [
+          {
+            repo: "agent-tasks",
+            chunkCount: 100,
+            fileCount: 20,
+            lastIndexedAt: null,
+            skippedSizeCount: 1,
+            skippedErrorCount: 0,
+            skippedExamples: ["agent-tasks/CHANGELOG.md"],
+          },
+        ]),
+      }),
+    );
+
+    const { client, cleanup } = await connectClient();
+
+    try {
+      const result = await client.callTool({
+        name: "oracle_list_repos",
+        arguments: {},
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).toContain(
+        "1 file(s) skipped in the last index run (1 too large; e.g. agent-tasks/CHANGELOG.md)",
+      );
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it("omits any skip mention for a repo with nothing skipped", async () => {
+    vi.mocked(createVectorStore).mockResolvedValue(
+      makeFakeStore({
+        listRepos: vi.fn(() => [
+          {
+            repo: "clean-repo",
+            chunkCount: 10,
+            fileCount: 3,
+            lastIndexedAt: null,
+            skippedSizeCount: 0,
+            skippedErrorCount: 0,
+            skippedExamples: [],
+          },
+        ]),
+      }),
+    );
+
+    const { client, cleanup } = await connectClient();
+
+    try {
+      const result = await client.callTool({
+        name: "oracle_list_repos",
+        arguments: {},
+      });
+      const text =
+        (result.content as Array<{ type: string; text: string }>)[0]?.text ??
+        "";
+      expect(text).not.toContain("skipped");
     } finally {
       await cleanup();
     }

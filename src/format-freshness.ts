@@ -34,7 +34,16 @@ export function formatRelativeFreshness(
 /**
  * Render a single repo line for `oracle_list_repos` output. Includes the
  * indexedAt suffix only when a timestamp is present so legacy stores keep
- * showing the bare `<repo> — N chunks across M files` form.
+ * showing the bare `<repo> — N chunks across M files` form. Appends a
+ * `skipped` suffix only when the last index run actually skipped a file for
+ * this repo (both `skippedSizeCount` and `skippedErrorCount` omitted or 0
+ * renders nothing extra) — this is what surfaces the size-ceiling skip
+ * count from repo_skip_meta on the CLI, MCP, and HTTP list-repos surfaces,
+ * which all share this function. The suffix breaks the total down by reason
+ * (too large vs. read error) and, when `skippedExamples` is non-empty,
+ * lists them (already capped by the writer, see runner.ts
+ * SKIP_EXAMPLES_LIMIT; this function renders whatever it's given, it does
+ * not re-cap).
  *
  * `prefix` lets callers pick the leading marker (default `"- "` for the
  * MCP/HTTP markdown-ish output; the CLI passes `"  "` for plain indent).
@@ -45,14 +54,35 @@ export function formatRepoLine(
     chunkCount: number;
     fileCount: number;
     lastIndexedAt: string | null;
+    skippedSizeCount?: number;
+    skippedErrorCount?: number;
+    skippedExamples?: string[];
   },
   optionsOrNow?: Date | { now?: Date; prefix?: string },
 ): string {
   const opts =
     optionsOrNow instanceof Date ? { now: optionsOrNow } : optionsOrNow ?? {};
   const prefix = opts.prefix ?? "- ";
-  const base = `${prefix}${repo.repo} — ${repo.chunkCount} chunks across ${repo.fileCount} files`;
-  if (!repo.lastIndexedAt) return base;
-  const relative = formatRelativeFreshness(repo.lastIndexedAt, opts.now);
-  return `${base} (indexed ${repo.lastIndexedAt}, ${relative})`;
+  let line = `${prefix}${repo.repo} — ${repo.chunkCount} chunks across ${repo.fileCount} files`;
+  if (repo.lastIndexedAt) {
+    const relative = formatRelativeFreshness(repo.lastIndexedAt, opts.now);
+    line += ` (indexed ${repo.lastIndexedAt}, ${relative})`;
+  }
+  const skippedSizeCount = repo.skippedSizeCount ?? 0;
+  const skippedErrorCount = repo.skippedErrorCount ?? 0;
+  const skippedTotal = skippedSizeCount + skippedErrorCount;
+  if (skippedTotal > 0) {
+    const reasons: string[] = [];
+    if (skippedSizeCount > 0) reasons.push(`${skippedSizeCount} too large`);
+    if (skippedErrorCount > 0) {
+      reasons.push(`${skippedErrorCount} read error${skippedErrorCount === 1 ? "" : "s"}`);
+    }
+    let detail = reasons.join(", ");
+    const examples = repo.skippedExamples ?? [];
+    if (examples.length > 0) {
+      detail += `; e.g. ${examples.join(", ")}`;
+    }
+    line += `; ${skippedTotal} file(s) skipped in the last index run (${detail})`;
+  }
+  return line;
 }

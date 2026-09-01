@@ -9,6 +9,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **`ORACLE_MAX_TEXT_FILE_SIZE`** (default 2 MB): a separate, larger
+  per-file size ceiling applied to text/doc file types (currently just
+  `.md`) instead of `ORACLE_MAX_FILE_SIZE` (default 500 KB). A large
+  markdown file (a CHANGELOG, a design doc) is harmless to read fully into
+  memory — the splitter chunks it downstream regardless of file size — so
+  it no longer competes with the ceiling sized for arbitrary source files.
+  Same fail-loud parse contract as `ORACLE_MAX_FILE_SIZE` (unset falls back
+  to the default, an invalid set value throws). `npm run watch` applies
+  the same per-type ceiling. Skip WARNING lines now name whichever env var
+  actually produced the limit, instead of always naming
+  `ORACLE_MAX_FILE_SIZE`.
+- Per-repo skipped-file counts from the last full index run, persisted
+  alongside each repo's freshness timestamp and surfaced by
+  `oracle_list_repos` / CLI `list-repos` whenever a repo has anything
+  skipped: the total broken down by reason (size-ceiling vs. read-error)
+  followed by up to five example paths, e.g. "3 file(s) skipped in the
+  last index run (2 too large, 1 read error; e.g. harness/CHANGELOG.md,
+  ...)". Reflects only the most recent run, not an accumulation across
+  runs: a file that stops being skipped makes the count go back down. A
+  repo whose files were skipped in their entirety (zero indexed chunks)
+  still appears in the listing with this count, rather than being omitted
+  for having nothing else to show. `npm run watch` reports skips live on
+  the console only; it does not update this persisted count. Orphan
+  `repo_skip_meta` rows for repos no longer discovered on disk are swept
+  at the start of every full index run, mirroring the existing
+  `repo_meta` orphan sweep.
 - **`scripts/oracle-refresh.sh`** for a machine that serves as the index
   source of truth: fast-forwards clean checkouts under `ORACLE_SCAN_ROOT`,
   then runs the incremental index (`ORACLE_REFRESH_PULL` and

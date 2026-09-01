@@ -27,6 +27,22 @@ const JSON_ALLOWLIST = new Set([
 // number; this constant only matters for direct walkRepo() callers (tests).
 export const DEFAULT_MAX_FILE_SIZE_BYTES = 500_000;
 
+// Fallback when neither config nor WalkRepoOptions supplies a text-file
+// limit. Config.maxTextFileSizeBytes (config.ts) defaults to this same
+// value.
+export const DEFAULT_MAX_TEXT_FILE_SIZE_BYTES = 2_000_000;
+
+// Extensions that get the larger DEFAULT_MAX_TEXT_FILE_SIZE_BYTES /
+// maxTextFileSizeBytes ceiling instead of the general
+// maxFileSizeBytes one. Reading a large markdown file fully into memory is
+// harmless (unlike an arbitrary oversized source or generated file) because
+// the splitter chunks it downstream regardless of size — see
+// docs/okf/ingest-size-limit-enforcement.md. Currently just markdown, the
+// only "doc" extension this codebase treats specially elsewhere (see
+// splitter.ts's MD_SEPARATORS and frontmatter extraction). watch.ts mirrors
+// this set so `npm run watch` agrees with `npm run index`.
+export const TEXT_FILE_EXTENSIONS: ReadonlySet<string> = new Set([".md"]);
+
 export interface ScannedFile {
   absolutePath: string;
   relativePath: string; // relative to scanRoot
@@ -73,6 +89,10 @@ export interface SkippedFile {
   reason: "too-large" | "read-error";
   sizeBytes?: number;
   limitBytes?: number;
+  /** Name of the env var that produced limitBytes, so a WARNING line can
+   * name the knob that actually needs raising instead of always blaming
+   * ORACLE_MAX_FILE_SIZE. Only set when reason is "too-large". */
+  limitEnvVar?: "ORACLE_MAX_FILE_SIZE" | "ORACLE_MAX_TEXT_FILE_SIZE";
   message?: string;
 }
 
@@ -80,6 +100,9 @@ export interface WalkRepoOptions {
   extensions?: ReadonlySet<string>;
   skipDirs?: ReadonlySet<string>;
   maxFileSizeBytes?: number;
+  /** Per-type ceiling applied instead of maxFileSizeBytes for extensions in
+   * TEXT_FILE_EXTENSIONS. Defaults to DEFAULT_MAX_TEXT_FILE_SIZE_BYTES. */
+  maxTextFileSizeBytes?: number;
   /** Per-file skip reporter. Defaults to a no-op — callers that care (the
    * indexer, watch mode) pass one so a skip is always visible somewhere,
    * never just a file that quietly never shows up in the index. */
@@ -95,6 +118,7 @@ export async function* walkRepo(
   const extensions = options?.extensions ?? DEFAULT_INCLUDE_EXTENSIONS;
   const skipDirs = options?.skipDirs ?? DEFAULT_SKIP_DIRS;
   const maxFileSizeBytes = options?.maxFileSizeBytes ?? DEFAULT_MAX_FILE_SIZE_BYTES;
+  const maxTextFileSizeBytes = options?.maxTextFileSizeBytes ?? DEFAULT_MAX_TEXT_FILE_SIZE_BYTES;
   const onSkip = options?.onSkip ?? (() => {});
   // Lockfiles + per-package manifests explode the index, so we only whitelist
   // a couple by name when the user hasn't taken control of the extension list.
@@ -137,15 +161,22 @@ export async function* walkRepo(
         // just to discard it (the old content.length > 200_000 check, which
         // also mismeasured UTF-16 chars as bytes) wastes memory and time on
         // every over-limit file, every run.
+        //
+        // Per-type ceiling: TEXT_FILE_EXTENSIONS (.md) get the larger
+        // maxTextFileSizeBytes instead of the general maxFileSizeBytes —
+        // see the comment on TEXT_FILE_EXTENSIONS above.
+        const isTextType = TEXT_FILE_EXTENSIONS.has(ext);
+        const limitBytes = isTextType ? maxTextFileSizeBytes : maxFileSizeBytes;
         const st = await stat(fullPath);
-        if (st.size > maxFileSizeBytes) {
+        if (st.size > limitBytes) {
           onSkip({
             repo: repoName,
             relativePath,
             absolutePath: fullPath,
             reason: "too-large",
             sizeBytes: st.size,
-            limitBytes: maxFileSizeBytes,
+            limitBytes,
+            limitEnvVar: isTextType ? "ORACLE_MAX_TEXT_FILE_SIZE" : "ORACLE_MAX_FILE_SIZE",
           });
           continue;
         }

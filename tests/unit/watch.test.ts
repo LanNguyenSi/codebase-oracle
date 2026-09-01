@@ -164,6 +164,7 @@ describe("runWatchMode integration", () => {
       llmModel: "fake-llm",
       vectorStoreType: "directory",
       maxFileSizeBytes: 500_000,
+      maxTextFileSizeBytes: 2_000_000,
     };
   }
 
@@ -503,6 +504,85 @@ describe("runWatchMode integration", () => {
       ).toBe(true);
       expect(await listIndexedRepos(config)).toEqual([]);
       expect(embedSpy).not.toHaveBeenCalled();
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 30000);
+
+  it("embeds a changed .md file that would exceed maxFileSizeBytes but not maxTextFileSizeBytes (per-type ceiling mirrors scanner.ts)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    // A ceiling that a 1000-byte markdown file would trip if watch.ts still
+    // applied the general limit to .md files.
+    const config: Config = { ...testConfig(scanRoot, dataDir), maxFileSizeBytes: 500 };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(" "));
+    });
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
+    });
+    try {
+      await writeFile(join(repoDir, "NOTES.md"), "x".repeat(1000), "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+
+      // Negative control: no "too-large" WARNING for the markdown file — the
+      // per-type ceiling (maxTextFileSizeBytes, default 2_000_000) applied
+      // instead of the lowered general maxFileSizeBytes.
+      expect(warns.some((w) => w.includes("WARNING: skipped"))).toBe(false);
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+
+      const repos = await listIndexedRepos(config);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 30000);
+
+  it("skips an oversized .md file over a lowered maxTextFileSizeBytes, naming ORACLE_MAX_TEXT_FILE_SIZE (not ORACLE_MAX_FILE_SIZE)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config: Config = {
+      ...testConfig(scanRoot, dataDir),
+      maxTextFileSizeBytes: 500,
+    };
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warns: string[] = [];
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation((...args: unknown[]) => {
+      warns.push(args.map(String).join(" "));
+    });
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
+    });
+    try {
+      await writeFile(join(repoDir, "BIG.md"), "x".repeat(1000), "utf8");
+      await waitForPending(watcher, 1);
+      await watcher.flushOnce();
+
+      const warning = warns.find(
+        (w) => w.includes("WARNING: skipped") && w.includes("BIG.md"),
+      );
+      expect(warning).toBeDefined();
+      expect(warning).toContain("ORACLE_MAX_TEXT_FILE_SIZE=500");
+      expect(warning).not.toContain("ORACLE_MAX_FILE_SIZE=500");
+      expect(embedSpy).not.toHaveBeenCalled();
+      expect(await listIndexedRepos(config)).toEqual([]);
     } finally {
       await watcher.close();
       logSpy.mockRestore();

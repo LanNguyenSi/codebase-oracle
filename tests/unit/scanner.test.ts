@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_MAX_FILE_SIZE_BYTES,
+  DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
   discoverRepos,
   walkRepo,
   type SkippedFile,
@@ -423,6 +424,114 @@ describe("walkRepo size limit and skip reporting", () => {
       // Restore permissions before rm, otherwise the recursive delete of
       // the 0o000 file can itself fail.
       await chmod(unreadablePath, 0o644).catch(() => {});
+      await rm(root, { recursive: true });
+    }
+  });
+});
+
+describe("walkRepo per-type size ceiling (.md vs. general files)", () => {
+  it("has a default text-file limit of 2_000_000 bytes", () => {
+    expect(DEFAULT_MAX_TEXT_FILE_SIZE_BYTES).toBe(2_000_000);
+  });
+
+  it("indexes a 600 KB markdown file under the default config (would exceed the general 500 KB cap)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "changelog-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      const bigMarkdown = "x".repeat(600_000);
+      await writeFile(join(repo, "CHANGELOG.md"), bigMarkdown);
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "changelog-repo", root, {
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(skips).toEqual([]);
+      expect(files).toEqual(["changelog-repo/CHANGELOG.md"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  }, 15_000);
+
+  it("still skips a 600 KB NON-markdown file under the default config (negative control: the .md ceiling did not leak to other types)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "non-md-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "big.ts"), "x".repeat(600_000));
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "non-md-repo", root, {
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual([]);
+      expect(skips).toHaveLength(1);
+      expect(skips[0]).toMatchObject({
+        relativePath: "non-md-repo/big.ts",
+        reason: "too-large",
+        limitBytes: DEFAULT_MAX_FILE_SIZE_BYTES,
+        limitEnvVar: "ORACLE_MAX_FILE_SIZE",
+      });
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  }, 15_000);
+
+  it("still skips a markdown file over the (custom, lowered) text ceiling, naming ORACLE_MAX_TEXT_FILE_SIZE", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "md-ceiling-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "big.md"), "x".repeat(1000));
+      await writeFile(join(repo, "small.md"), "# ok");
+
+      const skips: SkippedFile[] = [];
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "md-ceiling-repo", root, {
+        maxTextFileSizeBytes: 500,
+        onSkip: (s) => skips.push(s),
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["md-ceiling-repo/small.md"]);
+      expect(skips).toHaveLength(1);
+      expect(skips[0]).toMatchObject({
+        relativePath: "md-ceiling-repo/big.md",
+        reason: "too-large",
+        sizeBytes: 1000,
+        limitBytes: 500,
+        limitEnvVar: "ORACLE_MAX_TEXT_FILE_SIZE",
+      });
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("a .ts file at the same size is unaffected by a lowered maxTextFileSizeBytes (per-type, not global)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const repo = join(root, "ts-unaffected-repo");
+    try {
+      await mkdir(join(repo, ".git"), { recursive: true });
+      await writeFile(join(repo, "normal.ts"), "x".repeat(1000));
+
+      const files: string[] = [];
+      for await (const file of walkRepo(repo, "ts-unaffected-repo", root, {
+        maxTextFileSizeBytes: 500,
+      })) {
+        files.push(file.relativePath);
+      }
+
+      expect(files).toEqual(["ts-unaffected-repo/normal.ts"]);
+    } finally {
       await rm(root, { recursive: true });
     }
   });

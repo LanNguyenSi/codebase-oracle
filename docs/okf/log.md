@@ -2,6 +2,59 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-01T07:43:40Z, review-round-2 verification fix (task ee173398): the style
+  commit that removed em dashes from round-2 prose touched
+  `src/store/sqlite-store.ts` and `docs/configuration.md` after the
+  previous re-stamp, so `okf-kit check` flagged configuration-pointer.md,
+  provider-enums-and-token-budget.md, index-freshness-vs-code-freshness.md
+  and sources-expansion.md STALE again. The touched lines were punctuation
+  only; re-verified that no cited span or claim moved, re-stamped all four.
+  Also added a rule-level comment on `pruneOrphanRepoSkipMeta` naming the
+  SQLite bound-parameter ceiling its NOT IN clause would hit at roughly a
+  thousand discovered repos (reviewer low finding), which does not change
+  any claim these docs carry. Verdict after this commit: 0 errors,
+  0 warnings, the 5 pre-existing notices.
+
+- 2026-09-01T07:30:00Z, review-round fix (task ee173398, round 2, follow-up):
+  `okf-kit check` after the round-2 commit flagged three more docs STALE:
+  architecture-pointer.md, configuration-pointer.md, and
+  provider-enums-and-token-budget.md all list docs/architecture.md and/or
+  docs/configuration.md in `sources:`, both of which the round-2 commit
+  edited (the ORACLE_MAX_TEXT_FILE_SIZE trade-off sentence and the
+  watch-mode skip-persistence sentence). Checked all three against the
+  current doc content: none of their claims (topic coverage, the two
+  provider enums, the token-budget asymmetry) were affected by those two
+  sentences, so no citation needed re-pointing; restamped only. Separately,
+  the same round-2 CHANGELOG.md edit (net +7 lines in `[Unreleased]`) shifted
+  two citations in ingest-size-limit-enforcement.md's historical section that
+  the first check run had missed (only sources-fresh and the new prune
+  citation were checked by hand there): the "was silently dropped" 0.10.0
+  quote's line number moved from 71 to CHANGELOG.md:80, and the "MAX_FILE_BYTES
+  constant" quote's moved from 67 to CHANGELOG.md:76. `okf-kit check` (0.8.0)
+  now reports 0 errors, 0 warnings; the 5 remaining NOTICEs are pre-existing bare
+  `runner.ts:NN` / `config.ts:NN` ambiguous-citation notices in THIS log's
+  own historical entries, already flagged this way before round 2 (see the
+  first log entry's own note that such citations describe past states, not
+  live claims, and are left as is).
+
+- 2026-09-01T07:25:32Z, review-round fix (task ee173398, round 2): sqlite-store.ts
+  edits (widened `listRepos`, added `pruneOrphanRepoSkipMeta`) shifted every
+  cited line at or below the `SqliteStore` interface. Re-pointed
+  index-freshness-vs-code-freshness.md's WAL pragma citations (207-213 →
+  218-224, 209-213 → 220-224), listRepos/similaritySearch read citations
+  (441,496,519 → 476,531,554), writeEpoch citations (148-150,561,585,749-758
+  → 159-161,596,620,810-818), the `last_indexed_at` listRepos citation
+  (303-316 → 323-351), and the assertCompatibleWithConfig citation (425-437 →
+  460-473). Re-pointed sources-expansion.md's getFirstChunkByFile citations
+  (336-338 → 371-373, 711-723 → 772-784). runner.ts edits (new
+  pruneOrphanRepoSkipMeta call) shifted ingest-size-limit-enforcement.md's
+  onSkip/warning-loop/formatIndexSummary/skip-tally citations (107-117 →
+  118-128, 185-199 → 196-210, 377-388 → 388-399, 201-221 → 212-232); added a
+  citation for the new prune sweep (runner.ts:94-104). SKIP_EXAMPLES_LIMIT
+  (runner.ts:32), the IndexSummary interface (runner.ts:34-55), and the
+  `warn` no-op default (runner.ts:79) were unaffected; the new code was
+  inserted after them. Restamped.
+
 - 2026-08-22T07:23:49Z, review-round fix (task 84dcedaa): the src/index.ts
   entry-guard fix (`isMainModule` now realpath-resolves `process.argv[1]`
   before comparing to `import.meta.url`, so the CLI works when reached

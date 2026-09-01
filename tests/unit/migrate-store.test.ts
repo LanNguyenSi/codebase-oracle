@@ -25,6 +25,7 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     llmModel: "test",
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
+    maxTextFileSizeBytes: 2_000_000,
     ...overrides,
   };
 }

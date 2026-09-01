@@ -77,6 +77,18 @@ const configSchema = z.object({
   // default would look like a working config while quietly changing
   // ingest behavior.
   maxFileSizeBytes: z.number().int().positive().default(500_000),
+
+  // Ingest — per-file size ceiling for text/doc file types (currently just
+  // .md — see scanner.ts's TEXT_FILE_EXTENSIONS), applied instead of
+  // maxFileSizeBytes for those extensions. A large markdown file (a
+  // CHANGELOG, a design doc) is harmless to read fully into memory the way
+  // maxFileSizeBytes's smaller default guards against — the splitter chunks
+  // it downstream regardless of file size — so text/doc types get a
+  // separate, larger ceiling instead of being held to the cap sized for
+  // arbitrary source files. Same fail-loud parse contract as
+  // maxFileSizeBytes: unset falls back to the default, a set-but-invalid
+  // value throws.
+  maxTextFileSizeBytes: z.number().int().positive().default(2_000_000),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -129,6 +141,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),
     skipDirs: parseCsvList(process.env.ORACLE_SKIP_DIRS),
     maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE),
+    maxTextFileSizeBytes: parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE),
     ...overrides,
   });
 }
@@ -159,6 +172,16 @@ function parseCsvList(raw: string | undefined): string[] | undefined {
 // loadConfig throws. A typo'd ORACLE_MAX_FILE_SIZE must fail loudly, not
 // silently resolve to some other limit.
 function parseMaxFileSizeBytes(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  return Number(raw);
+}
+
+// Same unset/empty-string/fail-loud contract as parseMaxFileSizeBytes, for
+// ORACLE_MAX_TEXT_FILE_SIZE. Kept as its own function (mirroring the
+// separate parseExtensionsList / parseCsvList / parseMaxFileSizeBytes
+// pattern above) rather than a shared parser, so each env var keeps an
+// independent, greppable definition.
+function parseMaxTextFileSizeBytes(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   return Number(raw);
 }

@@ -47,6 +47,7 @@ function directoryConfig(dataDir: string, overrides: Partial<Config> = {}): Conf
     llmModel: "test",
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
+    maxTextFileSizeBytes: 2_000_000,
     ...overrides,
   };
 }

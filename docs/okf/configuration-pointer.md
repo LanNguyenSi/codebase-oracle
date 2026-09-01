@@ -3,7 +3,7 @@ type: overview
 title: Configuration — where the env vars are documented
 description: Pointer doc — ../configuration.md is the authoritative env-var reference and already separates the embedding and LLM provider enums; this entry only points at the token-budget asymmetry it does not mention.
 tags: [overview, configuration, env, pointer]
-timestamp: 2026-08-22T04:44:50Z
+timestamp: 2026-09-01T07:43:40Z
 sources:
   - docs/configuration.md
 ---
