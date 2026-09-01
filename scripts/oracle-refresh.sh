@@ -47,8 +47,8 @@ resolve_scan_root() {
   if [ -f "${env_file}" ]; then
     local line value
     # Match src/env.ts's own .env parser: allow whitespace around the key
-    # and the "=", take everything after the first "=" (grep -o with the
-    # anchored key), strip a trailing CR (CRLF files), trim surrounding
+    # and the "=" (grep -m1 -E with the anchored key), take everything after
+    # the first "=" via ${line#*=}, strip a trailing CR (CRLF files), trim surrounding
     # whitespace, then strip one matching pair of quotes.
     line="$(grep -m1 -E '^[[:space:]]*ORACLE_SCAN_ROOT[[:space:]]*=' "${env_file}" || true)"
     if [ -n "${line}" ]; then
