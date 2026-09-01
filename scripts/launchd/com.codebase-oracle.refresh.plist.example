@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  codebase-oracle: scheduled refresh agent for macOS (launchd).
+
+  Runs scripts/oracle-refresh.sh on an interval: fast-forwards every clean
+  checkout under ORACLE_SCAN_ROOT, then runs the incremental index. Meant
+  for a machine that serves as the index source of truth.
+
+  Install:
+    mkdir -p CHANGE_ME_HOME/Library/LaunchAgents
+    mkdir -p CHANGE_ME_HOME/Library/Logs/codebase-oracle
+    cp scripts/launchd/com.codebase-oracle.refresh.plist.example \
+       CHANGE_ME_HOME/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+    # Edit the file: replace CHANGE_ME_CHECKOUT with the absolute path to
+    # your codebase-oracle checkout, and CHANGE_ME_HOME with your absolute
+    # home directory. launchd does not expand $HOME or ~ inside a plist.
+    launchctl bootstrap gui/$UID \
+      CHANGE_ME_HOME/Library/LaunchAgents/com.codebase-oracle.refresh.plist
+
+  Inspect:
+    launchctl print gui/$UID/com.codebase-oracle.refresh
+    tail -f CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.out.log
+
+  Unload:
+    launchctl bootout gui/$UID/com.codebase-oracle.refresh
+
+  StartInterval (not KeepAlive) is used so the job fires once per interval
+  and exits, rather than being kept continuously running or immediately
+  relaunched on exit; the default below is hourly (3600 seconds).
+  RunAtLoad also fires one run immediately at login and at bootstrap time,
+  in addition to the interval ticks, so the checkouts and the index are
+  brought current right away rather than waiting out the first interval.
+
+  .env is read from WorkingDirectory by the CLI's own dotenv loader, so no
+  secrets need to be duplicated into this file.
+
+  PATH below is a plain launchd session PATH, not a login-shell PATH. If
+  `npm` lives in nvm / fnm / volta, the bare `npm run index` invoked by
+  oracle-refresh.sh will fail with "command not found" under launchd even
+  though it works in your terminal. Either add your real node bin directory
+  to the PATH string below, or bypass PATH resolution entirely by pointing
+  ORACLE_REFRESH_INDEX_CMD (set here, in EnvironmentVariables, or in .env)
+  at the absolute node binary plus the dist entry point, e.g.
+  "/path/to/node /path/to/checkout/dist/index.js index".
+
+  ORACLE_REFRESH_INDEX_CMD is operator-controlled and executed as a shell
+  command by oracle-refresh.sh; treat editing this plist (or the unit file
+  in scripts/systemd/) as the same trust tier as editing that command.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.codebase-oracle.refresh</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>CHANGE_ME_CHECKOUT/scripts/oracle-refresh.sh</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>CHANGE_ME_CHECKOUT</string>
+
+    <key>StartInterval</key>
+    <integer>3600</integer>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>CHANGE_ME_HOME/Library/Logs/codebase-oracle/refresh.err.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <!-- EDIT: if npm lives under nvm/fnm/volta, prepend your real node
+             bin dir here, e.g. /Users/CHANGE_ME/.nvm/versions/node/v22.22.0/bin
+             (see the header comment above for the absolute-node alternative
+             via ORACLE_REFRESH_INDEX_CMD). -->
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+
+    <key>Nice</key>
+    <integer>10</integer>
+</dict>
+</plist>

@@ -154,6 +154,8 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 
 Watch mode runs a chokidar watcher over the scan root and re-embeds changed files after a short debounce. Newly dropped `.git` roots need one explicit `npm run index` to back-fill before watch mode picks up subsequent edits. See [docs/architecture.md](docs/architecture.md#watch-mode) for details.
 
+On a machine that serves as the index source of truth, `scripts/oracle-refresh.sh` fast-forwards every clean checkout under `ORACLE_SCAN_ROOT` before running `npm run index`; see [docs/configuration.md](docs/configuration.md#scheduled-refresh-macos-launchd) for the macOS launchd setup, and its [systemd user timer](docs/configuration.md#scheduled-reindex-systemd-user-timer) note just above it for Linux.
+
 ## Two use cases
 
 **For agents (primary).** A local Claude Code or other MCP client talks to the oracle's MCP server over stdio. The agent runs `oracle_search` / `oracle_query` / `oracle_expand` / `oracle_list_repos` / `oracle_reindex` against a shared, pre-built index: it never has to scan the filesystem, embed anything, or burn its own context on grep output. One scan for everyone, semantic instead of regex, no duplicate embeddings, MCP-first design.

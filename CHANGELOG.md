@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/oracle-refresh.sh`** for a machine that serves as the index
+  source of truth: fast-forwards clean checkouts under `ORACLE_SCAN_ROOT`,
+  then runs the incremental index (`ORACLE_REFRESH_PULL` and
+  `ORACLE_REFRESH_INDEX_CMD` env knobs; see docs/configuration.md for skip
+  rules and install steps). A macOS launchd template
+  (`scripts/launchd/com.codebase-oracle.refresh.plist.example`) mirrors
+  the existing systemd unit.
+
 ### Changed
 
 - The release workflow (`release.yml`) publishes to npm via Trusted
