@@ -4,8 +4,7 @@
 
 - 2026-09-02T04:47:51Z, okf-kit pin bump (task 44ee799a, fleet parity):
   bumped .github/workflows/okf-staleness.yml's pin from okf-kit@0.6.0 to
-  okf-kit@0.9.0 to match the other four OKF bundle repos (orchestrator
-  decision D-004: 0.8.0 and 0.9.0 report identical findings for this
+  okf-kit@0.9.0 to match the other OKF bundle repos (measured: 0.8.0 and 0.9.0 report identical findings for this
   bundle, confirmed again here). Before this change: `okf-kit check --json
   docs/okf` reported 0 errors, 0 warnings, 5 notices (same count under
   both 0.8.0 and 0.9.0). All 5 notices are `citations-resolve` /
