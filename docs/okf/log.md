@@ -2,6 +2,25 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-02T04:47:51Z, okf-kit pin bump (task 44ee799a, fleet parity):
+  bumped .github/workflows/okf-staleness.yml's pin from okf-kit@0.6.0 to
+  okf-kit@0.9.0 to match the other OKF bundle repos (measured: 0.8.0 and 0.9.0 report identical findings for this
+  bundle, confirmed again here). Before this change: `okf-kit check --json
+  docs/okf` reported 0 errors, 0 warnings, 5 notices (same count under
+  both 0.8.0 and 0.9.0). All 5 notices are `citations-resolve` /
+  `unresolved-ambiguous` hits on bare `runner.ts:NN` and `config.ts:NN`
+  citations inside this log's own historical entries (2026-09-01T07:25:32Z
+  and 2026-09-01T07:43:40Z entries above), ambiguous because the repo also
+  has tests/eval/runner.ts and tests/eval/corpus/config-toy/src/config.ts.
+  Re-opened each cited span in src/ingest/runner.ts and src/config.ts,
+  confirmed line content is unchanged and still matches what those
+  historical entries describe (SKIP_EXAMPLES_LIMIT, IndexSummary, the
+  `warn` no-op default, the prune-sweep call, and the
+  embedding/LLM-provider comment), then re-pointed all five citations to
+  the fully-qualified src/ingest/runner.ts and src/config.ts paths so they
+  resolve unambiguously. No claim in any doc changed. After this change:
+  0 errors, 0 warnings, 0 notices.
+
 - 2026-09-01T07:43:40Z, review-round-2 verification fix (task ee173398): the style
   commit that removed em dashes from round-2 prose touched
   `src/store/sqlite-store.ts` and `docs/configuration.md` after the
@@ -50,9 +69,9 @@
   pruneOrphanRepoSkipMeta call) shifted ingest-size-limit-enforcement.md's
   onSkip/warning-loop/formatIndexSummary/skip-tally citations (107-117 →
   118-128, 185-199 → 196-210, 377-388 → 388-399, 201-221 → 212-232); added a
-  citation for the new prune sweep (runner.ts:94-104). SKIP_EXAMPLES_LIMIT
-  (runner.ts:32), the IndexSummary interface (runner.ts:34-55), and the
-  `warn` no-op default (runner.ts:79) were unaffected; the new code was
+  citation for the new prune sweep (src/ingest/runner.ts:94-104). SKIP_EXAMPLES_LIMIT
+  (src/ingest/runner.ts:32), the IndexSummary interface (src/ingest/runner.ts:34-55), and the
+  `warn` no-op default (src/ingest/runner.ts:79) were unaffected; the new code was
   inserted after them. Restamped.
 
 - 2026-08-22T07:23:49Z, review-round fix (task 84dcedaa): the src/index.ts
@@ -75,7 +94,7 @@
   `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
   already cited :23 correctly elsewhere, at line 73), fixed, restamped.
   provider-enums-and-token-budget.md:33 presented a paraphrase as a verbatim
-  quote ("so embedding and LLM live..." vs config.ts:52-55's actual "lets
+  quote ("so embedding and LLM live..." vs src/config.ts:52-55's actual "lets
   embedding and LLM live...") was reworded so the quoted span matches the
   source exactly, restamped.
 
