@@ -55,6 +55,7 @@ export async function createVectorStore(
   embeddings: Embeddings,
   config: Config,
   injectedStore?: SqliteStore,
+  log: (message: string) => void = console.log,
 ): Promise<VectorStoreWrapper> {
   const store = injectedStore ?? openSqliteStore(config);
   store.assertCompatibleWithConfig(config);
@@ -62,7 +63,7 @@ export async function createVectorStore(
   const meta = store.getMeta();
   const count = store.count();
   if (count > 0) {
-    console.log(`Loaded ${count} embedded vectors from ${store.dbPath}`);
+    log(`Loaded ${count} embedded vectors from ${store.dbPath}`);
   }
 
   let expectedDim: number | null = meta?.dimension ?? null;

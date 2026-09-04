@@ -133,12 +133,17 @@ The CLI auto-loads `.env` from the current working directory if present (the rep
 npm run index                            # build/refresh the index over ORACLE_SCAN_ROOT
 npm run index -- --path /path/to/repos   # custom scan root
 npm run query -- "what is the audit system?"
+npm run query -- "what is the audit system?" --json
 npm run query -- -r my-repo "where is the schema defined?"
 npm run query -- -k 20 "list all API endpoints"
 npm run dev -- search "evaluateTransitionRules"
+npm run dev -- search "evaluateTransitionRules" --json
 npm run dev -- search "okf backend" --type module --tags okf,backend
 npm run dev -- list-repos                # indexed repos with chunk/file counts + freshness
+npm run dev -- list-repos --json         # one machine-readable JSON document
+npm run dev -- list-repos --json | jq '.repos[] | {repo, lastIndexedAt}'
 npm run dev -- expand my-repo path/to/file.ts -l 42   # read a window of lines around a position
+npm run dev -- expand my-repo path/to/file.ts --json
 npm run watch                            # keep the index fresh in the background
 npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to the SQLite store
 ```
@@ -151,6 +156,7 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 | `-t, --type <type>` | (`search` only) Filter to chunks whose `fmType` OKF frontmatter metadata strictly equals this value. Excludes chunks without frontmatter metadata. |
 | `--tags <tags>` | (`search` only) Comma-separated; filter to chunks whose `fmTags` OKF frontmatter metadata contains ALL listed tags. Excludes chunks without frontmatter metadata. |
 | `--no-expand-sources` | (`search` only) Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter); expansion is on by default. |
+| `--json` | (`query`, `search`, `list-repos`, and `expand`) Emit exactly one JSON document on stdout. Search returns complete chunk text; diagnostics go to stderr. JSON errors exit nonzero. |
 
 Watch mode runs a chokidar watcher over the scan root and re-embeds changed files after a short debounce. Newly dropped `.git` roots need one explicit `npm run index` to back-fill before watch mode picks up subsequent edits. See [docs/architecture.md](docs/architecture.md#watch-mode) for details.
 

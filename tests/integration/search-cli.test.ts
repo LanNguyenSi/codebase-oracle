@@ -110,6 +110,27 @@ function runSearch(
   };
 }
 
+function runCli(
+  dataDir: string,
+  args: string[],
+): { stdout: string; stderr: string; status: number | null } {
+  const result = spawnSync("npx", ["tsx", indexEntry, ...args], {
+    encoding: "utf8",
+    cwd: repoRoot,
+    env: {
+      ...process.env,
+      ORACLE_DATA_DIR: dataDir,
+      ORACLE_EMBEDDING_PROVIDER: "stub",
+      ORACLE_EMBEDDING_MODEL: "stub",
+    },
+  });
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    status: result.status,
+  };
+}
+
 describe("oracle search CLI sources-expansion integration", () => {
   it(
     "injects the [expanded from ...] marker by default; --no-expand-sources suppresses it",
@@ -172,4 +193,98 @@ describe("oracle search CLI sources-expansion integration", () => {
       expect(withoutExpansion.stdout).not.toContain("implementedThing");
     },
   );
+
+  it("emits complete, machine-readable JSON for search, list, and expand", { timeout: 30_000 }, async () => {
+    const tmp = await makeTmpDir();
+    const scanRoot = join(tmp, "repos");
+    const dataDir = join(tmp, "data");
+    await mkdir(scanRoot, { recursive: true });
+    const longText = `marker-${"x".repeat(620)}`;
+    await makeRepo(scanRoot, "jsonrepo", {
+      "docs/long.md": longText,
+    });
+    expect(runIndex(scanRoot, dataDir).status).toBe(0);
+
+    const search = runCli(dataDir, [
+      "search", "marker", "--repo", "jsonrepo", "-k", "3", "--json",
+    ]);
+    expect(search.status, search.stderr).toBe(0);
+    expect(search.stdout.startsWith("{")).toBe(true);
+    expect(search.stdout).not.toContain("Loaded ");
+    const searchJson = JSON.parse(search.stdout);
+    expect(searchJson).toMatchObject({ query: "marker", repo: "jsonrepo", limit: 3 });
+    expect(searchJson.results.length).toBeLessThanOrEqual(3);
+    expect(searchJson.results[0]).toEqual(expect.objectContaining({
+      repo: "jsonrepo",
+      filePath: "jsonrepo/docs/long.md",
+      lineStart: expect.any(Number),
+      lineEnd: expect.any(Number),
+      fmType: null,
+      fmTags: null,
+      fmSources: null,
+      expandedFrom: null,
+      text: expect.stringContaining("marker-"),
+    }));
+    expect(searchJson.results[0].text.length).toBeGreaterThan(500);
+
+    const list = runCli(dataDir, ["list-repos", "--json"]);
+    expect(list.status, list.stderr).toBe(0);
+    expect(JSON.parse(list.stdout).repos[0]).toEqual(expect.objectContaining({
+      repo: "jsonrepo", chunkCount: expect.any(Number), fileCount: 1,
+      lastIndexedAt: expect.any(String), skippedSizeCount: 0,
+      skippedErrorCount: 0, skippedExamples: [],
+    }));
+
+    const emptyList = runCli(join(tmp, "empty-data"), ["list-repos", "--json"]);
+    expect(emptyList.status, emptyList.stderr).toBe(0);
+    expect(JSON.parse(emptyList.stdout)).toEqual({ repos: [] });
+
+    const expand = runCli(dataDir, [
+      "expand", "jsonrepo", "jsonrepo/docs/long.md", "--json",
+    ]);
+    expect(expand.status, expand.stderr).toBe(0);
+    expect(JSON.parse(expand.stdout)).toEqual(expect.objectContaining({
+      ok: true, repo: "jsonrepo", path: "jsonrepo/docs/long.md",
+      lineStart: 1, lineEnd: expect.any(Number), totalLines: expect.any(Number),
+      text: expect.stringContaining("marker-"),
+    }));
+
+    const missing = runCli(dataDir, [
+      "expand", "jsonrepo", "missing.ts", "--json",
+    ]);
+    expect(missing.status).not.toBe(0);
+    expect(JSON.parse(missing.stdout)).toEqual(expect.objectContaining({
+      ok: false, reason: "not_indexed", message: expect.any(String),
+    }));
+  });
+
+  it("returns one JSON error document for pre-action errors on JSON-capable commands", { timeout: 20_000 }, () => {
+    for (const args of [
+      ["query", "--json"],
+      ["search", "term", "--json", "--unknown"],
+      ["expand", "repo", "--json"],
+      ["list-repos", "--json", "--unknown"],
+    ]) {
+      const result = runCli(join(tmpdir(), "unused-oracle-json-errors"), args);
+      expect(result.status, `${args.join(" ")}: ${result.stderr}`).not.toBe(0);
+      expect(result.stdout.startsWith("{")).toBe(true);
+      expect(result.stdout.trim().split("\n")).toHaveLength(1);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: false,
+        error: { message: expect.any(String) },
+      });
+    }
+
+    const textError = runCli(join(tmpdir(), "unused-oracle-text-error"), ["query"]);
+    expect(textError.status).not.toBe(0);
+    expect(textError.stdout).toBe("");
+    expect(textError.stderr).toContain("missing required argument 'question'");
+
+    const globalJson = runCli(join(tmpdir(), "unused-oracle-global-json"), [
+      "--json", "list-repos",
+    ]);
+    expect(globalJson.status).not.toBe(0);
+    expect(globalJson.stdout).toBe("");
+    expect(globalJson.stderr).toContain("unknown option '--json'");
+  });
 });
