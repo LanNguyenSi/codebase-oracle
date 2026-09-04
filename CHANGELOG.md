@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `--json` flag for stable machine-readable output. Search JSON includes full
   chunk text and explicit `null` values for missing metadata; diagnostics stay
   off stdout, and JSON-mode errors return a structured envelope with a nonzero
-  exit status.
+  exit status, including argument and unknown-option errors detected before a
+  command action starts.
 
 ## [0.11.0] - 2026-09-01
 

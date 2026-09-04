@@ -235,6 +235,10 @@ describe("oracle search CLI sources-expansion integration", () => {
       skippedErrorCount: 0, skippedExamples: [],
     }));
 
+    const emptyList = runCli(join(tmp, "empty-data"), ["list-repos", "--json"]);
+    expect(emptyList.status, emptyList.stderr).toBe(0);
+    expect(JSON.parse(emptyList.stdout)).toEqual({ repos: [] });
+
     const expand = runCli(dataDir, [
       "expand", "jsonrepo", "jsonrepo/docs/long.md", "--json",
     ]);
@@ -252,5 +256,35 @@ describe("oracle search CLI sources-expansion integration", () => {
     expect(JSON.parse(missing.stdout)).toEqual(expect.objectContaining({
       ok: false, reason: "not_indexed", message: expect.any(String),
     }));
+  });
+
+  it("returns one JSON error document for pre-action errors on JSON-capable commands", () => {
+    for (const args of [
+      ["query", "--json"],
+      ["search", "term", "--json", "--unknown"],
+      ["expand", "repo", "--json"],
+      ["list-repos", "--json", "--unknown"],
+    ]) {
+      const result = runCli(join(tmpdir(), "unused-oracle-json-errors"), args);
+      expect(result.status, `${args.join(" ")}: ${result.stderr}`).not.toBe(0);
+      expect(result.stdout.startsWith("{")).toBe(true);
+      expect(result.stdout.trim().split("\n")).toHaveLength(1);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: false,
+        error: { message: expect.any(String) },
+      });
+    }
+
+    const textError = runCli(join(tmpdir(), "unused-oracle-text-error"), ["query"]);
+    expect(textError.status).not.toBe(0);
+    expect(textError.stdout).toBe("");
+    expect(textError.stderr).toContain("missing required argument 'question'");
+
+    const globalJson = runCli(join(tmpdir(), "unused-oracle-global-json"), [
+      "--json", "list-repos",
+    ]);
+    expect(globalJson.status).not.toBe(0);
+    expect(globalJson.stdout).toBe("");
+    expect(globalJson.stderr).toContain("unknown option '--json'");
   });
 });

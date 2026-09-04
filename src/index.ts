@@ -34,6 +34,12 @@ import {
 } from "./format-json.js";
 
 let jsonMode = false;
+const JSON_COMMANDS = new Set(["query", "search", "list-repos", "expand"]);
+
+export function isJsonCommandInvocation(args: string[]): boolean {
+  const command = args[0];
+  return command !== undefined && JSON_COMMANDS.has(command) && args.slice(1).includes("--json");
+}
 
 function jsonStoreLog(message: string): void {
   process.stderr.write(`${message}\n`);
@@ -294,7 +300,12 @@ const isMainModule =
 if (isMainModule) {
   loadEnvFromFile();
   const program = buildProgram();
-  program.parseAsync().catch((err: unknown) => {
+  jsonMode = isJsonCommandInvocation(process.argv.slice(2));
+  if (jsonMode) {
+    program.exitOverride();
+    for (const command of program.commands) command.exitOverride();
+  }
+  Promise.resolve().then(() => program.parseAsync()).catch((err: unknown) => {
     if (jsonMode) {
       console.log(formatErrorJson(err));
       process.exitCode = 1;
