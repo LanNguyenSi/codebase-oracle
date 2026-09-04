@@ -25,6 +25,19 @@ import { runWatchMode } from "./watch.js";
 import { runMigrateStore } from "./migrate-store.js";
 import { runIndex } from "./ingest/runner.js";
 import { VERSION } from "./version.js";
+import {
+  formatErrorJson,
+  formatExpandJson,
+  formatQueryJson,
+  formatReposJson,
+  formatSearchJson,
+} from "./format-json.js";
+
+let jsonMode = false;
+
+function jsonStoreLog(message: string): void {
+  process.stderr.write(`${message}\n`);
+}
 
 // Builds the commander program without executing it, so tests can inspect
 // the registered commands/options (e.g. to check the README stays in sync)
@@ -65,17 +78,28 @@ export function buildProgram(): Command {
     .argument("<question>", "Natural language question")
     .option("-r, --repo <repo>", "Filter to a specific repo")
     .option("-k, --limit <limit>", "Number of chunks to retrieve", "12")
+    .option("--json", "Output one JSON document")
     .action(async (question: string, opts) => {
+      jsonMode = Boolean(opts.json);
       const config = loadConfig();
       const embeddings = createEmbeddings(config);
-      const store = await createVectorStore(embeddings, config);
+      const store = await createVectorStore(
+        embeddings,
+        config,
+        undefined,
+        opts.json ? jsonStoreLog : undefined,
+      );
 
       try {
-        console.log(`\nQuerying: "${question}"\n`);
         const result = await queryCodebase(question, store, config, {
           repo: opts.repo,
           limit: parseInt(opts.limit, 10),
         });
+        if (opts.json) {
+          console.log(formatQueryJson(question, result));
+          return;
+        }
+        console.log(`\nQuerying: "${question}"\n`);
         console.log(result.answer);
         if (result.sources.length > 0) {
           console.log("\n--- Sources ---");
@@ -114,10 +138,17 @@ export function buildProgram(): Command {
       "--no-expand-sources",
       "Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter)",
     )
+    .option("--json", "Output one JSON document")
     .action(async (query: string, opts) => {
+      jsonMode = Boolean(opts.json);
       const config = loadConfig();
       const embeddings = createEmbeddings(config);
-      const store = await createVectorStore(embeddings, config);
+      const store = await createVectorStore(
+        embeddings,
+        config,
+        undefined,
+        opts.json ? jsonStoreLog : undefined,
+      );
 
       try {
         const docs = await searchCodebase(query, store, {
@@ -128,6 +159,10 @@ export function buildProgram(): Command {
           tags: parseCommaSeparatedList(opts.tags),
           expandSources: opts.expandSources,
         });
+        if (opts.json) {
+          console.log(formatSearchJson(query, opts.repo, parseInt(opts.limit, 10), docs));
+          return;
+        }
         for (const doc of docs) {
           const { repo } = doc.metadata as { repo: string };
           const location = formatChunkLocation(doc.metadata);
@@ -145,9 +180,15 @@ export function buildProgram(): Command {
   program
     .command("list-repos")
     .description("List repos present in the vector index")
-    .action(() => {
+    .option("--json", "Output one JSON document")
+    .action((opts) => {
+      jsonMode = Boolean(opts.json);
       const config = loadConfig();
       const repos = listIndexedRepos(config);
+      if (opts.json) {
+        console.log(formatReposJson(repos));
+        return;
+      }
       if (repos.length === 0) {
         console.log("No repos indexed yet. Run `npm run index`.");
         return;
@@ -168,10 +209,17 @@ export function buildProgram(): Command {
       "Lines to include around the center (max 200)",
       "30",
     )
+    .option("--json", "Output one JSON document")
     .action(async (repo, path, opts) => {
+      jsonMode = Boolean(opts.json);
       const config = loadConfig();
       const embeddings = createEmbeddings(config);
-      const store = await createVectorStore(embeddings, config);
+      const store = await createVectorStore(
+        embeddings,
+        config,
+        undefined,
+        opts.json ? jsonStoreLog : undefined,
+      );
       try {
         const result = await expandFile(store, {
           repo,
@@ -179,8 +227,8 @@ export function buildProgram(): Command {
           line: parseInt(opts.line, 10),
           window: parseInt(opts.window, 10),
         });
-        console.log(formatExpandResult(result));
-        if (!result.ok) process.exit(1);
+        console.log(opts.json ? formatExpandJson(result) : formatExpandResult(result));
+        if (!result.ok) process.exitCode = 1;
       } finally {
         store.close();
       }
@@ -247,6 +295,11 @@ if (isMainModule) {
   loadEnvFromFile();
   const program = buildProgram();
   program.parseAsync().catch((err: unknown) => {
+    if (jsonMode) {
+      console.log(formatErrorJson(err));
+      process.exitCode = 1;
+      return;
+    }
     if (err instanceof IndexFingerprintError) {
       console.error(err.message);
       process.exit(1);

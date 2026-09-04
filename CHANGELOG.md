@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- CLI `query`, `search`, `list-repos`, and `expand` now accept a per-command
+  `--json` flag for stable machine-readable output. Search JSON includes full
+  chunk text and explicit `null` values for missing metadata; diagnostics stay
+  off stdout, and JSON-mode errors return a structured envelope with a nonzero
+  exit status.
+
 ## [0.11.0] - 2026-09-01
 
 ### Added
