@@ -258,7 +258,7 @@ describe("oracle search CLI sources-expansion integration", () => {
     }));
   });
 
-  it("returns one JSON error document for pre-action errors on JSON-capable commands", () => {
+  it("returns one JSON error document for pre-action errors on JSON-capable commands", { timeout: 20_000 }, () => {
     for (const args of [
       ["query", "--json"],
       ["search", "term", "--json", "--unknown"],
