@@ -18,7 +18,7 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
 
       - name: Verify native store deps load
         # Guard against silent ABI or postinstall failures in better-sqlite3

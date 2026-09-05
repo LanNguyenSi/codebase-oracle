@@ -56,7 +56,7 @@ jobs:
           cache: npm
           registry-url: "https://registry.npmjs.org"
 
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
 
       - name: Verify tag matches package.json version
         run: |
@@ -74,6 +74,6 @@ jobs:
       # against the package's Trusted Publisher entry on npmjs.com (repo
       # LanNguyenSi/codebase-oracle, workflow release.yml) — no NPM_TOKEN.
       - name: Upgrade npm for trusted publishing
-        run: npm install -g npm@11
+        run: npm install -g npm@11 --no-audit --no-fund
 
       - run: npm publish --provenance --access public
