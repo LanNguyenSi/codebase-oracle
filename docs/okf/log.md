@@ -2,6 +2,52 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-07T11:02:16Z, sources-fresh + blank-start-line fix (task ee959161):
+  after the okf-kit 0.10.0 fleet bump (PR #99), `okf-kit check --json
+  docs/okf` flagged index-freshness-vs-code-freshness.md and
+  ingest-size-limit-enforcement.md STALE (their `src/index.ts` and
+  `CHANGELOG.md` sources both changed 2026-09-04) plus four
+  `citations-resolve` `blank-start-line` warnings. Re-verified every
+  citation in both docs against HEAD.
+  index-freshness-vs-code-freshness.md: 24 checked, 2 corrected (the
+  `loadConfig()` call-site list, old line numbers 55, 69, 118, 149, 172,
+  193 and 209 in `src/index.ts`, re-pointed to `src/index.ts:74, 90, 150,
+  192, 221, 247, 263`; the index-command range, old lines 51 to 56 in
+  `src/index.ts`, re-pointed to `src/index.ts:70-79`; both shifted by a
+  `-p, --path <path>` option and other commands added ahead of them since
+  the doc was last verified).
+  ingest-size-limit-enforcement.md: 32 checked, 2 corrected (old line 82 in
+  `CHANGELOG.md`, re-pointed to `CHANGELOG.md:91`, for the "was silently
+  dropped" 0.10.0 quote; old line 78 in `CHANGELOG.md`, re-pointed to
+  `CHANGELOG.md:87`, for the "MAX_FILE_BYTES constant" quote; both shifted
+  by the `[Unreleased]` CLI `--json`-flag entry added to CHANGELOG.md).
+  That second correction is also one of the four blank-start-line fixes:
+  `CHANGELOG.md:87` starts on content. The other three blank-start-line
+  fixes are inside this log's own earlier historical entries, and only the
+  cited range was re-pointed there, the surrounding narrative is left as
+  written at the time: the 2026-09-01T07:30:00Z entry's old line 80 in
+  `CHANGELOG.md` is now `CHANGELOG.md:91` and its old line 76 in
+  `CHANGELOG.md` is now `CHANGELOG.md:87` (the same two CHANGELOG.md quotes
+  above, shifted further since that entry was written), and the
+  2026-08-22T05:21:41Z entry's old line 98 in `src/index.ts` is now
+  `src/index.ts:132` (the `-g, --path-glob <glob>` commander option
+  definition, text unchanged, line shifted).
+  All other declared sources for both docs (`package.json`,
+  `src/store/sqlite-store.ts`, `src/mcp-server.ts`, `src/version.ts`,
+  `docs/architecture.md`, `src/config.ts`, `src/ingest/scanner.ts`,
+  `src/ingest/runner.ts`, `src/watch.ts`) last changed before both docs'
+  prior timestamp (`package.json` a few minutes after it, in the same
+  release commit that produced that stamp, so no drift), so their
+  existing citations were re-checked and left
+  as is. No claim or content changed in either doc. Noted for a follow-up,
+  out of scope here: ingest-size-limit-enforcement.md's only remaining
+  dependence on `CHANGELOG.md` is those two historical 0.10.0 quotes;
+  citing the release section by heading and dropping `CHANGELOG.md` from
+  `sources:` (the pattern harness's index.md maintenance rule already uses)
+  would stop future unrelated CHANGELOG.md edits from re-staling this doc.
+  Re-stamped both docs. `okf-kit check --json docs/okf` after this commit:
+  0 errors, 0 warnings, 0 notices.
+
 - 2026-09-02T04:47:51Z, okf-kit pin bump (task 44ee799a, fleet parity):
   bumped .github/workflows/okf-staleness.yml's pin from okf-kit@0.6.0 to
   okf-kit@0.9.0 to match the other OKF bundle repos (measured: 0.8.0 and 0.9.0 report identical findings for this
@@ -48,8 +94,8 @@
   two citations in ingest-size-limit-enforcement.md's historical section that
   the first check run had missed (only sources-fresh and the new prune
   citation were checked by hand there): the "was silently dropped" 0.10.0
-  quote's line number moved from 71 to CHANGELOG.md:80, and the "MAX_FILE_BYTES
-  constant" quote's moved from 67 to CHANGELOG.md:76. `okf-kit check` (0.8.0)
+  quote's line number moved from 71 to CHANGELOG.md:91, and the "MAX_FILE_BYTES
+  constant" quote's moved from 67 to CHANGELOG.md:87. `okf-kit check` (0.8.0)
   now reports 0 errors, 0 warnings; the 5 remaining NOTICEs are pre-existing bare
   `runner.ts:NN` / `config.ts:NN` ambiguous-citation notices in THIS log's
   own historical entries, already flagged this way before round 2 (see the
@@ -113,7 +159,7 @@
   shifted +15 lines since the doc was last written (loadScannedFile and its
   too-large/empty branches in `flush`), corrected all six citations; restamped.
   README's CLI flag table also gained the missing `-g, --path-glob <glob>` row
-  (src/index.ts:98, verified against `search --help`).
+  (src/index.ts:132, verified against `search --help`).
 
 - 2026-08-22T04:51:51Z, docs-freshness-audit round-2 fix (task cecad947):
   mcp.md's tool table and both tool-input summaries now state
