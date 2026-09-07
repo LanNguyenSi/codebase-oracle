@@ -36,7 +36,9 @@
   `src/store/sqlite-store.ts`, `src/mcp-server.ts`, `src/version.ts`,
   `docs/architecture.md`, `src/config.ts`, `src/ingest/scanner.ts`,
   `src/ingest/runner.ts`, `src/watch.ts`) last changed before both docs'
-  prior timestamp, so their existing citations were re-checked and left
+  prior timestamp (`package.json` a few minutes after it, in the same
+  release commit that produced that stamp, so no drift), so their
+  existing citations were re-checked and left
   as is. No claim or content changed in either doc. Noted for a follow-up,
   out of scope here: ingest-size-limit-enforcement.md's only remaining
   dependence on `CHANGELOG.md` is those two historical 0.10.0 quotes;
