@@ -36,3 +36,8 @@ through the very tool they describe.
 - [Index-data freshness vs server-code freshness](index-freshness-vs-code-freshness.md),
   two independent staleness axes with different fixes: reindexed data is visible
   to a running server without restart; changed source is not.
+
+## Maintenance
+
+Do not list `CHANGELOG.md` under a doc's frontmatter `sources:`; cite release
+sections by heading instead, e.g. `` `CHANGELOG.md:#0.10.0` ``.
