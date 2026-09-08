@@ -2,6 +2,32 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-08T04:38:41Z, task 8cfca118 (implementer): applied the pattern
+  harness adopted (PRs #514, #516) to close the recurring `CHANGELOG.md`
+  `sources-fresh` re-stale for `ingest-size-limit-enforcement.md`: any
+  CHANGELOG edit anywhere in the repo used to re-stale this doc, and an
+  unrelated author could not honestly re-stamp it. Re-verified both
+  passages quoting the `[0.10.0]` entry ("was silently dropped by the old
+  `content.length > 200_000` check; it and any file like it are now
+  reported, not swallowed" and "in both the scanner and `watch.ts`, which
+  previously duplicated the old limit as its own `MAX_FILE_BYTES`
+  constant") against `CHANGELOG.md`'s `## [0.10.0] - 2026-07-04` section:
+  both quotes match verbatim inside it. Re-pointed both citations from
+  line numbers (`CHANGELOG.md:91`, `CHANGELOG.md:87`) to the heading form
+  `` `CHANGELOG.md:#0.10.0` ``, and dropped `CHANGELOG.md` from the doc's
+  frontmatter `sources:`. Doc re-stamped (`timestamp: 2026-09-08T04:38:41Z`).
+  Also added the maintenance rule to `docs/okf/index.md` ("do not list
+  `CHANGELOG.md` under sources; cite release sections by heading"), one
+  sentence, matching harness's own index.md rule.
+  Negative control (planned: append a throwaway line to `CHANGELOG.md`
+  uncommitted, run `npx okf-kit@0.10.0 check --json docs/okf`, expect 0
+  findings and no `sources-fresh` finding naming `CHANGELOG.md`, then
+  revert). Observed: ran before this commit, on the working tree with
+  both edits already applied but not yet committed: 0 errors/warnings/
+  notices across the whole bundle; no `sources-fresh` finding for
+  `ingest-size-limit-enforcement.md` or any other doc. Reverted with
+  `git checkout -- CHANGELOG.md`.
+
 - 2026-09-07T11:02:16Z, sources-fresh + blank-start-line fix (task ee959161):
   after the okf-kit 0.10.0 fleet bump (PR #99), `okf-kit check --json
   docs/okf` flagged index-freshness-vs-code-freshness.md and
