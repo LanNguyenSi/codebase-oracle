@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Bump `hono` (transitive, via `@modelcontextprotocol/sdk`) to 4.13.7,
+  closing GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc, and GHSA-crvj-82cr-hjcx.
+- Bump `vitest`, `@vitest/mocker`, and `@vitest/coverage-v8` (dev only) to
+  4.1.11, closing GHSA-82fw-gwwq-j7x9.
+
 ### Added
 
 - CLI `query`, `search`, `list-repos`, and `expand` now accept a per-command
