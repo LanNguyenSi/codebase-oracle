@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   closing GHSA-gqvv-2mrq-wpjv, GHSA-g6gw-c38x-mqfc, and GHSA-crvj-82cr-hjcx.
 - Bump `vitest`, `@vitest/mocker`, and `@vitest/coverage-v8` (dev only) to
   4.1.11, closing GHSA-82fw-gwwq-j7x9.
+- Bump `qs` (transitive, via `@modelcontextprotocol/sdk` and `express`) to
+  6.16.0 in the lockfile, closing GHSA-x5fp-wj9c-mxmx and GHSA-4mjr-xmp4-gh2g.
+- Bump `fast-uri` (transitive, via `@modelcontextprotocol/sdk` and `ajv`) to
+  3.1.7 in the lockfile, closing GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc,
+  GHSA-fph4-wmhf-6fwf, and GHSA-jqff-g426-hqxp.
 
 ### Added
 
