@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-21
+
 ### Security
 
 - Bump `hono` (transitive, via `@modelcontextprotocol/sdk`) to 4.13.7,
