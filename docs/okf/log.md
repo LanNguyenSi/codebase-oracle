@@ -13,7 +13,15 @@
   release as a bare `CHANGELOG.md` line number that had drifted into the
   unreleased section; it now cites the section by heading
   (`` `CHANGELOG.md:#0.10.2` ``), the form this bundle's index prescribes, so
-  later cuts cannot shift it. Re-stamped.
+  later cuts cannot shift it; its `getFirstChunkByFileInternal` range in
+  `src/store/sqlite-store.ts` was five lines early and now reads `:777-789`.
+  Re-stamped. The cut grew `CHANGELOG.md` by seven lines above every released
+  section (the heading, its blank line, five lines of added Security
+  bullets). The bare `CHANGELOG.md:87` and `CHANGELOG.md:91` line numbers in
+  this log's older entries are history and stay as written; they no longer
+  land on the quoted lines, and the check stops reporting them only because
+  the lines they now hit are not blank. The live docs cite those passages by
+  heading (`` `CHANGELOG.md:#0.10.0` ``) and are unaffected.
 
 - 2026-09-08T04:38:41Z, task 8cfca118 (implementer): applied the pattern
   harness adopted (PRs #514, #516) to close the recurring `CHANGELOG.md`

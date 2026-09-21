@@ -3,7 +3,7 @@ type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
 description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in README.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-09-21T11:16:00Z
+timestamp: 2026-09-21T11:36:25Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
@@ -19,7 +19,7 @@ parent, in `fmSources` order. "Representative chunk" is concretely the file's
 **first chunk**: `getFirstChunkByFile` runs `SELECT page_content, metadata FROM
 docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1`
 (`src/store/sqlite-store.ts:371-373`, exposed via
-`getFirstChunkByFileInternal` at `:772-784`). At most
+`getFirstChunkByFileInternal` at `:777-789`). At most
 `MAX_INJECTIONS_PER_PARENT = 3` chunks are injected per parent
 (`src/retrieval/chain.ts:522`), while at most `MAX_SOURCES_EXAMINED_PER_PARENT
 = 20` raw `fmSources` entries are even looked at per parent (`:530`) — the
