@@ -2,6 +2,27 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-21T11:16:00Z, 0.12.0 release cut (orchestrator): `package.json` changed twice
+  since `index-freshness-vs-code-freshness.md` was stamped (the vitest pins in
+  the 2026-09-11 CVE sweep, then the version field in this cut), both as
+  same-line replacements. Re-verified every `package.json` line the doc cites
+  (the `bin` block, `build`, `dev`, `index`, `mcp`, `serve`, `prepublishOnly`)
+  against the file: unchanged in place; the doc's version-flow passage
+  (`package.json` through `src/version.ts` into the MCP handshake) is what the
+  0.12.0 dogfood observed. Re-stamped. `sources-expansion.md` cited the 0.10.2
+  release as a bare `CHANGELOG.md` line number that had drifted into the
+  unreleased section; it now cites the section by heading
+  (`` `CHANGELOG.md:#0.10.2` ``), the form this bundle's index prescribes, so
+  later cuts cannot shift it; its `getFirstChunkByFileInternal` range in
+  `src/store/sqlite-store.ts` was five lines early and now reads `:777-789`.
+  Re-stamped. The cut grew `CHANGELOG.md` by seven lines above every released
+  section (the heading, its blank line, five lines of added Security
+  bullets). The bare `CHANGELOG.md:87` and `CHANGELOG.md:91` line numbers in
+  this log's older entries are history and stay as written; they no longer
+  land on the quoted lines, and the check stops reporting them only because
+  the lines they now hit are not blank. The live docs cite those passages by
+  heading (`` `CHANGELOG.md:#0.10.0` ``) and are unaffected.
+
 - 2026-09-08T04:38:41Z, task 8cfca118 (implementer): applied the pattern
   harness adopted (PRs #514, #516) to close the recurring `CHANGELOG.md`
   `sources-fresh` re-stale for `ingest-size-limit-enforcement.md`: any
