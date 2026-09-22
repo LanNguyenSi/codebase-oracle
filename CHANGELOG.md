@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Two release guards: a vitest unit test fails when CHANGELOG.md's first
+  `## [x.y.z] - date` heading differs from package.json's version, and
+  release.yml's changelog-extraction step (`scripts/extract-changelog-notes.sh`)
+  fails with an explicit message when no release notes are found for the
+  tagged version. The tag-derived version is now passed to the extraction
+  program as a positional argument rather than interpolated into the awk
+  program text.
+
 ## [0.12.0] - 2026-09-21
 
 ### Security
