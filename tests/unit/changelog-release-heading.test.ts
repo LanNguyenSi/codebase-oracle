@@ -63,7 +63,13 @@ describe("CHANGELOG.md release heading", () => {
   it("does not match a prerelease package.json version against a bare-core heading (fixture)", () => {
     const fixture = "## [Unreleased]\n\n## [0.13.0] - 2026-02-01\n\nNotes.\n\n## [0.12.0] - 2026-01-01\n";
     const fixturePkgVersion = "0.13.0-rc.1";
+    expect(firstHeadingVersion(fixture)).toBe("0.13.0");
     expect(firstHeadingVersion(fixture)).not.toBe(fixturePkgVersion);
+  });
+
+  it("accepts a body when the first dated section is the last section in the file (fixture)", () => {
+    const fixture = "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\nOnly release so far.\n";
+    expect(firstSectionHasNonWhitespaceBody(fixture)).toBe(true);
   });
 
   it("flags an empty-body dated section via a fixture (would fail in ci before npm publish)", () => {

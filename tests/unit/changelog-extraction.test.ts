@@ -91,6 +91,8 @@ describe(".github/workflows/release.yml changelog extraction step", () => {
       stepMatch,
       "could not find the 'Extract changelog for this version' step in release.yml",
     ).not.toBeNull();
-    expect(stepMatch![0]).toContain("scripts/extract-changelog-notes.sh");
+    // The invocation must be a command line of the step, not a mention in a
+    // comment: anchored at the start of a run-block line.
+    expect(stepMatch![0]).toMatch(/^\s*scripts\/extract-changelog-notes\.sh /m);
   });
 });
