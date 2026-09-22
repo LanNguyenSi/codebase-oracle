@@ -193,6 +193,12 @@ baseline is updated with a documented reason. See
 [tests/eval/README.md](tests/eval/README.md) for the full workflow, including
 how to add questions and corpus repos.
 
+Two guards keep the tag and the changelog from drifting apart: a vitest unit
+test fails when `CHANGELOG.md`'s first `## [x.y.z] - date` heading doesn't
+match `package.json`'s version, and the release workflow's changelog-extraction
+step (`scripts/extract-changelog-notes.sh`) fails loudly if no release notes
+are found for the tagged version.
+
 ## License
 
 MIT. See [docs/architecture.md#credits](docs/architecture.md#credits) for inspiration and prior art.
