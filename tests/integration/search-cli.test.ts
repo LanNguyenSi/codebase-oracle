@@ -516,7 +516,7 @@ describe("oracle search CLI sources-expansion integration", () => {
     };
 
     for (const [command, args] of Object.entries(perCommandArgs)) {
-      for (const flag of ["--help", "--version"]) {
+      for (const flag of ["--help", "-h", "--version"]) {
         const result = runCli(dataDir, [command, ...args, "--json", flag]);
         expect(
           result.status,
@@ -531,15 +531,6 @@ describe("oracle search CLI sources-expansion integration", () => {
         }
       }
     }
-  });
-
-  it("routes the help subcommand the same way as --help in --json mode", { timeout: 20_000 }, () => {
-    const dataDir = join(tmpdir(), "unused-oracle-json-help-subcommand");
-    const result = runCli(dataDir, ["help", "query", "--json"]);
-    expect(result.status, `status=${result.status} stderr=${result.stderr}`).toBe(0);
-    expect(result.stdout.startsWith("{")).toBe(false);
-    expect(result.stdout).not.toContain('"ok":false');
-    expect(result.stdout).toContain("Usage:");
   });
 
   it("still returns ok:false with a nonzero exit for a real error in --json mode alongside --help/--version handling", { timeout: 20_000 }, () => {

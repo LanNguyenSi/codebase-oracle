@@ -2,9 +2,9 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-09-23T09:41:06Z, task 53112c27: fixed `--help`/`--version`/the `help`
-  subcommand exiting 1 with an `ok:false` JSON document in `--json` mode
-  (`src/index.ts`, catch handler inserted after line 306). The 14-line
+- 2026-09-23T09:41:06Z, task 53112c27: fixed `--help`/`-h`/`--version` exiting 1
+  with an `ok:false` JSON document in `--json` mode (`src/index.ts`, catch
+  handler inserted after line 308). The
   insertion sits after every citation in `index-freshness-vs-code-freshness.md`
   (the one doc listing `src/index.ts` under `sources:`), so no citation moved;
   its `loadConfig()` call-site lines (74, 90, 150, 192, 221, 247, 263) and the

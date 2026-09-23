@@ -309,9 +309,9 @@ if (isMainModule) {
     // commander's exitOverride() (enabled above for --json invocations so a
     // real error can be rendered as a JSON document instead of a raw
     // process.exit) also intercepts the library's own successful, non-error
-    // exits: --help, --version, and the `help` subcommand. Those all throw a
-    // CommanderError with exitCode 0 (real errors use error(), which always
-    // defaults to exitCode 1), so they're the one case that must NOT be
+    // exits: --help/-h and --version. Those throw a CommanderError with
+    // exitCode 0 (real errors use error(), which always defaults to
+    // exitCode 1), so they're the one case that must NOT be
     // rendered as an ok:false JSON document here: help/version output is
     // already written to stdout/stderr by commander itself, and the CLI
     // should just exit 0 quietly, in and out of --json mode alike.

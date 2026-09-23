@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- `--help`, `--version`, and the `help` subcommand now exit `0` with no
+- `--help` (`-h`) and `--version` now exit `0` with no
   `ok:false` JSON document when combined with `--json` on `query`, `search`,
   `list-repos`, or `expand`. Previously commander's own successful
   help/version exit was caught by the same `--json` error handler as a real
