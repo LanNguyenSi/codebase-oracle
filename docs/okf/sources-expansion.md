@@ -3,7 +3,7 @@ type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
 description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in README.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-09-21T11:36:25Z
+timestamp: 2026-09-23T05:06:41Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
@@ -21,8 +21,8 @@ docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1`
 (`src/store/sqlite-store.ts:371-373`, exposed via
 `getFirstChunkByFileInternal` at `:777-789`). At most
 `MAX_INJECTIONS_PER_PARENT = 3` chunks are injected per parent
-(`src/retrieval/chain.ts:522`), while at most `MAX_SOURCES_EXAMINED_PER_PARENT
-= 20` raw `fmSources` entries are even looked at per parent (`:530`) — the
+(`src/retrieval/chain.ts:531`), while at most `MAX_SOURCES_EXAMINED_PER_PARENT
+= 20` raw `fmSources` entries are even looked at per parent (`:539`) — the
 second bound caps synchronous store lookups against an adversarial doc that
 lists thousands of sources.
 
@@ -35,10 +35,10 @@ per-parent injection and examined-sources caps.
 
 Each synthesized-injection `Document` is minted fresh with a transient
 `expandedFrom` marker carrying the parent's `filePath`: `metadata: { ...chunk.metadata,
-expandedFrom: parentFilePath }` (`src/retrieval/chain.ts:705`). A hoisted row
+expandedFrom: parentFilePath }` (`src/retrieval/chain.ts:714`). A hoisted row
 (see below) carries no such marker: it is the existing organic `Document`, moved,
 not a new one. The marker is render-only —
-`formatChunkExpandedTag` (`src/retrieval/chain.ts:81`, called at `:114`) turns it
+`formatChunkExpandedTag` (`src/retrieval/chain.ts:88`, called at `:121`) turns it
 into an `[expanded from <basename>]` tag in the search output, spliced alongside
 the `[type]` tag. Injected Documents are **never persisted**; they
 exist only in the returned list for that one call.
@@ -47,15 +47,15 @@ exist only in the returned list for that one call.
 parent, then either hoists an organic pointed-at file into place or resolves a
 synthesized injection for one with no organic hit anywhere. On the synthesized
 path, a non-matching entry (directory, glob, typo, absent file) resolves to
-`null` and is skipped silently and deterministically (`:688-698`). When no row
+`null` and is skipped silently and deterministically (`:697-706`). When no row
 carries a resolvable `fmSources` entry, the returned list is the organic list
 unchanged — identical to `expandSources: false`. `expandSources` defaults to
-`true` (`searchCodebase`, `src/retrieval/chain.ts:721`).
+`true` (`searchCodebase`, `src/retrieval/chain.ts:730`).
 
 ## Where it's enforced
 
 `expandSourcesInResults(organic, vectorStore, limit)` at
-`src/retrieval/chain.ts:608-713` is the whole mechanism. It runs after ranking,
+`src/retrieval/chain.ts:617-722` is the whole mechanism. It runs after ranking,
 inside `searchCodebase`.
 
 **Path shape (load-bearing).** `fmSources` entries are **repo-root-relative** by
@@ -63,10 +63,10 @@ OKF convention (e.g. `backend/src/app.ts`). The store's `file_path` namespace
 depends on scan layout: when repos are subdirectories of the scan root (the
 common production case), stored paths carry the **repo prefix** (e.g.
 `agent-tasks/backend/src/app.ts`). The candidate-order logic now lives in its
-own helper, `resolveSourcePathCandidates` (`src/retrieval/chain.ts:548-558`),
+own helper, `resolveSourcePathCandidates` (`src/retrieval/chain.ts:557-567`),
 extracted in 0.10.2 so the store lookup and the organic-hit hoist check share
 one definition of which path form a given `fmSources` entry means.
-`resolveSourceChunk` (`src/retrieval/chain.ts:562-577`) then tries the store
+`resolveSourceChunk` (`src/retrieval/chain.ts:571-586`) then tries the store
 lookup against both forms in that order. Both derive the namespace from
 the **parent chunk's own path** — parent-namespace-first:
 
@@ -101,11 +101,11 @@ an indexed file. The `expand_sources` parameter described here is a flag on
 ## What the dedup rule actually does now
 
 **Dedup + hoist — fixed in 0.10.2, not a known limitation anymore.** The dedup
-key is `(repo, filePath)` via `fileKeyOf` (`src/retrieval/chain.ts:532-537`).
+key is `(repo, filePath)` via `fileKeyOf` (`src/retrieval/chain.ts:541-546`).
 Every organic hit is indexed into an `organicByKey` map, first occurrence wins
-(`:616-620`), and a separate `placed` set tracks every row, organic push,
+(`:625-629`), and a separate `placed` set tracks every row, organic push,
 hoist, or synthesized injection, that has actually landed in the output
-(`:626`). A pointed-at file that is an organic hit ranked **at or above** its
+(`:635`). A pointed-at file that is an organic hit ranked **at or above** its
 pointing parent (already placed by the time the parent's own `fmSources` are
 processed) is left untouched: no duplicate, no reorder. A pointed-at file that
 is an organic hit ranked **below** its pointing parent (not yet placed,
@@ -113,18 +113,18 @@ whether or not it would have survived the `limit` cut on its own) is
 **hoisted**: its existing organic `Document` (real chunk, real snippet) is
 moved into the injection slot right after the parent, with no `expandedFrom`
 marker, instead of being left at its natural rank where a lower-priority
-sibling injection could push it past the cut (`:676-686`). Only a file with
+sibling injection could push it past the cut (`:685-695`). Only a file with
 **no organic hit anywhere** in the candidate list falls back to a synthesized
-first-chunk injection tagged `expandedFrom` (`:688-708`). The combined
+first-chunk injection tagged `expandedFrom` (`:697-717`). The combined
 parent+injection+hoist list is still capped with `.slice(0, limit)`
-(`:712`), so a hoist is not exempt from the final cut either.
+(`:721`), so a hoist is not exempt from the final cut either.
 
 Consequences:
 
 - "Hoist," not "displace," is now the code's own vocabulary: the word
-  appears throughout `expandSourcesInResults` and its comments (e.g. `:592`,
-  `:596`, `:614`, `:622-625`, `:670-684`); "displace" survives only once, in a
-  comment about the exact failure mode this fix closes (`:595`).
+  appears throughout `expandSourcesInResults` and its comments (e.g. `:601`,
+  `:605`, `:623`, `:631-634`, `:679-693`); "displace" survives only once, in a
+  comment about the exact failure mode this fix closes (`:604`).
 - A pointed-at file that is organically present below the cut is now
   **promoted** into the injection slot instead of silently left to be sliced
   away, which was the original regression this mechanism used to have.
@@ -138,8 +138,8 @@ below-parent organic hit is hoisted into place, not silently skipped.
 
 **Do not confuse with `oracle_query`'s pointers section.** `oracle_query`
 appends a text block titled `"Pointers (from OKF sources metadata):"`
-(`POINTERS_SECTION_LABEL`, `src/retrieval/chain.ts:160`) built by
-`extractSourcePointers` (`:144-158`) and `formatPointersSection` (`:166-174`,
+(`POINTERS_SECTION_LABEL`, `src/retrieval/chain.ts:167`) built by
+`extractSourcePointers` (`:151-165`) and `formatPointersSection` (`:173-181`,
 `POINTERS_CAP = 10`). That is **plain text listing source paths after an LLM
 answer** — it renders `fmSources` strings, it does not retrieve anything.
 Sources-expansion instead injects **retrievable chunks** into the
@@ -147,8 +147,8 @@ Sources-expansion instead injects **retrievable chunks** into the
 prints pointer strings, the other pulls in actual file content.
 
 **Things that silently break injection:** parent metadata missing `repo`
-(`parentRepo.length === 0` → skip, `:588`); `fmSources` not an array
-(`:584`); a source string that is empty or non-string (`:596`); a source that
-resolves to no stored chunk under either path shape (`:605`); the per-parent
-cap of 3 or the per-parent examination cap of 20 being hit (`:593`, `:595`);
-or the global `limit` already being reached (`:580`).
+(`parentRepo.length === 0` → skip, `:662`); `fmSources` not an array
+(`:658`); a source string that is empty or non-string (`:670`); a source that
+resolves to no stored chunk under either path shape (`:707`); the per-parent
+cap of 3 or the per-parent examination cap of 20 being hit (`:669`, `:667`);
+or the global `limit` already being reached (`:654`).

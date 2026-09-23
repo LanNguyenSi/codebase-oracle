@@ -2,6 +2,33 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T05:06:41Z, task df880cbc (implementer): added additive `ok: true`
+  on `search`/`list-repos`/`query` `--json` success documents and a
+  `degraded`/`degradedReason` marker on `query`'s LLM-failure raw-context
+  fallback, in `src/retrieval/chain.ts` (`QueryResult` interface and the
+  `chain.invoke()` catch block) and `src/format-json.ts`. The 8-line net
+  insertion in `chain.ts` shifted every line number below it by 7 (lines
+  before the interface insertion) or 9 (lines after the catch-block
+  insertion). Re-verified and re-pointed every `src/retrieval/chain.ts`
+  line citation in both docs that list it as a `sources:` entry:
+  `provider-enums-and-token-budget.md` and `sources-expansion.md`. While
+  re-verifying, found five pre-existing (pre-dating this task) bare
+  line-number citations in `sources-expansion.md`'s "Things that silently
+  break injection" bullet (old values 588, 584, 596, 605, 593, 595, 580)
+  that already pointed at the wrong lines before this edit (verified
+  against `git show HEAD~1`, e.g. old line 588 landed on an unrelated
+  comment line, not the `parentRepo.length === 0` check it claimed) -
+  corrected those to their real targets (new values 662, 658, 670, 707,
+  669, 667, 654) rather than only shifting the stale numbers by the same
+  offset. Every other citation in both docs was
+  already accurate pre-edit and got the mechanical +7/+9 shift. Re-stamped
+  both docs' `timestamp` to this task's verification instant. `okf-kit
+  check --json docs/okf` after this commit: 0 errors, the two docs'
+  `citations-resolve` warnings (4 pre-existing at baseline) cleared; the
+  5 `log.md` `CHANGELOG.md:101` `blank-start-line` warnings are the
+  unrelated pre-existing historical-prose fragility described in the
+  2026-09-22 entry below and were left untouched.
+
 - 2026-09-22T06:05:17Z, task e53a6d9d (implementer): added a `## [Unreleased]`
   entry to `CHANGELOG.md` (release guards) for a codebase-oracle-local
   task, no release cut. The ten added lines shifted `CHANGELOG.md` by ten
