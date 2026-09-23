@@ -23,11 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Every LLM constructor (Anthropic, OpenAI, and the `openai-compatible`/
   `ollama` lane) now sets a request timeout from the new
-  `ORACLE_LLM_TIMEOUT_MS` env var (default 60000ms, chosen with a cold
-  local Ollama model in mind) and a fixed `maxRetries: 0`, so an
-  unreachable or unresponsive LLM endpoint falls back to raw retrieved
-  context within that bound instead of hanging (previously a closed local
-  port could take over 70 seconds to surface as a failure). See
+  `ORACLE_LLM_TIMEOUT_MS` env var (default 120000ms, chosen to cover a cold
+  local Ollama model's load plus a full non-streaming generation) and a
+  fixed `maxRetries: 0`, plus a matching overall deadline wrapped around the
+  whole `chain.invoke()` call so a server that sends response headers and
+  then stalls the body is also bounded, not just a fully unreachable
+  endpoint. An unreachable or unresponsive LLM endpoint now falls back to
+  raw retrieved context within that bound instead of hanging (previously a
+  closed local port could take over 70 seconds to surface as a failure).
+  With retries disabled, a single transient provider error (429/5xx/529) is
+  no longer retried and now falls back to `degraded: true` immediately
+  instead of after LangChain's own multi-attempt backoff. See
   docs/configuration.md and README.md for the default and its reasoning
   (task `844aac2c`).
 - `--json` success documents for `query`, `search`, and `list-repos` now

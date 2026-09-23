@@ -251,7 +251,20 @@ export async function queryCodebase(
   const chain = prompt.pipe(llm).pipe(new StringOutputParser());
   let answer: string;
   try {
-    answer = await chain.invoke({ context, question });
+    // Belt-and-braces overall deadline on top of the constructor-level
+    // timeout set in createAnthropicLlm/createOpenAILlm/
+    // createOpenAICompatibleLlm below. The SDK-level `timeout` those
+    // constructors set only bounds time-to-first-response-byte (see the
+    // comment on LLM_MAX_RETRIES below and docs/configuration.md): a server
+    // that accepts the connection, sends response headers, and then stalls
+    // the body never trips that bound and would otherwise hang past
+    // config.llmTimeoutMs. LangChain's RunnableConfig.timeout wraps the
+    // whole invocation (including body streaming) in an AbortSignal and
+    // rejects once it fires, so this second bound covers exactly that gap.
+    answer = await chain.invoke(
+      { context, question },
+      { timeout: config.llmTimeoutMs },
+    );
   } catch (err) {
     const details = getLlmErrorDetails(err);
     const detailText = details ? ` (${details})` : "";
@@ -359,14 +372,26 @@ function ensureV1BaseUrl(baseUrl: string): string {
 // value (config.llmTimeoutMs, env ORACLE_LLM_TIMEOUT_MS; see config.ts for
 // the documented default and README.md for the Ollama-cold-start reasoning
 // behind that default) and its retry count to this fixed constant. Retries
-// are disabled (0) rather than left at each SDK's own default (6 for the
-// langchain-level AsyncCaller wrapper, 2 for the Anthropic SDK's own client)
-// because a retried call multiplies the wall-clock wait by the retry count
-// with exponential backoff on top, which would blow the configured timeout
-// bound out to several times its value instead of bounding total latency to
-// it. queryCodebase's raw-context fallback (chain.ts, the `degraded: true`
-// branch) already covers a single failed attempt, so there is no
-// availability benefit to retrying here that would offset that cost.
+// are disabled (0) rather than left at LangChain's own AsyncCaller default
+// (6, with exponential backoff between attempts) because a retried call
+// multiplies the wall-clock wait by the retry count with backoff on top,
+// which would blow the configured timeout bound out to several times its
+// value instead of bounding total latency to it. queryCodebase's raw-context
+// fallback (chain.ts, the `degraded: true` branch) already covers a single
+// failed attempt, so there is no availability benefit to retrying here that
+// would offset that cost. Only this langchain-level AsyncCaller layer
+// actually retries: for both providers below, LangChain constructs the
+// underlying SDK client (Anthropic's own client in createAnthropicLlm,
+// OpenAI's in createOpenAILlm/createOpenAICompatibleLlm) with the SDK's own
+// `maxRetries` pinned to 0 regardless of what is passed in, so a single
+// provider error (429/5xx/529) is never retried at the SDK layer and
+// degrades immediately once the AsyncCaller layer above also gives up (see
+// node_modules/@langchain/anthropic/dist/chat_models.js,
+// createStreamWithRetry/completionWithRetry: `maxRetries: 0` is spread in
+// after `...this.clientOptions`, so it always wins; the OpenAI-side
+// `@langchain/openai` client construction does the same). The
+// `clientOptions.maxRetries` set below is therefore belt-and-braces
+// documentation of intent, not the value actually enforced at that layer.
 const LLM_MAX_RETRIES = 0;
 
 function createAnthropicLlm(config: Config) {
@@ -379,9 +404,10 @@ function createAnthropicLlm(config: Config) {
     // ChatAnthropic has no top-level `timeout` field (unlike ChatOpenAI
     // below): the underlying @anthropic-ai/sdk client only accepts it via
     // `clientOptions` (see node_modules/@anthropic-ai/sdk/client.d.ts,
-    // ClientOptions.timeout / ClientOptions.maxRetries). Setting maxRetries
-    // here too keeps the SDK's own retry layer from adding its own
-    // backoff-multiplied wait on top of the langchain-level maxRetries above.
+    // ClientOptions.timeout / ClientOptions.maxRetries). `maxRetries` here
+    // is belt-and-braces only: LangChain overrides it to 0 at the actual
+    // client-construction call regardless of this value (see the
+    // LLM_MAX_RETRIES comment above).
     clientOptions: { timeout: config.llmTimeoutMs, maxRetries: LLM_MAX_RETRIES },
   });
 }

@@ -37,7 +37,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
-    llmTimeoutMs: 60_000,
+    llmTimeoutMs: 120_000,
     ...overrides,
   };
 }
@@ -1001,7 +1001,7 @@ describe("searchCodebase type/tags filters (real store)", () => {
       vectorStoreType: "directory",
       maxFileSizeBytes: 500_000,
       maxTextFileSizeBytes: 2_000_000,
-    llmTimeoutMs: 60_000,
+      llmTimeoutMs: 120_000,
     };
   }
 

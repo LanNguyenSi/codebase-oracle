@@ -22,7 +22,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
-    llmTimeoutMs: 60_000,
+    llmTimeoutMs: 120_000,
     ...overrides,
   };
 }
@@ -378,20 +378,111 @@ describe("queryCodebase, real LLM client against a black-hole TCP server (task 8
     const result = await queryCodebase("what does hello() do?", store, config);
     const elapsedMs = Date.now() - startedAt;
 
-    // Elapsed time is pasted into the implementer evidence file per AC-005's
-    // verification clause ("measured elapsed time pasted").
-    // eslint-disable-next-line no-console
-    console.log(
-      `[T-005] black-hole-server query elapsed=${elapsedMs}ms bound=${boundMs}ms`,
-    );
+    expect(result.degraded).toBe(true);
+    expect(result.degradedReason).toBe("llm_request_failed");
+    expect(result.answer).toMatch(/^LLM request failed/);
+    // Lower bound: a `timeout: 1` mutant (or any bound effectively disabled)
+    // would return near-instantly instead of actually waiting out boundMs,
+    // so this by itself discriminates that class of mutant. 50ms slack for
+    // timer-firing jitter.
+    expect(elapsedMs).toBeGreaterThanOrEqual(boundMs - 50);
+    // Upper bound, generous slack (server-side accept latency, event-loop
+    // scheduling) but still tight enough that an unbounded/very-long timeout
+    // or a disabled timeout (which would hang until the test's own runner
+    // timeout, tens of seconds away) fails this assertion instead of
+    // passing by luck.
+    expect(elapsedMs).toBeLessThan(boundMs + 4_000);
+  }, 15_000);
+});
+
+// ── Invoke-level overall deadline (task 844aac2c, round 2) ────────────────
+//
+// The constructor-level `timeout` set on each LLM client (exercised by the
+// black-hole-server test above) only bounds time-to-first-response-byte for
+// the OpenAI/Anthropic SDKs (see docs/configuration.md and the comment on
+// `LLM_MAX_RETRIES` in chain.ts). A server that ACCEPTS the connection,
+// sends response headers promptly, and then stalls the body indefinitely
+// never trips that bound. This exercises the separate invoke-level deadline
+// (`chain.invoke(..., { timeout: config.llmTimeoutMs })`) that covers the
+// whole non-streaming call, headers-received or not.
+
+describe("queryCodebase, real LLM client against a headers-then-stall TCP server (task 844aac2c, round 2)", () => {
+  let server: Server | undefined;
+  let sockets: Array<{ destroy(): void }>;
+
+  afterEach(async () => {
+    if (!server) return;
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server!.close(() => resolve()));
+    server = undefined;
+  });
+
+  it("returns degraded:true within the configured llmTimeoutMs bound even after response headers arrive", async () => {
+    sockets = [];
+    // Send a complete, valid HTTP status line and headers immediately (so
+    // the constructor-level "time to first byte" timeout is satisfied and
+    // would NOT fire), declare a chunked body, then never write a single
+    // body chunk or terminator: the response never completes.
+    server = createServer((socket) => {
+      sockets.push(socket);
+      socket.on("error", () => {
+        // Ignore ECONNRESET from the client's own abort-on-timeout, or from
+        // the teardown-time destroy() above.
+      });
+      socket.write(
+        "HTTP/1.1 200 OK\r\n" +
+          "Content-Type: application/json\r\n" +
+          "Transfer-Encoding: chunked\r\n" +
+          "\r\n",
+      );
+      // Deliberately no further writes: the body stalls forever.
+    });
+    const port = await new Promise<number>((resolve, reject) => {
+      server!.on("error", reject);
+      server!.listen(0, "127.0.0.1", () => {
+        const address = server!.address();
+        if (address === null || typeof address === "string") {
+          reject(new Error("expected a bound TCP port"));
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+
+    const boundMs = 300;
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: `http://127.0.0.1:${port}`,
+      llmApiKey: "test-key",
+      llmModel: "test-model",
+      llmTimeoutMs: boundMs,
+    });
+    const docs = [
+      new Document({
+        pageContent: "function hello() {}",
+        metadata: { filePath: "src/a.ts", repo: "repo-a" },
+      }),
+    ];
+    const store: VectorStoreWrapper = {
+      similaritySearch: async () => docs,
+      addDocuments: async () => {},
+      listRepos: () => [],
+      getFileMetadata: () => null,
+      getFirstChunkByFile: () => null,
+      close: () => {},
+    };
+
+    const startedAt = Date.now();
+    const result = await queryCodebase("what does hello() do?", store, config);
+    const elapsedMs = Date.now() - startedAt;
 
     expect(result.degraded).toBe(true);
     expect(result.degradedReason).toBe("llm_request_failed");
     expect(result.answer).toMatch(/^LLM request failed/);
-    // Generous slack (server-side accept latency, event-loop scheduling) but
-    // still tight enough that an unbounded/very-long timeout or a disabled
-    // timeout (which would hang until the test's own runner timeout, tens
-    // of seconds away) fails this assertion instead of passing by luck.
+    // Lower bound discriminates a mutant that drops or disables the
+    // invoke-level timeout (the response would otherwise never resolve
+    // within the test's own runner timeout).
+    expect(elapsedMs).toBeGreaterThanOrEqual(boundMs - 50);
     expect(elapsedMs).toBeLessThan(boundMs + 4_000);
   }, 15_000);
 });

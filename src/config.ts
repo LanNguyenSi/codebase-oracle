@@ -90,20 +90,25 @@ const configSchema = z.object({
   // value throws.
   maxTextFileSizeBytes: z.number().int().positive().default(2_000_000),
 
-  // LLM request timeout in milliseconds, applied uniformly to every LLM
+  // LLM request timeout in milliseconds, applied both to every LLM
   // constructor in retrieval/chain.ts (Anthropic, OpenAI, and the
-  // openai-compatible/ollama lane) alongside a fixed maxRetries: 0 (see the
-  // comment on LLM_MAX_RETRIES in chain.ts). Default chosen with a cold
-  // local Ollama model in mind: loading a multi-GB model into memory before
-  // the first token can take tens of seconds on a cold start, so a bound
-  // much shorter than this would cut off slow-but-healthy local models
-  // rather than just genuinely unreachable endpoints (see README.md for the
-  // full reasoning). Same fail-loud parse contract as maxFileSizeBytes /
+  // openai-compatible/ollama lane) alongside a fixed maxRetries: 0, and as
+  // the overall invoke-level deadline wrapped around chain.invoke() in
+  // queryCodebase (see the comments on LLM_MAX_RETRIES and the invoke call
+  // in chain.ts). The bound covers the whole non-streaming answer: model
+  // load, prompt evaluation, and the full response, not just time to first
+  // byte. Default chosen with a cold local Ollama model in mind: loading a
+  // multi-GB model into memory plus evaluating a long prompt on CPU can
+  // take well over a minute on a cold start, so a shorter bound would cut
+  // off slow-but-healthy local setups rather than just genuinely
+  // unreachable endpoints (see README.md for the full reasoning). Raise
+  // ORACLE_LLM_TIMEOUT_MS for a slow local setup that still trips this
+  // default. Same fail-loud parse contract as maxFileSizeBytes /
   // maxTextFileSizeBytes: unset (or empty string) falls back to the
-  // default, but a set-but-invalid value (non-numeric, zero, negative)
-  // fails config loading loudly instead of silently resolving to some other
-  // bound.
-  llmTimeoutMs: z.number().int().positive().default(60_000),
+  // default, but a set-but-invalid value (non-numeric, zero, negative, or
+  // one that overflows Node's setTimeout delay range) fails config loading
+  // loudly instead of silently resolving to some other bound.
+  llmTimeoutMs: z.number().int().positive().max(2_147_483_647).default(120_000),
 });
 
 export type Config = z.infer<typeof configSchema>;
