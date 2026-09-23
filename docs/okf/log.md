@@ -2,6 +2,18 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T09:41:06Z, task 53112c27: fixed `--help`/`--version`/the `help`
+  subcommand exiting 1 with an `ok:false` JSON document in `--json` mode
+  (`src/index.ts`, catch handler inserted after line 306). The 14-line
+  insertion sits after every citation in `index-freshness-vs-code-freshness.md`
+  (the one doc listing `src/index.ts` under `sources:`), so no citation moved;
+  its `loadConfig()` call-site lines (74, 90, 150, 192, 221, 247, 263) and the
+  `index` command range (70-79) were re-verified against the edited file and
+  still name the same content. That doc's timestamp was re-stamped
+  (2026-09-23T09:40:18Z) in a separate commit after the source commit.
+  `npx okf-kit@0.10.0 check docs/okf --json` on this commit: 0 errors, 0
+  warnings, 0 notices.
+
 - 2026-09-23T06:21:49Z, task df880cbc: added an additive `ok: true` to the `search`,
   `list-repos` and `query` `--json` success documents and a
   `degraded`/`degradedReason` marker on `query`'s LLM-failure raw-context
