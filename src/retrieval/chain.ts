@@ -32,6 +32,13 @@ export interface QueryResult {
   // formatPointersSection()). Empty when no retrieved chunk carries
   // fmSources metadata.
   pointers: string[];
+  // Set only on the LLM-failure raw-context fallback branch below: a
+  // machine-readable signal for CLI --json consumers (formatQueryJson).
+  // Absent (not false) on every other branch, so JSON.stringify omits the
+  // key entirely for a normal or no-LLM answer, keeping those documents
+  // byte-identical to pre-degraded output.
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 // Format a chunk's path with line numbers when the splitter recorded them.
@@ -252,6 +259,8 @@ export async function queryCodebase(
       answer: `LLM request failed${detailText}. Returning raw retrieved context instead.\n\n${formatRawContextAnswer(docs)}`,
       sources: extractSources(docs),
       pointers,
+      degraded: true,
+      degradedReason: "llm_request_failed",
     };
   }
 

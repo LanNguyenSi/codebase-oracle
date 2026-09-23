@@ -87,6 +87,9 @@ describe("queryCodebase", () => {
       });
       const result = await queryCodebase("what does this do?", store, config);
       expect(result.answer).toBe(formatRawContextAnswer(docs));
+      // No LLM configured (auto, no keys) is not the LLM-failure branch:
+      // degraded stays unset.
+      expect(result.degraded).toBeUndefined();
     });
 
     it("extracts sources from docs in the no-LLM path", async () => {
@@ -207,6 +210,9 @@ describe("queryCodebase — LLM invoke-failure branch (deps seam)", () => {
     expect(result.sources).toHaveLength(2);
     // No fm metadata on these docs: pointers stays empty.
     expect(result.pointers).toEqual([]);
+    // Machine-readable degraded marker for CLI --json consumers.
+    expect(result.degraded).toBe(true);
+    expect(result.degradedReason).toBe("llm_request_failed");
   });
 
   it("still propagates pointers from fmSources when the LLM call fails", async () => {
@@ -281,5 +287,7 @@ describe("queryCodebase, LLM invoke-SUCCESS branch (deps seam)", () => {
 
     expect(result.answer).toBe("the LLM answer");
     expect(result.pointers).toEqual(["src2", "src1"]);
+    // A successful LLM answer is not degraded.
+    expect(result.degraded).toBeUndefined();
   });
 });

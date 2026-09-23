@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `--json` success documents for `query`, `search`, and `list-repos` now
+  carry `"ok": true` (additive; `expand` already had it). `query --json`
+  additionally marks an LLM-failure fallback to raw retrieved context with
+  `"degraded": true` and `"degradedReason": "llm_request_failed"`, while
+  staying `ok: true` and exiting `0`; the README's `--json` contract
+  section documents keys, `ok`, `degraded`, and exit status per command in
+  one place (task `df880cbc`).
 - Two release guards: a vitest unit test fails when CHANGELOG.md's first
   `## [x.y.z] - date` heading differs from package.json's version, and
   release.yml's changelog-extraction step (`scripts/extract-changelog-notes.sh`)

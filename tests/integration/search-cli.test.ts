@@ -131,6 +131,42 @@ function runCli(
   };
 }
 
+function runCliWithEnv(
+  dataDir: string,
+  args: string[],
+  extraEnv: Record<string, string | undefined>,
+): { stdout: string; stderr: string; status: number | null } {
+  // spawnSync coerces every env value with String(), so setting a key to
+  // `undefined` would literally produce the env var "undefined" (truthy)
+  // rather than unsetting it. Build the env as real key deletions instead.
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    ORACLE_DATA_DIR: dataDir,
+    ORACLE_EMBEDDING_PROVIDER: "stub",
+    ORACLE_EMBEDDING_MODEL: "stub",
+  };
+  // The suite must never make a real LLM call: strip inherited credentials
+  // so `auto` resolution can't silently pick one up from the invoking
+  // shell's environment, then let extraEnv layer its own (unreachable)
+  // provider config on top.
+  delete env.ANTHROPIC_API_KEY;
+  delete env.OPENAI_API_KEY;
+  for (const [key, value] of Object.entries(extraEnv)) {
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  const result = spawnSync("npx", ["tsx", indexEntry, ...args], {
+    encoding: "utf8",
+    cwd: repoRoot,
+    env,
+  });
+  return {
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    status: result.status,
+  };
+}
+
 describe("oracle search CLI sources-expansion integration", () => {
   it(
     "injects the [expanded from ...] marker by default; --no-expand-sources suppresses it",
@@ -237,7 +273,7 @@ describe("oracle search CLI sources-expansion integration", () => {
 
     const emptyList = runCli(join(tmp, "empty-data"), ["list-repos", "--json"]);
     expect(emptyList.status, emptyList.stderr).toBe(0);
-    expect(JSON.parse(emptyList.stdout)).toEqual({ repos: [] });
+    expect(JSON.parse(emptyList.stdout)).toEqual({ ok: true, repos: [] });
 
     const expand = runCli(dataDir, [
       "expand", "jsonrepo", "jsonrepo/docs/long.md", "--json",
@@ -257,6 +293,47 @@ describe("oracle search CLI sources-expansion integration", () => {
       ok: false, reason: "not_indexed", message: expect.any(String),
     }));
   });
+
+  it(
+    "query --json marks a normal answer ok: true with no degraded key",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+      await makeRepo(scanRoot, "queryrepo", {
+        "src/thing.ts": "export function thing() { return 1; }\n",
+      });
+      expect(runIndex(scanRoot, dataDir).status).toBe(0);
+
+      // auto + no credentials -> createLlm returns null -> raw-context
+      // answer, NOT the LLM-failure branch: ok: true, no degraded key.
+      const result = runCliWithEnv(
+        dataDir,
+        ["query", "what does thing do?", "--json"],
+        { ORACLE_LLM_PROVIDER: "auto" },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const doc = JSON.parse(result.stdout);
+      expect(doc.ok).toBe(true);
+      expect(doc).not.toHaveProperty("degraded");
+      expect(doc).not.toHaveProperty("degradedReason");
+    },
+  );
+
+  // The LLM-failure -> degraded fallback itself is exercised at the unit
+  // level (tests/unit/query-codebase.test.ts, "LLM invoke-failure branch")
+  // via the deps.createLlm injection seam, and formatQueryJson's rendering
+  // of degraded/degradedReason in tests/unit/format-json.test.ts. A
+  // CLI-spawn repro against a genuinely closed local port was tried here
+  // and dropped: @langchain/openai's ChatOpenAI has no configured
+  // maxRetries/timeout in createOpenAICompatibleLlm, so a real connection
+  // failure isn't surfaced for minutes (measured: >70s against a closed
+  // port before the underlying retry/backoff gives up) - well past any
+  // reasonable test timeout, and lowering it needs a production code
+  // change outside this task's scope (the LLM constructors, not the --json
+  // output contract).
 
   it("returns one JSON error document for pre-action errors on JSON-capable commands", { timeout: 20_000 }, () => {
     for (const args of [

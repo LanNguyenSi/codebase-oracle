@@ -16,6 +16,7 @@ export function formatSearchJson(
   docs: Document[],
 ): string {
   return JSON.stringify({
+    ok: true,
     query,
     repo: repo ?? null,
     limit,
@@ -39,7 +40,7 @@ export function formatSearchJson(
 }
 
 export function formatReposJson(repos: IndexedRepo[]): string {
-  return JSON.stringify({ repos });
+  return JSON.stringify({ ok: true, repos });
 }
 
 export function formatExpandJson(result: ExpandResult): string {
@@ -48,10 +49,15 @@ export function formatExpandJson(result: ExpandResult): string {
 
 export function formatQueryJson(question: string, result: QueryResult): string {
   return JSON.stringify({
+    ok: true,
     question,
     answer: result.answer,
     sources: result.sources.map(({ filePath, repo }) => ({ filePath, repo })),
     pointers: result.pointers,
+    // Additive: only present (and true) on the LLM-failure raw-context
+    // fallback branch of queryCodebase(). Absent on every other branch, so
+    // JSON.stringify omits the key and pre-existing consumers see no change.
+    ...(result.degraded ? { degraded: true, degradedReason: result.degradedReason } : {}),
   });
 }
 
