@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-09-23T05:06:41Z
+timestamp: 2026-09-23T05:35:38Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -50,7 +50,7 @@ const defaultLlmModel = llmProvider === "openai"
 
 ### What `auto` resolves to (`createLlm`, `src/retrieval/chain.ts:428-471`)
 
-`auto` is not routed by a dedicated branch. It falls through the explicit-provider `if`s and lands on the credential-sniffing tail: `anthropicApiKey` present -> Anthropic (`462-463`); else `openaiApiKey` present -> OpenAI with the hardcoded `OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini"` (`chain.ts:24`, `466-467`); else returns `null` (`470`). `auto` **never** resolves to `openai-compatible` or `ollama` — those require an explicit `ORACLE_LLM_PROVIDER`.
+`auto` is not routed by a dedicated branch. It falls through the explicit-provider `if`s and lands on the credential-sniffing tail: `anthropicApiKey` present -> Anthropic (`462-463`); else `openaiApiKey` present -> OpenAI with the hardcoded `OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini"` (`chain.ts:24`, `466-467`); else returns `null` (`470`). `auto` **never** resolves to `openai-compatible` or `ollama`: those require an explicit `ORACLE_LLM_PROVIDER`.
 
 ## The gotcha: only the Anthropic lane caps `maxTokens`
 

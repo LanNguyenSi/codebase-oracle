@@ -2,7 +2,7 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-09-23T05:06:41Z, task df880cbc (implementer): added additive `ok: true`
+- 2026-09-23T05:35:38Z, task df880cbc (implementer): added additive `ok: true`
   on `search`/`list-repos`/`query` `--json` success documents and a
   `degraded`/`degradedReason` marker on `query`'s LLM-failure raw-context
   fallback, in `src/retrieval/chain.ts` (`QueryResult` interface and the
@@ -23,11 +23,35 @@
   offset. Every other citation in both docs was
   already accurate pre-edit and got the mechanical +7/+9 shift. Re-stamped
   both docs' `timestamp` to this task's verification instant. `okf-kit
-  check --json docs/okf` after this commit: 0 errors, the two docs'
-  `citations-resolve` warnings (4 pre-existing at baseline) cleared; the
-  5 `log.md` `CHANGELOG.md:101` `blank-start-line` warnings are the
-  unrelated pre-existing historical-prose fragility described in the
-  2026-09-22 entry below and were left untouched.
+  check --json docs/okf` after the source-file edits alone: 0 errors,
+  0 warnings, 0 notices; the two docs' `citations-resolve` warnings
+  (4 pre-existing at baseline) cleared.
+  This task's own `CHANGELOG.md` `## [Unreleased]` entry then added 7
+  net lines above every released section, shifting the `` `## [0.10.0]` ``
+  heading from line 101 to line 108 (measured against base commit
+  9b2853c, which itself checked 0 errors, 0 warnings, 0 notices) and
+  landing every bare, colon-formatted `CHANGELOG.md` line-101 mention in
+  this log's older entries below on that now-blank line. A round-1 draft
+  of this entry wrongly called those "4 pre-existing at baseline"
+  warnings; they were not pre-existing (base measured 0/0/0) and the
+  corrected count is seven, not five: six blank-start-line hits (one per
+  bare `CHANGELOG.md` line-101 mention below, including one this entry
+  itself used to add) and one range-exceeds-file hit, where this entry's
+  own added citation made an unrelated bare continuation citation two
+  entries below resolve against `CHANGELOG.md` instead of the file it
+  meant. Fixed by qualifying that continuation citation with its own
+  file name and by re-pointing every historical `CHANGELOG.md` line-101
+  mention below to name the `` `## [0.10.0]` `` heading instead of a raw
+  line number, and every line-97 mention to name its MAX_FILE_BYTES quote
+  instead of a raw line number, so none of them is a resolvable
+  file-colon-line citation that a future `CHANGELOG.md` edit could
+  re-break; this entry follows the same rule and names neither number
+  with a colon. Also replaced a pre-existing em dash each on the two
+  rewritten `provider-enums-and-token-budget.md` and `sources-expansion.md`
+  lines above (punctuation only, no claim or citation changed); re-stamped
+  both docs' `timestamp` again to this fix's own verification instant.
+  `okf-kit check --json docs/okf` after this fix: 0 errors, 0 warnings,
+  0 notices.
 
 - 2026-09-22T06:05:17Z, task e53a6d9d (implementer): added a `## [Unreleased]`
   entry to `CHANGELOG.md` (release guards) for a codebase-oracle-local
@@ -61,18 +85,25 @@
   unreleased section; it now cites the section by heading
   (`` `CHANGELOG.md:#0.10.2` ``), the form this bundle's index prescribes, so
   later cuts cannot shift it; its `getFirstChunkByFileInternal` range in
-  `src/store/sqlite-store.ts` was five lines early and now reads `:777-789`.
+  `src/store/sqlite-store.ts` was five lines early and now reads
+  `src/store/sqlite-store.ts:777-789` (written out fully qualified here,
+  not as a bare `:777-789` continuation, since a bare continuation
+  citation resolves against whichever file a prior citation anywhere
+  earlier in this log last named, not necessarily the file named in this
+  same sentence; task df880cbc's round-2 fix found this the hard way when
+  a `CHANGELOG.md` citation added above this entry made the bare
+  `:777-789` here resolve against `CHANGELOG.md` instead and exceed its
+  length).
   Re-stamped. The cut grew `CHANGELOG.md` by seven lines above every released
   section (the heading, its blank line, five lines of added Security
-  bullets). The bare `CHANGELOG.md:97` and `CHANGELOG.md:101` line numbers in
-  this log's older entries are history, not a live citation: each release
-  cut shifts them forward again, and the newest entry at the top of this
-  log states the shift that is current as of that cut (see the
-  2026-09-22T06:05:17Z entry above for the shift current as of this
-  writing). The check stops reporting them as blank-start-line warnings
-  only when the lines they land on happen to be non-blank. The live docs
-  cite those passages by heading (`` `CHANGELOG.md:#0.10.0` ``) and are
-  unaffected.
+  bullets). The bare `CHANGELOG.md` line-97 and line-101 mentions (written
+  here without a colon so this sentence is not itself a resolvable
+  citation) in this log's older entries are history, not a live citation:
+  each release cut shifts what a raw line number like that would land on,
+  which is why this log's older entries below now name the `` `## [0.10.0]`
+  `` heading by name instead of a bare line number wherever they refer to
+  it. The live docs cite those passages by heading (`` `CHANGELOG.md:#0.10.0`
+  ``) and are unaffected.
 
 - 2026-09-08T04:38:41Z, task 8cfca118 (implementer): applied the pattern
   harness adopted (PRs #514, #516) to close the recurring `CHANGELOG.md`
@@ -85,7 +116,8 @@
   previously duplicated the old limit as its own `MAX_FILE_BYTES`
   constant") against `CHANGELOG.md`'s `## [0.10.0] - 2026-07-04` section:
   both quotes match verbatim inside it. Re-pointed both citations from
-  line numbers (`CHANGELOG.md:101`, `CHANGELOG.md:97`) to the heading form
+  line numbers (the `` `## [0.10.0]` `` heading line, and the
+  MAX_FILE_BYTES-quote line) to the heading form
   `` `CHANGELOG.md:#0.10.0` ``, and dropped `CHANGELOG.md` from the doc's
   frontmatter `sources:`. Doc re-stamped (`timestamp: 2026-09-08T04:38:41Z`).
   Also added the maintenance rule to `docs/okf/index.md` ("do not list
@@ -115,18 +147,20 @@
   `-p, --path <path>` option and other commands added ahead of them since
   the doc was last verified).
   ingest-size-limit-enforcement.md: 32 checked, 2 corrected (old line 82 in
-  `CHANGELOG.md`, re-pointed to `CHANGELOG.md:101`, for the "was silently
-  dropped" 0.10.0 quote; old line 78 in `CHANGELOG.md`, re-pointed to
-  `CHANGELOG.md:97`, for the "MAX_FILE_BYTES constant" quote; both shifted
-  by the `[Unreleased]` CLI `--json`-flag entry added to CHANGELOG.md).
+  `CHANGELOG.md`, re-pointed to the `` `## [0.10.0]` `` heading line, for
+  the "was silently dropped" 0.10.0 quote; old line 78 in `CHANGELOG.md`,
+  re-pointed to the MAX_FILE_BYTES-quote line, for the "MAX_FILE_BYTES
+  constant" quote; both shifted by the `[Unreleased]` CLI `--json`-flag
+  entry added to CHANGELOG.md).
   That second correction is also one of the four blank-start-line fixes:
-  `CHANGELOG.md:97` starts on content. The other three blank-start-line
-  fixes are inside this log's own earlier historical entries, and only the
-  cited range was re-pointed there, the surrounding narrative is left as
-  written at the time: the 2026-09-01T07:30:00Z entry's old line 80 in
-  `CHANGELOG.md` is now `CHANGELOG.md:101` and its old line 76 in
-  `CHANGELOG.md` is now `CHANGELOG.md:97` (the same two CHANGELOG.md quotes
-  above, shifted further since that entry was written), and the
+  the MAX_FILE_BYTES-quote line starts on content. The other three
+  blank-start-line fixes are inside this log's own earlier historical
+  entries, and only the cited range was re-pointed there, the surrounding
+  narrative is left as written at the time: the 2026-09-01T07:30:00Z
+  entry's old line 80 in `CHANGELOG.md` is now the `` `## [0.10.0]` ``
+  heading line and its old line 76 in `CHANGELOG.md` is now the
+  MAX_FILE_BYTES-quote line (the same two CHANGELOG.md quotes above,
+  shifted further since that entry was written), and the
   2026-08-22T05:21:41Z entry's old line 98 in `src/index.ts` is now
   `src/index.ts:132` (the `-g, --path-glob <glob>` commander option
   definition, text unchanged, line shifted).
@@ -192,8 +226,9 @@
   two citations in ingest-size-limit-enforcement.md's historical section that
   the first check run had missed (only sources-fresh and the new prune
   citation were checked by hand there): the "was silently dropped" 0.10.0
-  quote's line number moved from 71 to CHANGELOG.md:101, and the "MAX_FILE_BYTES
-  constant" quote's moved from 67 to CHANGELOG.md:97. `okf-kit check` (0.8.0)
+  quote's line number moved from 71 to the `` `## [0.10.0]` `` heading
+  line, and the "MAX_FILE_BYTES constant" quote's moved from 67 to the
+  MAX_FILE_BYTES-quote line. `okf-kit check` (0.8.0)
   now reports 0 errors, 0 warnings; the 5 remaining NOTICEs are pre-existing bare
   `runner.ts:NN` / `config.ts:NN` ambiguous-citation notices in THIS log's
   own historical entries, already flagged this way before round 2 (see the
