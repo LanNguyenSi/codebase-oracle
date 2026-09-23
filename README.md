@@ -158,6 +158,20 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 | `--no-expand-sources` | (`search` only) Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter); expansion is on by default. |
 | `--json` | (`query`, `search`, `list-repos`, and `expand`) Emit exactly one JSON document on stdout. Search returns complete chunk text; diagnostics go to stderr. JSON errors exit nonzero. |
 
+### `--json` contract
+
+One JSON document on stdout, same shape rules for all four commands:
+
+- **Success**: the document carries `"ok": true` alongside the command's own keys (`query`'s `question`/`answer`/`sources`/`pointers`, `search`'s `query`/`repo`/`limit`/`results`, `list-repos`'s `repos`, `expand`'s `repo`/`path`/`lineStart`/`lineEnd`/`totalLines`/`text`). This is additive to every existing key; nothing already shipped in 0.12.0 was removed or renamed.
+- **Failure**: the process exits nonzero and the document is `{"ok": false, "error": {"message": "..."}}` for an argument or unknown-option error, on any of the four commands, `expand` included. `expand` additionally has its own lookup-failure shape, `{"ok": false, "reason": "...", "message": "..."}` (`reason` one of `not_indexed`, `no_absolute_path`, `file_missing`, `read_error`), returned instead when the command runs but the requested file cannot be resolved; it does not carry an `error` key. This was already true in 0.12.0.
+- **Degraded success** (`query` only): when the LLM call fails and `query` falls back to returning raw retrieved context instead of a generated answer, the document additionally carries `"degraded": true` and `"degradedReason": "llm_request_failed"`. `ok` stays `true` and the exit status stays `0`: retrieval succeeded and the document contains real (if unsynthesized) content, so this is a successful call with a degraded answer, not a failure. A consumer that wants a hard error on LLM failure should treat `degraded: true` as its own outcome and branch on it explicitly.
+
+A machine consumer can therefore always tell success, degraded success, and failure apart from the document alone: check `ok` first, then `degraded` on a `query` document with `ok: true`. `oracle_query` (the MCP tool) does not carry `degraded` into its output: it renders only `answer` + sources + pointers as plain text, so the marker is CLI `--json`-only by construction, not by a separate code path that could drift from it.
+
+At the top level, `--help` and `--version` are not JSON-mode output even when `--json` is also passed: they are commander's own pre-existing plain-text output, printed (and the process exited) before this contract's action code runs. `<command> --help --json` currently prints help followed by an ok:false "(outputHelp)" document and exits 1 (pre-existing, tracked separately).
+
+A `query` whose retrieval finds nothing, and a `query` that falls through to the raw-context answer because no LLM is configured at all (`auto` with no provider credentials set, rather than a configured provider whose call failed), are both ordinary successes: `ok: true` with no `degraded` key. A consumer that needs to detect empty retrieval specifically should check `sources: []` rather than `degraded`, which marks only the LLM-call-failed fallback.
+
 Watch mode runs a chokidar watcher over the scan root and re-embeds changed files after a short debounce. Newly dropped `.git` roots need one explicit `npm run index` to back-fill before watch mode picks up subsequent edits. See [docs/architecture.md](docs/architecture.md#watch-mode) for details.
 
 On a machine that serves as the index source of truth, `scripts/oracle-refresh.sh` fast-forwards every clean checkout under `ORACLE_SCAN_ROOT` before running `npm run index`; see [docs/configuration.md](docs/configuration.md#scheduled-refresh-macos-launchd) for the macOS launchd setup, and its [systemd user timer](docs/configuration.md#scheduled-reindex-systemd-user-timer) note just above it for Linux.
