@@ -280,7 +280,7 @@ describe("createLlm", () => {
     expect(warn).toHaveBeenCalledTimes(1);
   });
 
-  // T-005 (844aac2c): every LLM constructor sets a bound timeout and
+  // 844aac2c: every LLM constructor sets a bound timeout and
   // maxRetries: 0 from config.llmTimeoutMs, so a closed/unresponsive
   // endpoint surfaces as a failure within the configured bound instead of
   // hanging (and instead of a retried call multiplying the wait past that

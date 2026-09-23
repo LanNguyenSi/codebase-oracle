@@ -479,9 +479,8 @@ describe("queryCodebase, real LLM client against a headers-then-stall TCP server
     expect(result.degraded).toBe(true);
     expect(result.degradedReason).toBe("llm_request_failed");
     expect(result.answer).toMatch(/^LLM request failed/);
-    // Lower bound discriminates a mutant that drops or disables the
-    // invoke-level timeout (the response would otherwise never resolve
-    // within the test's own runner timeout).
+    // Lower bound catches a too-short deadline (e.g. { timeout: 1 }); a
+    // removed deadline instead hangs until the test's own runner timeout.
     expect(elapsedMs).toBeGreaterThanOrEqual(boundMs - 50);
     expect(elapsedMs).toBeLessThan(boundMs + 4_000);
   }, 15_000);
