@@ -116,6 +116,8 @@ sources: agent-tasks/backend/src/config.ts, agent-tasks/backend/src/server.ts
 - agent-tasks-cli — 421 chunks across 68 files (indexed 2026-04-27T10:14:18Z, 14 min ago)
 ```
 
+Every answer LLM call (Anthropic, OpenAI, and the `openai-compatible`/`ollama` lane) is bounded by `ORACLE_LLM_TIMEOUT_MS` (default 60000ms, retries disabled): an unreachable or unresponsive endpoint falls back to raw retrieved context within that bound instead of hanging. The default is chosen with a cold local Ollama model in mind, since loading a multi-GB model into memory before its first token can take tens of seconds on a cold start; a shorter default would misclassify that as unreachable. See [docs/configuration.md](docs/configuration.md) for the full env-var reference.
+
 ## Next steps
 
 | If you want to... | Read |

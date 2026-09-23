@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { Document } from "@langchain/core/documents";
+import { createServer, type Server } from "node:net";
 import {
   queryCodebase,
   formatRawContextAnswer,
@@ -21,6 +22,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
+    llmTimeoutMs: 60_000,
     ...overrides,
   };
 }
@@ -290,4 +292,106 @@ describe("queryCodebase, LLM invoke-SUCCESS branch (deps seam)", () => {
     // A successful LLM answer is not degraded.
     expect(result.degraded).toBeUndefined();
   });
+});
+
+// ── Bounded LLM timeout (task 844aac2c) ───────────────────────────────────
+//
+// A real (no mock) LLM constructed through the openai-compatible lane,
+// pointed at a local TCP server that ACCEPTS the connection and then never
+// writes a byte back (no HTTP response at all, the closed-port case from
+// the task ("a closed local port took more than 70 s to surface as a
+// failure") plus the slow-but-connected case a closed port alone doesn't
+// cover). Without a request timeout this hangs indefinitely; with
+// config.llmTimeoutMs set, the underlying HTTP client aborts the request
+// after that bound and queryCodebase's existing catch-and-degrade branch
+// (exercised via deps injection above) takes over for real, through the
+// full createLlm -> chain.invoke() path with no injection seam at all.
+
+describe("queryCodebase, real LLM client against a black-hole TCP server (task 844aac2c)", () => {
+  let server: Server | undefined;
+  // The client's socket is deliberately never closed by the black-hole
+  // handler below (that's the point: it never writes or ends), so
+  // server.close() alone would hang waiting for it to drain. Track and
+  // destroy every accepted socket on teardown instead.
+  let sockets: Array<{ destroy(): void }>;
+
+  afterEach(async () => {
+    if (!server) return;
+    for (const socket of sockets) socket.destroy();
+    await new Promise<void>((resolve) => server!.close(() => resolve()));
+    server = undefined;
+  });
+
+  it("returns degraded:true within the configured llmTimeoutMs bound instead of hanging", async () => {
+    sockets = [];
+    // Accept every connection and never write or end it: the client's
+    // socket connects successfully, so this is a response-timeout (not a
+    // connection-refused) scenario, and never resolves on its own.
+    server = createServer((socket) => {
+      sockets.push(socket);
+      socket.on("error", () => {
+        // Ignore ECONNRESET from the client's own abort-on-timeout, or from
+        // the teardown-time destroy() above; a black-hole server that
+        // crashed on either would be a test bug, not a passing run.
+      });
+    });
+    const port = await new Promise<number>((resolve, reject) => {
+      server!.on("error", reject);
+      server!.listen(0, "127.0.0.1", () => {
+        const address = server!.address();
+        if (address === null || typeof address === "string") {
+          reject(new Error("expected a bound TCP port"));
+          return;
+        }
+        resolve(address.port);
+      });
+    });
+
+    const boundMs = 300;
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: `http://127.0.0.1:${port}`,
+      llmApiKey: "test-key",
+      llmModel: "test-model",
+      llmTimeoutMs: boundMs,
+    });
+    const docs = [
+      new Document({
+        pageContent: "function hello() {}",
+        metadata: { filePath: "src/a.ts", repo: "repo-a" },
+      }),
+    ];
+    const store: VectorStoreWrapper = {
+      similaritySearch: async () => docs,
+      addDocuments: async () => {},
+      listRepos: () => [],
+      getFileMetadata: () => null,
+      getFirstChunkByFile: () => null,
+      close: () => {},
+    };
+
+    const startedAt = Date.now();
+    // No `deps` override: this goes through the real `createLlm` (as
+    // `queryCodebase`'s own default) and the real ChatOpenAI client, so the
+    // timeout under test is the one actually wired into the constructor,
+    // not a stand-in for it.
+    const result = await queryCodebase("what does hello() do?", store, config);
+    const elapsedMs = Date.now() - startedAt;
+
+    // Elapsed time is pasted into the implementer evidence file per AC-005's
+    // verification clause ("measured elapsed time pasted").
+    // eslint-disable-next-line no-console
+    console.log(
+      `[T-005] black-hole-server query elapsed=${elapsedMs}ms bound=${boundMs}ms`,
+    );
+
+    expect(result.degraded).toBe(true);
+    expect(result.degradedReason).toBe("llm_request_failed");
+    expect(result.answer).toMatch(/^LLM request failed/);
+    // Generous slack (server-side accept latency, event-loop scheduling) but
+    // still tight enough that an unbounded/very-long timeout or a disabled
+    // timeout (which would hang until the test's own runner timeout, tens
+    // of seconds away) fails this assertion instead of passing by luck.
+    expect(elapsedMs).toBeLessThan(boundMs + 4_000);
+  }, 15_000);
 });

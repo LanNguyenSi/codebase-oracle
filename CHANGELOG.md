@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Every LLM constructor (Anthropic, OpenAI, and the `openai-compatible`/
+  `ollama` lane) now sets a request timeout from the new
+  `ORACLE_LLM_TIMEOUT_MS` env var (default 60000ms, chosen with a cold
+  local Ollama model in mind) and a fixed `maxRetries: 0`, so an
+  unreachable or unresponsive LLM endpoint falls back to raw retrieved
+  context within that bound instead of hanging (previously a closed local
+  port could take over 70 seconds to surface as a failure). See
+  docs/configuration.md and README.md for the default and its reasoning
+  (task `844aac2c`).
 - `--json` success documents for `query`, `search`, and `list-repos` now
   carry `"ok": true` (additive; `expand` already had it). `query --json`
   additionally marks an LLM-failure fallback to raw retrieved context with

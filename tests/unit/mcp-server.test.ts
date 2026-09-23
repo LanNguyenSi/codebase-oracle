@@ -62,6 +62,7 @@ const testConfig: Config = {
   vectorStoreType: "directory",
   maxFileSizeBytes: 500_000,
   maxTextFileSizeBytes: 2_000_000,
+    llmTimeoutMs: 60_000,
 };
 
 const fakeSummary: IndexSummary = {

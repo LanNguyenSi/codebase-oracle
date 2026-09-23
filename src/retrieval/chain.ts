@@ -355,12 +355,34 @@ function ensureV1BaseUrl(baseUrl: string): string {
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
+// Every LLM constructor below sets its request timeout from this one config
+// value (config.llmTimeoutMs, env ORACLE_LLM_TIMEOUT_MS; see config.ts for
+// the documented default and README.md for the Ollama-cold-start reasoning
+// behind that default) and its retry count to this fixed constant. Retries
+// are disabled (0) rather than left at each SDK's own default (6 for the
+// langchain-level AsyncCaller wrapper, 2 for the Anthropic SDK's own client)
+// because a retried call multiplies the wall-clock wait by the retry count
+// with exponential backoff on top, which would blow the configured timeout
+// bound out to several times its value instead of bounding total latency to
+// it. queryCodebase's raw-context fallback (chain.ts, the `degraded: true`
+// branch) already covers a single failed attempt, so there is no
+// availability benefit to retrying here that would offset that cost.
+const LLM_MAX_RETRIES = 0;
+
 function createAnthropicLlm(config: Config) {
   return new ChatAnthropic({
     anthropicApiKey: config.anthropicApiKey!,
     modelName: config.llmModel,
     temperature: 0,
     maxTokens: 4096,
+    maxRetries: LLM_MAX_RETRIES,
+    // ChatAnthropic has no top-level `timeout` field (unlike ChatOpenAI
+    // below): the underlying @anthropic-ai/sdk client only accepts it via
+    // `clientOptions` (see node_modules/@anthropic-ai/sdk/client.d.ts,
+    // ClientOptions.timeout / ClientOptions.maxRetries). Setting maxRetries
+    // here too keeps the SDK's own retry layer from adding its own
+    // backoff-multiplied wait on top of the langchain-level maxRetries above.
+    clientOptions: { timeout: config.llmTimeoutMs, maxRetries: LLM_MAX_RETRIES },
   });
 }
 
@@ -369,6 +391,8 @@ function createOpenAILlm(config: Config, modelName: string) {
     openAIApiKey: config.openaiApiKey!,
     modelName,
     temperature: 0,
+    timeout: config.llmTimeoutMs,
+    maxRetries: LLM_MAX_RETRIES,
     configuration: config.openaiBaseUrl
       ? { baseURL: config.openaiBaseUrl }
       : undefined,
@@ -402,6 +426,8 @@ function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
     apiKey,
     modelName: config.llmModel,
     temperature: 0,
+    timeout: config.llmTimeoutMs,
+    maxRetries: LLM_MAX_RETRIES,
     configuration: { baseURL },
   });
 }

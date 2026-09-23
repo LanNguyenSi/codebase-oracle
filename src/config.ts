@@ -89,6 +89,21 @@ const configSchema = z.object({
   // maxFileSizeBytes: unset falls back to the default, a set-but-invalid
   // value throws.
   maxTextFileSizeBytes: z.number().int().positive().default(2_000_000),
+
+  // LLM request timeout in milliseconds, applied uniformly to every LLM
+  // constructor in retrieval/chain.ts (Anthropic, OpenAI, and the
+  // openai-compatible/ollama lane) alongside a fixed maxRetries: 0 (see the
+  // comment on LLM_MAX_RETRIES in chain.ts). Default chosen with a cold
+  // local Ollama model in mind: loading a multi-GB model into memory before
+  // the first token can take tens of seconds on a cold start, so a bound
+  // much shorter than this would cut off slow-but-healthy local models
+  // rather than just genuinely unreachable endpoints (see README.md for the
+  // full reasoning). Same fail-loud parse contract as maxFileSizeBytes /
+  // maxTextFileSizeBytes: unset (or empty string) falls back to the
+  // default, but a set-but-invalid value (non-numeric, zero, negative)
+  // fails config loading loudly instead of silently resolving to some other
+  // bound.
+  llmTimeoutMs: z.number().int().positive().default(60_000),
 });
 
 export type Config = z.infer<typeof configSchema>;
@@ -142,6 +157,7 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     skipDirs: parseCsvList(process.env.ORACLE_SKIP_DIRS),
     maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE),
     maxTextFileSizeBytes: parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE),
+    llmTimeoutMs: parseLlmTimeoutMs(process.env.ORACLE_LLM_TIMEOUT_MS),
     ...overrides,
   });
 }
@@ -182,6 +198,14 @@ function parseMaxFileSizeBytes(raw: string | undefined): number | undefined {
 // pattern above) rather than a shared parser, so each env var keeps an
 // independent, greppable definition.
 function parseMaxTextFileSizeBytes(raw: string | undefined): number | undefined {
+  if (raw === undefined || raw.trim() === "") return undefined;
+  return Number(raw);
+}
+
+// Same unset/empty-string/fail-loud contract as parseMaxFileSizeBytes, for
+// ORACLE_LLM_TIMEOUT_MS. A typo'd timeout must fail loudly rather than
+// silently resolving to some other bound (or to no bound at all).
+function parseLlmTimeoutMs(raw: string | undefined): number | undefined {
   if (raw === undefined || raw.trim() === "") return undefined;
   return Number(raw);
 }
