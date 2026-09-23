@@ -2,6 +2,27 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T10:28:00Z, task 844aac2c (round 2, review r1 finding D-008): added
+  an invoke-level overall deadline (`chain.invoke(..., { timeout:
+  config.llmTimeoutMs })`) in `queryCodebase` alongside the existing
+  constructor-level timeout, since the constructor timeout only bounds
+  time-to-first-response-byte and a headers-then-stall server could still
+  hang. Raised the `ORACLE_LLM_TIMEOUT_MS` default to 120000 and added a
+  `.max(2147483647)` ceiling in `src/config.ts`. Corrected the retry-layer
+  comments in `src/retrieval/chain.ts` (LangChain pins the underlying SDK
+  client's own `maxRetries` to 0 regardless of `clientOptions`). This
+  insertion shifted every later `chain.ts` line by +26 and every later
+  `config.ts` line by +5; every citation into either file was re-verified
+  against the edited files and re-pointed in the four bundle docs that list
+  either file: `provider-enums-and-token-budget.md`,
+  `sources-expansion.md`, `ingest-size-limit-enforcement.md`,
+  `index-freshness-vs-code-freshness.md`. `configuration-pointer.md` gained
+  no line citations (timestamp-only re-stamp for its `docs/configuration.md`
+  source). `npx okf-kit@0.10.0 check docs/okf --json` before this
+  re-verification and re-stamp: 0 errors, 7 `citations-resolve`/`sources-fresh`
+  warnings across the four line-citing docs; after: 0 errors, 0 warnings, 0
+  notices (checked against this commit).
+
 - 2026-09-23T10:00:30Z, task 844aac2c: every LLM constructor in
   `src/retrieval/chain.ts` now sets a request timeout and `maxRetries: 0`
   from a new `config.llmTimeoutMs` field (`src/config.ts`, env

@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together. Since the per-type ceiling was added, the applicable env var name travels with each skip so the WARNING names the knob that actually needs raising.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-09-23T10:00:30Z
+timestamp: 2026-09-23T10:28:00Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -50,18 +50,18 @@ the per-type ceiling existed) produce a WARNING telling the operator to raise th
   (config.ts:91). Both positive int required.
 - Env plumbing: `maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE)`
   and `maxTextFileSizeBytes: parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE)`
-  (config.ts:158-159).
-- `parseMaxFileSizeBytes(raw)` (config.ts:190-193) and the near-identical
-  `parseMaxTextFileSizeBytes(raw)` (config.ts:200-203): `undefined` or
+  (config.ts:163-164).
+- `parseMaxFileSizeBytes(raw)` (config.ts:195-198) and the near-identical
+  `parseMaxTextFileSizeBytes(raw)` (config.ts:205-208): `undefined` or
   `raw.trim() === ""` returns `undefined` (schema default applies); otherwise
   `Number(raw)` is handed straight to `configSchema.parse`, where
   `.int().positive()` rejects `NaN`/`0`/negative and `loadConfig` throws. Two
   separate functions (not a shared parser) — mirrors the existing
   `parseExtensionsList` / `parseCsvList` pattern of one function per env var.
-  (A third, near-identical `parseLlmTimeoutMs(raw)` (config.ts:208-211) was
+  (A third, near-identical `parseLlmTimeoutMs(raw)` (config.ts:213-216) was
   added alongside these for `ORACLE_LLM_TIMEOUT_MS`, task `844aac2c`; same
   contract, unrelated env var, out of this doc's ingest-size-limit scope.)
-- The empty-`.env`-line contract is spelled out in the comment at config.ts:182-189:
+- The empty-`.env`-line contract is spelled out in the comment at config.ts:187-194:
   an `ORACLE_MAX_FILE_SIZE=` line "must not crash the CLI" (treated as unset), but
   "A typo'd ORACLE_MAX_FILE_SIZE must fail loudly, not silently resolve to some other limit."
   Same contract for `ORACLE_MAX_TEXT_FILE_SIZE`.

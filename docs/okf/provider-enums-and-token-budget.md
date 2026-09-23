@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-09-23T10:00:30Z
+timestamp: 2026-09-23T10:28:00Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -27,12 +27,12 @@ llmProvider: z.enum([
 ]).default("auto"),
 ```
 
-- `embeddingProvider`, env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:125-127`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only, `config.ts:22-24`.)
-- `llmProvider`, env `ORACLE_LLM_PROVIDER` (`config.ts:128-130`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
+- `embeddingProvider`, env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:130-132`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only, `config.ts:22-24`.)
+- `llmProvider`, env `ORACLE_LLM_PROVIDER` (`config.ts:133-135`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
 
 They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:52-55` says these keys are kept separate because doing so "lets embedding and LLM live on different providers without leaking keys across lanes."
 
-## Default models (`loadConfig`, `config.ts:132-139`)
+## Default models (`loadConfig`, `config.ts:137-144`)
 
 ```ts
 const defaultEmbeddingModel = embeddingProvider === "ollama"
@@ -48,9 +48,9 @@ const defaultLlmModel = llmProvider === "openai"
 - Embedding default: `nomic-embed-text` for `ollama`, else `text-embedding-3-small`. Override: `ORACLE_EMBEDDING_MODEL`.
 - LLM default: `gpt-4o-mini` for `openai`, `llama3.1` for `ollama`, else (`auto`, `anthropic`, **and `openai-compatible`**) `claude-sonnet-4-6`. Override: `ORACLE_LLM_MODEL`. Note that `openai-compatible` inherits the Anthropic-named default, so a real endpoint almost always needs `ORACLE_LLM_MODEL` set explicitly.
 
-### What `auto` resolves to (`createLlm`, `src/retrieval/chain.ts:454-497`)
+### What `auto` resolves to (`createLlm`, `src/retrieval/chain.ts:480-523`)
 
-`auto` is not routed by a dedicated branch. It falls through the explicit-provider `if`s and lands on the credential-sniffing tail: `anthropicApiKey` present -> Anthropic (`488-489`); else `openaiApiKey` present -> OpenAI with the hardcoded `OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini"` (`chain.ts:24`, `492-493`); else returns `null` (`496`). `auto` **never** resolves to `openai-compatible` or `ollama`: those require an explicit `ORACLE_LLM_PROVIDER`.
+`auto` is not routed by a dedicated branch. It falls through the explicit-provider `if`s and lands on the credential-sniffing tail: `anthropicApiKey` present -> Anthropic (`514-515`); else `openaiApiKey` present -> OpenAI with the hardcoded `OPENAI_AUTO_FALLBACK_MODEL = "gpt-4o-mini"` (`chain.ts:24`, `518-519`); else returns `null` (`522`). `auto` **never** resolves to `openai-compatible` or `ollama`: those require an explicit `ORACLE_LLM_PROVIDER`.
 
 ## The gotcha: only the Anthropic lane caps `maxTokens`
 
@@ -70,7 +70,7 @@ function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {  /
 }
 ```
 
-`createAnthropicLlm` sets `maxTokens: 4096` (`chain.ts:377`). `createOpenAILlm` (`389-400`) and `createOpenAICompatibleLlm` (`407-433`) construct `ChatOpenAI` with **no `maxTokens` at all** (both now also set a shared `timeout`/`maxRetries` pair, task `844aac2c`, orthogonal to the token-budget gotcha below). Both `openai-compatible` and legacy `ollama` route through `createOpenAICompatibleLlm` (`chain.ts:402`, `471-486`).
+`createAnthropicLlm` sets `maxTokens: 4096` (`chain.ts:402`). `createOpenAILlm` (`415-426`) and `createOpenAICompatibleLlm` (`433-459`) construct `ChatOpenAI` with **no `maxTokens` at all** (both now also set a shared `timeout`/`maxRetries` pair, task `844aac2c`, orthogonal to the token-budget gotcha below). Both `openai-compatible` and legacy `ollama` route through `createOpenAICompatibleLlm` (`chain.ts:428`, `507`, `511`).
 
 ### Failure mode (thinking models on an OpenAI-compatible endpoint)
 
@@ -95,10 +95,10 @@ ORACLE_LLM_MODEL=gemma4-26b-a4b-64k
 
 ## Other LLM knobs
 
-- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:154`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`155`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`152`). These are the preferred `openai-compatible` inputs.
-- `createOpenAICompatibleLlm` resolves the base URL through an intermediate `ollamaBaseUrl` local: `config.ollamaBaseUrl`, falling back to `DEFAULT_OLLAMA_BASE_URL` only for the legacy `ollama` alias (`chain.ts:415-416`), then `config.llmBaseUrl ?? ollamaBaseUrl!` (`chain.ts:417`). This indirection is the `ab6aad16` fix: `config.ollamaBaseUrl` no longer carries a schema default, so an `openai-compatible` lane with nothing configured genuinely resolves `ollamaBaseUrl` to `undefined` here instead of silently landing on localhost. The key resolves as `config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey` (`chain.ts:424`), where `fallbackKey` is `"ollama"` for the legacy alias and `""` otherwise (`chain.ts:423`). It deliberately does **not** fall back to `openaiApiKey` (`chain.ts:405-406`).
-- Ollama base-url precedence (`config.ts:149`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default anymore (`config.ts:47`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard as a real `undefined` and correctly throws (fixed; previously dead code, see task ab6aad16).
-- `ORACLE_LLM_PROVIDER=ollama` is deprecated in favor of `openai-compatible` + `ORACLE_LLM_BASE_URL`/`ORACLE_LLM_API_KEY`; it prints a one-time warning (`chain.ts:436-446`).
+- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:159`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`160`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`157`). These are the preferred `openai-compatible` inputs.
+- `createOpenAICompatibleLlm` resolves the base URL through an intermediate `ollamaBaseUrl` local: `config.ollamaBaseUrl`, falling back to `DEFAULT_OLLAMA_BASE_URL` only for the legacy `ollama` alias (`chain.ts:441-442`), then `config.llmBaseUrl ?? ollamaBaseUrl!` (`chain.ts:443`). This indirection is the `ab6aad16` fix: `config.ollamaBaseUrl` no longer carries a schema default, so an `openai-compatible` lane with nothing configured genuinely resolves `ollamaBaseUrl` to `undefined` here instead of silently landing on localhost. The key resolves as `config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey` (`chain.ts:450`), where `fallbackKey` is `"ollama"` for the legacy alias and `""` otherwise (`chain.ts:449`). It deliberately does **not** fall back to `openaiApiKey` (`chain.ts:431-432`).
+- Ollama base-url precedence (`config.ts:154`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default anymore (`config.ts:47`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard as a real `undefined` and correctly throws (fixed; previously dead code, see task ab6aad16).
+- `ORACLE_LLM_PROVIDER=ollama` is deprecated in favor of `openai-compatible` + `ORACLE_LLM_BASE_URL`/`ORACLE_LLM_API_KEY`; it prints a one-time warning (`chain.ts:462-472`).
 - Not covered here (out of this doc's stated scope): every LLM constructor also now sets a shared request timeout and `maxRetries: 0` from `config.llmTimeoutMs` (`ORACLE_LLM_TIMEOUT_MS`, task `844aac2c`), see `../configuration.md` for that env var and README.md for the default's reasoning.
 
 ## Authoritative env reference
