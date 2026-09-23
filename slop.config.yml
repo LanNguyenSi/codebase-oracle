@@ -1,0 +1,4 @@
+review:
+  allowPaths:
+    - "**/CHANGELOG.md"
+    - "docs/okf/log.md"

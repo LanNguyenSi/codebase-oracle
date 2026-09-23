@@ -145,12 +145,16 @@ function runCliWithEnv(
     ORACLE_EMBEDDING_PROVIDER: "stub",
     ORACLE_EMBEDDING_MODEL: "stub",
   };
-  // The suite must never make a real LLM call: strip inherited credentials
-  // so `auto` resolution can't silently pick one up from the invoking
-  // shell's environment, then let extraEnv layer its own (unreachable)
-  // provider config on top.
-  delete env.ANTHROPIC_API_KEY;
-  delete env.OPENAI_API_KEY;
+  // The suite must never make a real LLM call: blank out inherited
+  // credentials so `auto` resolution can't silently pick one up from the
+  // invoking shell's environment, then let extraEnv layer its own
+  // (unreachable) provider config on top. Set to "" rather than deleted:
+  // src/env.ts's loadEnvFromFile only fills a key that is `undefined` in
+  // process.env, so a deleted key would be silently refilled from a
+  // repo-root .env file if one exists (cwd here is repoRoot), while an
+  // explicit "" is already defined and is left alone.
+  env.ANTHROPIC_API_KEY = "";
+  env.OPENAI_API_KEY = "";
   for (const [key, value] of Object.entries(extraEnv)) {
     if (value === undefined) delete env[key];
     else env[key] = value;
@@ -248,7 +252,7 @@ describe("oracle search CLI sources-expansion integration", () => {
     expect(search.stdout.startsWith("{")).toBe(true);
     expect(search.stdout).not.toContain("Loaded ");
     const searchJson = JSON.parse(search.stdout);
-    expect(searchJson).toMatchObject({ query: "marker", repo: "jsonrepo", limit: 3 });
+    expect(searchJson).toMatchObject({ ok: true, query: "marker", repo: "jsonrepo", limit: 3 });
     expect(searchJson.results.length).toBeLessThanOrEqual(3);
     expect(searchJson.results[0]).toEqual(expect.objectContaining({
       repo: "jsonrepo",
@@ -265,7 +269,9 @@ describe("oracle search CLI sources-expansion integration", () => {
 
     const list = runCli(dataDir, ["list-repos", "--json"]);
     expect(list.status, list.stderr).toBe(0);
-    expect(JSON.parse(list.stdout).repos[0]).toEqual(expect.objectContaining({
+    const listJson = JSON.parse(list.stdout);
+    expect(listJson.ok).toBe(true);
+    expect(listJson.repos[0]).toEqual(expect.objectContaining({
       repo: "jsonrepo", chunkCount: expect.any(Number), fileCount: 1,
       lastIndexedAt: expect.any(String), skippedSizeCount: 0,
       skippedErrorCount: 0, skippedExamples: [],
@@ -322,18 +328,48 @@ describe("oracle search CLI sources-expansion integration", () => {
     },
   );
 
-  // The LLM-failure -> degraded fallback itself is exercised at the unit
+  // The LLM-failure -> degraded fallback is also exercised at the unit
   // level (tests/unit/query-codebase.test.ts, "LLM invoke-failure branch")
   // via the deps.createLlm injection seam, and formatQueryJson's rendering
-  // of degraded/degradedReason in tests/unit/format-json.test.ts. A
-  // CLI-spawn repro against a genuinely closed local port was tried here
-  // and dropped: @langchain/openai's ChatOpenAI has no configured
-  // maxRetries/timeout in createOpenAICompatibleLlm, so a real connection
-  // failure isn't surfaced for minutes (measured: >70s against a closed
-  // port before the underlying retry/backoff gives up) - well past any
-  // reasonable test timeout, and lowering it needs a production code
-  // change outside this task's scope (the LLM constructors, not the --json
-  // output contract).
+  // of degraded/degradedReason in tests/unit/format-json.test.ts.
+  it(
+    "query --json marks an LLM-failure fallback degraded: true at the CLI level",
+    { timeout: 30_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+      await makeRepo(scanRoot, "degradedrepo", {
+        "src/thing.ts": "export function thing() { return 1; }\n",
+      });
+      expect(runIndex(scanRoot, dataDir).status).toBe(0);
+
+      // ORACLE_LLM_PROVIDER=openai-compatible with an empty API key makes
+      // the OpenAI SDK's client construction throw "Missing credentials"
+      // synchronously on invoke, before any network I/O: no real request
+      // is attempted, so this is instant and safe (unlike a genuinely
+      // closed port, which the LLM constructors do not currently time out
+      // quickly against). ORACLE_LLM_BASE_URL is still set to a closed
+      // local port so the run stays fully offline even if that behavior
+      // ever changes upstream.
+      const result = runCliWithEnv(
+        dataDir,
+        ["query", "what does thing do?", "--json"],
+        {
+          ORACLE_LLM_PROVIDER: "openai-compatible",
+          ORACLE_LLM_BASE_URL: "http://127.0.0.1:9/v1",
+          ORACLE_LLM_API_KEY: "",
+          ORACLE_OLLAMA_API_KEY: "",
+        },
+      );
+      expect(result.status, result.stderr).toBe(0);
+      const doc = JSON.parse(result.stdout);
+      expect(doc.ok).toBe(true);
+      expect(doc.degraded).toBe(true);
+      expect(doc.degradedReason).toBe("llm_request_failed");
+    },
+  );
 
   it("returns one JSON error document for pre-action errors on JSON-capable commands", { timeout: 20_000 }, () => {
     for (const args of [
