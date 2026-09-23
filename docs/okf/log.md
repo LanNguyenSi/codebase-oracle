@@ -2,6 +2,34 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T10:00:30Z, task 844aac2c: every LLM constructor in
+  `src/retrieval/chain.ts` now sets a request timeout and `maxRetries: 0`
+  from a new `config.llmTimeoutMs` field (`src/config.ts`, env
+  `ORACLE_LLM_TIMEOUT_MS`, also documented in `docs/configuration.md`).
+  The insertion (a 14-line comment/constant block before `createAnthropicLlm`
+  plus 2-7 new lines inside each of the three constructors, +26 lines total
+  in `chain.ts`; a 15-line schema-field block plus one plumbing line in
+  `config.ts`, +16 lines total) shifted every later line in both files.
+  Re-verified and re-pointed every `chain.ts`/`config.ts` line citation in
+  the five bundle docs that list either file (or `docs/configuration.md`,
+  also touched) under `sources:`: `provider-enums-and-token-budget.md`,
+  `sources-expansion.md`, `ingest-size-limit-enforcement.md`,
+  `index-freshness-vs-code-freshness.md`, `configuration-pointer.md` (no
+  line citations there, timestamp only). Every remapped citation was
+  confirmed against the actual post-change file content (not computed by
+  arithmetic alone) before being written; none of the underlying claims
+  changed, only their line anchors. `provider-enums-and-token-budget.md`
+  also gained one new bullet under "Other LLM knobs" naming the new
+  timeout knob as out of that doc's stated two-enum/token-budget scope, and
+  `ingest-size-limit-enforcement.md` gained one parenthetical noting the
+  new sibling `parseLlmTimeoutMs` parser as unrelated to its
+  ingest-size-limit scope. Base 3ed7dda checked 0 errors, 0 warnings, 0
+  notices; the code change alone (docs not yet re-stamped) produced 7
+  `sources-fresh` staleness warnings plus 10 `citations-resolve`
+  blank-line/closing-brace warnings across the five docs; after this
+  re-verification and re-stamp, `npx okf-kit@0.10.0 check docs/okf --json`
+  on this commit: 0 errors, 0 warnings, 0 notices.
+
 - 2026-09-23T09:41:06Z, task 53112c27: fixed `--help`/`-h`/`--version` exiting 1
   with an `ok:false` JSON document in `--json` mode (`src/index.ts`, catch
   handler inserted after line 308). The
