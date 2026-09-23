@@ -37,6 +37,7 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
+    llmTimeoutMs: 120_000,
     ...overrides,
   };
 }
@@ -277,6 +278,77 @@ describe("createLlm", () => {
     createLlm(config);
     createLlm(config);
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  // 844aac2c: every LLM constructor sets a bound timeout and
+  // maxRetries: 0 from config.llmTimeoutMs, so a closed/unresponsive
+  // endpoint surfaces as a failure within the configured bound instead of
+  // hanging (and instead of a retried call multiplying the wait past that
+  // bound). See the LLM_MAX_RETRIES comment in src/retrieval/chain.ts.
+  describe("timeout + maxRetries (task 844aac2c)", () => {
+    it("createAnthropicLlm sets clientOptions.timeout from config.llmTimeoutMs and maxRetries: 0", () => {
+      const config = baseConfig({
+        llmProvider: "anthropic",
+        anthropicApiKey: "sk-ant-test",
+        llmTimeoutMs: 12_345,
+      });
+      const llm = createLlm(config) as unknown as {
+        caller?: { maxRetries?: number };
+        clientOptions?: { timeout?: number; maxRetries?: number };
+      };
+      // langchain's own AsyncCaller retry layer (top-level `maxRetries`
+      // param) surfaces on the instance at `caller.maxRetries`, not as a
+      // plain `maxRetries` property (verified against the installed
+      // @langchain/core source: language_models/base.js sets
+      // `this.caller = new AsyncCaller(params)`).
+      expect(llm.caller?.maxRetries).toBe(0);
+      expect(llm.clientOptions?.timeout).toBe(12_345);
+      expect(llm.clientOptions?.maxRetries).toBe(0);
+    });
+
+    it("createOpenAILlm sets timeout from config.llmTimeoutMs and maxRetries: 0", () => {
+      const config = baseConfig({
+        llmProvider: "openai",
+        openaiApiKey: "sk-test",
+        llmTimeoutMs: 23_456,
+      });
+      const llm = createLlm(config) as unknown as {
+        timeout?: number;
+        caller?: { maxRetries?: number };
+      };
+      expect(llm.timeout).toBe(23_456);
+      expect(llm.caller?.maxRetries).toBe(0);
+    });
+
+    it("createOpenAICompatibleLlm (openai-compatible) sets timeout from config.llmTimeoutMs and maxRetries: 0", () => {
+      const config = baseConfig({
+        llmProvider: "openai-compatible",
+        llmBaseUrl: "https://api.groq.com/openai/v1",
+        llmApiKey: "gsk-test",
+        llmTimeoutMs: 34_567,
+      });
+      const llm = createLlm(config) as unknown as {
+        timeout?: number;
+        caller?: { maxRetries?: number };
+      };
+      expect(llm.timeout).toBe(34_567);
+      expect(llm.caller?.maxRetries).toBe(0);
+    });
+
+    it("createOpenAICompatibleLlm (legacy ollama alias) sets timeout from config.llmTimeoutMs and maxRetries: 0", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const config = baseConfig({
+        llmProvider: "ollama",
+        ollamaBaseUrl: "http://localhost:11434/v1",
+        llmTimeoutMs: 45_678,
+      });
+      const llm = createLlm(config) as unknown as {
+        timeout?: number;
+        caller?: { maxRetries?: number };
+      };
+      expect(llm.timeout).toBe(45_678);
+      expect(llm.caller?.maxRetries).toBe(0);
+    });
   });
 });
 
@@ -929,6 +1001,7 @@ describe("searchCodebase type/tags filters (real store)", () => {
       vectorStoreType: "directory",
       maxFileSizeBytes: 500_000,
       maxTextFileSizeBytes: 2_000_000,
+      llmTimeoutMs: 120_000,
     };
   }
 

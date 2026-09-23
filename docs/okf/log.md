@@ -2,6 +2,28 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T10:28:00Z, task 844aac2c: added an invoke-level overall
+  deadline (`chain.invoke(..., { timeout: config.llmTimeoutMs })`) in
+  `queryCodebase` alongside the constructor-level timeout, raised the
+  `ORACLE_LLM_TIMEOUT_MS` default to 120000 with a `.max(2147483647)` ceiling
+  in `src/config.ts`, and corrected the retry-layer comments in
+  `src/retrieval/chain.ts`. Citations into `chain.ts` and `config.ts` were
+  re-verified and re-pointed in `provider-enums-and-token-budget.md`,
+  `sources-expansion.md`, `ingest-size-limit-enforcement.md` and
+  `index-freshness-vs-code-freshness.md`; `configuration-pointer.md` was
+  re-stamped for its `docs/configuration.md` source (as was
+  `provider-enums-and-token-budget.md`, whose claim about that file still holds).
+
+- 2026-09-23T10:00:30Z, task 844aac2c: every LLM constructor in
+  `src/retrieval/chain.ts` sets a request timeout and `maxRetries: 0` from a
+  new `config.llmTimeoutMs` field (`src/config.ts`, env
+  `ORACLE_LLM_TIMEOUT_MS`, documented in `docs/configuration.md`). Shifted
+  citations into both files were re-verified and re-pointed in the bundle
+  docs that list them, which were re-stamped.
+  `provider-enums-and-token-budget.md` gained a bullet naming the timeout knob
+  as outside its scope; `ingest-size-limit-enforcement.md` gained a
+  parenthetical on the sibling `parseLlmTimeoutMs` parser.
+
 - 2026-09-23T09:41:06Z, task 53112c27: fixed `--help`/`-h`/`--version` exiting 1
   with an `ok:false` JSON document in `--json` mode (`src/index.ts`, catch
   handler inserted after line 308). The

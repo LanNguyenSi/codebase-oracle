@@ -154,6 +154,52 @@ describe("loadConfig maxTextFileSizeBytes / ORACLE_MAX_TEXT_FILE_SIZE", () => {
   });
 });
 
+describe("loadConfig llmTimeoutMs / ORACLE_LLM_TIMEOUT_MS", () => {
+  const prevEnv = process.env.ORACLE_LLM_TIMEOUT_MS;
+
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.ORACLE_LLM_TIMEOUT_MS;
+    else process.env.ORACLE_LLM_TIMEOUT_MS = prevEnv;
+  });
+
+  it("defaults to 120_000 when unset", () => {
+    delete process.env.ORACLE_LLM_TIMEOUT_MS;
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.llmTimeoutMs).toBe(120_000);
+  });
+
+  it("parses a set env var as an integer", () => {
+    process.env.ORACLE_LLM_TIMEOUT_MS = "15000";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.llmTimeoutMs).toBe(15_000);
+  });
+
+  it("treats an empty string as unset (an `ORACLE_LLM_TIMEOUT_MS=` .env line must not crash)", () => {
+    process.env.ORACLE_LLM_TIMEOUT_MS = "";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.llmTimeoutMs).toBe(120_000);
+  });
+
+  it.each(["abc", "0", "-5"])(
+    "throws for an invalid value (%s) instead of silently falling back",
+    (raw) => {
+      process.env.ORACLE_LLM_TIMEOUT_MS = raw;
+      expect(() => loadConfig({ scanRoot: "/tmp/repos" })).toThrow();
+    },
+  );
+
+  it("throws for a value beyond Node's setTimeout delay range (2147483647) instead of silently clamping", () => {
+    process.env.ORACLE_LLM_TIMEOUT_MS = "2147483648";
+    expect(() => loadConfig({ scanRoot: "/tmp/repos" })).toThrow();
+  });
+
+  it("accepts the maximum allowed value (2147483647)", () => {
+    process.env.ORACLE_LLM_TIMEOUT_MS = "2147483647";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.llmTimeoutMs).toBe(2_147_483_647);
+  });
+});
+
 describe("assertScanRoot", () => {
   it("throws a friendly error when scanRoot is undefined", () => {
     const prev = process.env.ORACLE_SCAN_ROOT;

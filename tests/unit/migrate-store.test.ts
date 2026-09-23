@@ -26,6 +26,7 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
+    llmTimeoutMs: 120_000,
     ...overrides,
   };
 }
