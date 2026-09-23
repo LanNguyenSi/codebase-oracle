@@ -53,6 +53,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   program as a positional argument rather than interpolated into the awk
   program text.
 
+### Changed
+
+- A set-but-invalid `ORACLE_LLM_TIMEOUT_MS` (non-numeric, zero, negative,
+  non-integer, or above `2147483647`) now fails config loading for every
+  command, including `index` and MCP server startup, with the same
+  fail-loud contract as `ORACLE_MAX_FILE_SIZE`; unset or empty uses the
+  default. With LLM retries disabled, a single transient provider error
+  (429/5xx/529) falls back to `degraded: true` immediately.
+
 ## [0.12.0] - 2026-09-21
 
 ### Security
