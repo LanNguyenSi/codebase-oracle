@@ -20,6 +20,45 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const indexEntry = join(repoRoot, "src", "index.ts");
+// Resolve the tsx binary itself (not `npx tsx`) so the child process needs
+// no cwd-based lookup at all: npx would otherwise walk up from cwd looking
+// for a local node_modules/.bin, which is exactly the coupling to repoRoot
+// (and thus to any repo-root .env) this hermeticity fix removes.
+const tsxBin = join(repoRoot, "node_modules", ".bin", "tsx");
+// Every child process below runs with this as its cwd: the OS temp root
+// always exists and never carries a project .env, so src/env.ts's
+// `resolve(process.cwd(), ".env")` default can never silently refill a
+// credential the test blanked. Do NOT use repoRoot or any of this file's
+// own tmp dirs (they hold seeded fixtures, not env isolation) here.
+const scratchCwd = tmpdir();
+
+// Build the child env from scratch (an allowlist) rather than spreading
+// `...process.env`: a denylist approach (deleting/blanking specific keys)
+// silently reintroduces every future credential env var this suite doesn't
+// yet know about, and inherited OPENAI_ADMIN_KEY / OPENAI_API_KEY et al.
+// have previously caused an 86s+ hang against a real LLM endpoint. Only
+// PATH/HOME/TMPDIR-family and the NODE_*/npm_config_* vars tsx itself may
+// consult are carried over from the test runner's own environment; every
+// ORACLE_* value is explicit per call site.
+const INHERITED_ENV_KEYS = ["PATH", "HOME", "TMPDIR", "TEMP", "TMP"];
+function buildChildEnv(
+  extra: Record<string, string | undefined>,
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = {};
+  for (const key of INHERITED_ENV_KEYS) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("NODE_") || key.startsWith("npm_config_")) {
+      env[key] = process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === undefined) delete env[key];
+    else env[key] = value;
+  }
+  return env;
+}
 
 const tmpDirs: string[] = [];
 async function makeTmpDir(): Promise<string> {
@@ -49,23 +88,31 @@ async function makeRepo(
   }
 }
 
+// Every helper below spawns node_modules/.bin/tsx (absolute path) directly,
+// never `npx tsx`: cwd is the hermetic scratchCwd (see above), and npx's own
+// cwd-based node_modules lookup would defeat that. A generous timeout plus
+// `killSignal` makes any future regression that resurrects a hanging real
+// network call fail fast instead of hanging the whole suite.
+const SPAWN_TIMEOUT_MS = 30_000;
+
 function runIndex(
   scanRoot: string,
   dataDir: string,
 ): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync(
-    "npx",
-    ["tsx", indexEntry, "index", "--path", scanRoot],
+    tsxBin,
+    [indexEntry, "index", "--path", scanRoot],
     {
       encoding: "utf8",
-      cwd: repoRoot,
-      env: {
-        ...process.env,
+      cwd: scratchCwd,
+      timeout: SPAWN_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+      env: buildChildEnv({
         ORACLE_DATA_DIR: dataDir,
         ORACLE_EMBEDDING_PROVIDER: "stub",
         ORACLE_EMBEDDING_MODEL: "stub",
         ORACLE_SCAN_ROOT: scanRoot,
-      },
+      }),
     },
   );
   return {
@@ -80,9 +127,8 @@ function runSearch(
   extraArgs: string[],
 ): { stdout: string; stderr: string; status: number | null } {
   const result = spawnSync(
-    "npx",
+    tsxBin,
     [
-      "tsx",
       indexEntry,
       "search",
       "design note for sources-expansion",
@@ -94,13 +140,14 @@ function runSearch(
     ],
     {
       encoding: "utf8",
-      cwd: repoRoot,
-      env: {
-        ...process.env,
+      cwd: scratchCwd,
+      timeout: SPAWN_TIMEOUT_MS,
+      killSignal: "SIGKILL",
+      env: buildChildEnv({
         ORACLE_DATA_DIR: dataDir,
         ORACLE_EMBEDDING_PROVIDER: "stub",
         ORACLE_EMBEDDING_MODEL: "stub",
-      },
+      }),
     },
   );
   return {
@@ -114,15 +161,16 @@ function runCli(
   dataDir: string,
   args: string[],
 ): { stdout: string; stderr: string; status: number | null } {
-  const result = spawnSync("npx", ["tsx", indexEntry, ...args], {
+  const result = spawnSync(tsxBin, [indexEntry, ...args], {
     encoding: "utf8",
-    cwd: repoRoot,
-    env: {
-      ...process.env,
+    cwd: scratchCwd,
+    timeout: SPAWN_TIMEOUT_MS,
+    killSignal: "SIGKILL",
+    env: buildChildEnv({
       ORACLE_DATA_DIR: dataDir,
       ORACLE_EMBEDDING_PROVIDER: "stub",
       ORACLE_EMBEDDING_MODEL: "stub",
-    },
+    }),
   });
   return {
     stdout: result.stdout ?? "",
@@ -136,32 +184,24 @@ function runCliWithEnv(
   args: string[],
   extraEnv: Record<string, string | undefined>,
 ): { stdout: string; stderr: string; status: number | null } {
-  // spawnSync coerces every env value with String(), so setting a key to
-  // `undefined` would literally produce the env var "undefined" (truthy)
-  // rather than unsetting it. Build the env as real key deletions instead.
-  const env: Record<string, string | undefined> = {
-    ...process.env,
+  const env = buildChildEnv({
     ORACLE_DATA_DIR: dataDir,
     ORACLE_EMBEDDING_PROVIDER: "stub",
     ORACLE_EMBEDDING_MODEL: "stub",
-  };
-  // The suite must never make a real LLM call: blank out inherited
-  // credentials so `auto` resolution can't silently pick one up from the
-  // invoking shell's environment, then let extraEnv layer its own
-  // (unreachable) provider config on top. Set to "" rather than deleted:
-  // src/env.ts's loadEnvFromFile only fills a key that is `undefined` in
-  // process.env, so a deleted key would be silently refilled from a
-  // repo-root .env file if one exists (cwd here is repoRoot), while an
-  // explicit "" is already defined and is left alone.
-  env.ANTHROPIC_API_KEY = "";
-  env.OPENAI_API_KEY = "";
-  for (const [key, value] of Object.entries(extraEnv)) {
-    if (value === undefined) delete env[key];
-    else env[key] = value;
-  }
-  const result = spawnSync("npx", ["tsx", indexEntry, ...args], {
+    // Belt-and-suspenders: the allowlist in buildChildEnv already excludes
+    // every credential-shaped var by construction (it never carries over
+    // anything outside INHERITED_ENV_KEYS / NODE_* / npm_config_*), but
+    // pin these two explicitly so `auto` LLM-provider resolution can never
+    // pick up a real key regardless of extraEnv's own choices below.
+    ANTHROPIC_API_KEY: "",
+    OPENAI_API_KEY: "",
+    ...extraEnv,
+  });
+  const result = spawnSync(tsxBin, [indexEntry, ...args], {
     encoding: "utf8",
-    cwd: repoRoot,
+    cwd: scratchCwd,
+    timeout: SPAWN_TIMEOUT_MS,
+    killSignal: "SIGKILL",
     env,
   });
   return {
@@ -360,7 +400,6 @@ describe("oracle search CLI sources-expansion integration", () => {
           ORACLE_LLM_PROVIDER: "openai-compatible",
           ORACLE_LLM_BASE_URL: "http://127.0.0.1:9/v1",
           ORACLE_LLM_API_KEY: "",
-          ORACLE_OLLAMA_API_KEY: "",
         },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -368,6 +407,62 @@ describe("oracle search CLI sources-expansion integration", () => {
       expect(doc.ok).toBe(true);
       expect(doc.degraded).toBe(true);
       expect(doc.degradedReason).toBe("llm_request_failed");
+    },
+  );
+
+  it(
+    "stays hermetic against real credentials inherited from the parent process env",
+    { timeout: 20_000 },
+    async () => {
+      const tmp = await makeTmpDir();
+      const scanRoot = join(tmp, "repos");
+      const dataDir = join(tmp, "data");
+      await mkdir(scanRoot, { recursive: true });
+      await makeRepo(scanRoot, "hermeticrepo", {
+        "src/thing.ts": "export function thing() { return 1; }\n",
+      });
+      expect(runIndex(scanRoot, dataDir).status).toBe(0);
+
+      // Simulate the test runner's own process having inherited real
+      // credentials (a shell profile export, or a repo-root .env a
+      // developer has locally). buildChildEnv's allowlist must exclude
+      // these by construction, regardless of what the parent process
+      // carries: this is the proof for that, not another case-by-case
+      // blank. A leaked key would let the SDK attempt a real request
+      // against the closed local port instead of failing synchronously on
+      // missing credentials, which previously hung the suite for 86s+.
+      const prevAdminKey = process.env.OPENAI_ADMIN_KEY;
+      const prevApiKey = process.env.OPENAI_API_KEY;
+      process.env.OPENAI_ADMIN_KEY = "sk-admin-should-never-reach-child";
+      process.env.OPENAI_API_KEY = "sk-should-never-reach-child";
+      try {
+        const start = Date.now();
+        const result = runCliWithEnv(
+          dataDir,
+          ["query", "what does thing do?", "--json"],
+          {
+            ORACLE_LLM_PROVIDER: "openai-compatible",
+            ORACLE_LLM_BASE_URL: "http://127.0.0.1:9/v1",
+            ORACLE_LLM_API_KEY: "",
+          },
+        );
+        const elapsedMs = Date.now() - start;
+        expect(result.status, result.stderr).toBe(0);
+        const doc = JSON.parse(result.stdout);
+        expect(doc.ok).toBe(true);
+        expect(doc.degraded).toBe(true);
+        expect(doc.degradedReason).toBe("llm_request_failed");
+        // Bound well under SPAWN_TIMEOUT_MS: a leaked credential reaching
+        // the child is the failure mode this test exists to catch, and it
+        // shows up as a hang against the closed port, not as a wrong
+        // JSON value.
+        expect(elapsedMs).toBeLessThan(15_000);
+      } finally {
+        if (prevAdminKey === undefined) delete process.env.OPENAI_ADMIN_KEY;
+        else process.env.OPENAI_ADMIN_KEY = prevAdminKey;
+        if (prevApiKey === undefined) delete process.env.OPENAI_API_KEY;
+        else process.env.OPENAI_API_KEY = prevApiKey;
+      }
     },
   );
 

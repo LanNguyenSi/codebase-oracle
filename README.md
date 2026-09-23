@@ -168,7 +168,7 @@ One JSON document on stdout, same shape rules for all four commands:
 
 A machine consumer can therefore always tell success, degraded success, and failure apart from the document alone: check `ok` first, then `degraded` on a `query` document with `ok: true`. `oracle_query` (the MCP tool) does not carry `degraded` into its output: it renders only `answer` + sources + pointers as plain text, so the marker is CLI `--json`-only by construction, not by a separate code path that could drift from it.
 
-`--help` and `--version` are not JSON-mode output even when `--json` is also passed: they are commander's own pre-existing plain-text output, printed (and the process exited) before this contract's action code runs.
+At the top level, `--help` and `--version` are not JSON-mode output even when `--json` is also passed: they are commander's own pre-existing plain-text output, printed (and the process exited) before this contract's action code runs. `<command> --help --json` currently prints help followed by an ok:false "(outputHelp)" document and exits 1 (pre-existing, tracked separately).
 
 A `query` whose retrieval finds nothing, and a `query` that falls through to the raw-context answer because no LLM is configured at all (`auto` with no provider credentials set, rather than a configured provider whose call failed), are both ordinary successes: `ok: true` with no `degraded` key. A consumer that needs to detect empty retrieval specifically should check `sources: []` rather than `degraded`, which marks only the LLM-call-failed fallback.
 
