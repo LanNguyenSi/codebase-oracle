@@ -10,7 +10,8 @@
   its `loadConfig()` call-site lines (74, 90, 150, 192, 221, 247, 263) and the
   `index` command range (70-79) were re-verified against the edited file and
   still name the same content. That doc's timestamp was re-stamped
-  (2026-09-23T09:40:18Z) in a separate commit after the source commit.
+  (2026-09-23T09:40:18Z, again at 09:50:18Z after a comment-only follow-up
+  edit) in a separate commit after the source commit.
   `npx okf-kit@0.10.0 check docs/okf --json` on this commit: 0 errors, 0
   warnings, 0 notices.
 
