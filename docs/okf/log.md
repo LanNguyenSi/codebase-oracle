@@ -2,78 +2,31 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-09-23T05:35:38Z, task df880cbc (implementer): added additive `ok: true`
-  on `search`/`list-repos`/`query` `--json` success documents and a
+- 2026-09-23T06:21:49Z, task df880cbc: added an additive `ok: true` to the `search`,
+  `list-repos` and `query` `--json` success documents and a
   `degraded`/`degradedReason` marker on `query`'s LLM-failure raw-context
-  fallback, in `src/retrieval/chain.ts` (`QueryResult` interface and the
-  `chain.invoke()` catch block) and `src/format-json.ts`. The 8-line net
-  insertion in `chain.ts` shifted every line number below it by 7 (lines
-  before the interface insertion) or 9 (lines after the catch-block
-  insertion). Re-verified and re-pointed every `src/retrieval/chain.ts`
-  line citation in both docs that list it as a `sources:` entry:
-  `provider-enums-and-token-budget.md` and `sources-expansion.md`. While
-  re-verifying, found five pre-existing (pre-dating this task) bare
+  fallback (`src/retrieval/chain.ts`, `src/format-json.ts`). The 9-line
+  insertion in `chain.ts` shifted later lines by 7 or 9; every `chain.ts`
+  citation in `provider-enums-and-token-budget.md` and
+  `sources-expansion.md` (the two docs listing it under `sources:`) was
+  re-verified and re-pointed, and both docs were re-stamped. Seven bare
   line-number citations in `sources-expansion.md`'s "Things that silently
-  break injection" bullet (old values 588, 584, 596, 605, 593, 595, 580)
-  that already pointed at the wrong lines before this edit (verified
-  against `git show HEAD~1`, e.g. old line 588 landed on an unrelated
-  comment line, not the `parentRepo.length === 0` check it claimed) -
-  corrected those to their real targets (new values 662, 658, 670, 707,
-  669, 667, 654) rather than only shifting the stale numbers by the same
-  offset. Every other citation in both docs was
-  already accurate pre-edit and got the mechanical +7/+9 shift. Re-stamped
-  both docs' `timestamp` to this task's verification instant. `okf-kit
-  check --json docs/okf` after the source-file edits alone: 0 errors,
-  0 warnings, 0 notices; the two docs' `citations-resolve` warnings
-  (4 pre-existing at baseline) cleared.
-  This task's own `CHANGELOG.md` `## [Unreleased]` entry then added 7
-  net lines above every released section, shifting the `` `## [0.10.0]` ``
-  heading from line 101 to line 108 (measured against base commit
-  9b2853c, which itself checked 0 errors, 0 warnings, 0 notices) and
-  landing every bare, colon-formatted `CHANGELOG.md` line-101 mention in
-  this log's older entries below on that now-blank line, plus one
-  range-exceeds-file hit where this entry's own added `CHANGELOG.md`
-  citation made an unrelated bare `:777-789` continuation citation in the
-  2026-09-21 entry below resolve against `CHANGELOG.md` instead of
-  `src/store/sqlite-store.ts` (its own file); seven findings total.
-  Fixed initially by qualifying that continuation citation with its own
-  file name (`src/store/sqlite-store.ts:777-789`) and by re-pointing every
-  historical `CHANGELOG.md` line-97/line-101 mention below, in entries
-  older than the 2026-09-21 cut, away from a raw line number to a phrase
-  naming what that line actually held when the mention was written: the
-  "was silently dropped" quote line for every line-101 mention, and the
-  MAX_FILE_BYTES-quote line for every line-97 mention. That first pass
-  mislabeled some line-101 mentions as "the `` `## [0.10.0]` `` heading
-  line" instead; they never meant the heading, only the "was silently
-  dropped" quote a few lines below it, corrected in this fix. That first
-  pass also, in error, applied that same word-form rewrite inside the
-  2026-09-22 and 2026-09-21 entries' own historical prose about these
-  bare mentions, which already predated this task and already avoided
-  the problem in its own words, and added a parenthetical aside on the
-  `src/store/sqlite-store.ts:777-789` fix explaining why. This fix
-  restored both entries' narratives to base commit 9b2853c verbatim,
-  keeping only two token-level deviations, both still needed to keep the
-  bundle at 0 findings after this task's `CHANGELOG.md` edit: the
-  `src/store/sqlite-store.ts:777-789` qualification (`git show 9b2853c`
-  shows that entry's own citation as bare `` `:777-789` ``, which this
-  task's `CHANGELOG.md` edit makes resolve against the wrong file), and,
-  in the same 2026-09-21 entry, spelling out "the bare
-  `` `CHANGELOG.md` `` line-97 and line-101 mentions" instead of the base
-  wording's two colon-joined `` `CHANGELOG.md` ``-plus-number code spans
-  (this task's `CHANGELOG.md` edit shifts the 0.10.0 heading far enough
-  that the literal base wording re-triggers the very blank-start-line
-  finding its own sentence is describing); the added aside on the
-  sqlite-store fix is dropped, and no other prose changed. `git diff
-  9b2853c -- docs/okf/log.md` after this fix shows every entry below
-  this one differing from base only in those two tokens plus the
-  line-101-to-"was silently dropped"-quote-line /
-  line-97-to-MAX_FILE_BYTES-quote-line re-pointing in the entries between
-  2026-09-08 and 2026-09-01T07:30:00Z; no other prose in any entry below
-  changed. Also replaced a pre-existing em dash each on the two
-  rewritten `provider-enums-and-token-budget.md` and `sources-expansion.md`
-  lines above (punctuation only, no claim or citation changed); re-stamped
-  both docs' `timestamp` again to this fix's own verification instant.
-  `npx okf-kit@0.10.0 check docs/okf --json` on this commit: 0 errors,
+  break injection" bullet already pointed at the wrong lines at base
+  9b2853c (for example the old 588 landed on a comment, not the
+  `parentRepo.length === 0` check); they now name their real targets.
+  Base 9b2853c checked 0 errors, 0 warnings, 0 notices. This change
+  introduced the warnings it then fixed: the `chain.ts` shift broke the two
+  docs' citations, and the new `CHANGELOG.md` `[Unreleased]` entry moved
+  the 0.10.0 section down by seven lines, so bare CHANGELOG line-number
+  mentions in older entries below landed on blank lines. Those older
+  entries changed only in citation tokens, each keeping the target it
+  meant when written: line-101 mentions now name the "was silently
+  dropped" quote line and line-97 mentions the MAX_FILE_BYTES-quote line;
+  the 2026-09-21 entry spells out its line-97 and line-101 mentions in
+  words (needed: the literal base wording re-triggers a blank-start-line
+  warning) and qualifies its sqlite-store continuation citation with the
+  file name (kept for robustness; the bundle also checks clean without
+  it). `npx okf-kit@0.10.0 check docs/okf --json` on this commit: 0 errors,
   0 warnings, 0 notices.
 
 - 2026-09-22T06:05:17Z, task e53a6d9d (implementer): added a `## [Unreleased]`
