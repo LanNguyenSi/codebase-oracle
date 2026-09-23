@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `--help`, `--version`, and the `help` subcommand now exit `0` with no
+  `ok:false` JSON document when combined with `--json` on `query`, `search`,
+  `list-repos`, or `expand`. Previously commander's own successful
+  help/version exit was caught by the same `--json` error handler as a real
+  error, printing an `{"ok": false, "error": {"message": "(outputHelp)"}}`
+  (or the version string, respectively) document and exiting `1`. A real
+  error in `--json` mode (an unknown option, a missing argument) is
+  unaffected and still produces that document with a nonzero exit (task
+  `53112c27`).
+
 ### Added
 
 - `--json` success documents for `query`, `search`, and `list-repos` now

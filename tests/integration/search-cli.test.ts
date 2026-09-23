@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { version: PACKAGE_VERSION } = require("../../package.json") as {
+  version: string;
+};
 
 // Spawns the real `tsx src/index.ts search` command against a seeded store to
 // exercise sources-expansion end-to-end through the CLI: the `[expanded
@@ -494,5 +500,55 @@ describe("oracle search CLI sources-expansion integration", () => {
     expect(globalJson.status).not.toBe(0);
     expect(globalJson.stdout).toBe("");
     expect(globalJson.stderr).toContain("unknown option '--json'");
+  });
+
+  it("exits 0 with no JSON error document for --help and --version in --json mode, for all four JSON commands", { timeout: 20_000 }, () => {
+    const dataDir = join(tmpdir(), "unused-oracle-json-help-version");
+    // Minimal required positional args per command, so commander reaches
+    // --help/--version handling instead of failing on a missing argument
+    // first (the argument value itself is never used: --help/--version
+    // short-circuit before the action runs).
+    const perCommandArgs: Record<string, string[]> = {
+      query: ["question"],
+      search: ["term"],
+      "list-repos": [],
+      expand: ["repo", "path"],
+    };
+
+    for (const [command, args] of Object.entries(perCommandArgs)) {
+      for (const flag of ["--help", "--version"]) {
+        const result = runCli(dataDir, [command, ...args, "--json", flag]);
+        expect(
+          result.status,
+          `${command} ${flag}: status=${result.status} stdout=${result.stdout} stderr=${result.stderr}`,
+        ).toBe(0);
+        expect(result.stdout.startsWith("{")).toBe(false);
+        expect(result.stdout).not.toContain('"ok":false');
+        if (flag === "--version") {
+          expect(result.stdout.trim()).toBe(PACKAGE_VERSION);
+        } else {
+          expect(result.stdout).toContain("Usage:");
+        }
+      }
+    }
+  });
+
+  it("routes the help subcommand the same way as --help in --json mode", { timeout: 20_000 }, () => {
+    const dataDir = join(tmpdir(), "unused-oracle-json-help-subcommand");
+    const result = runCli(dataDir, ["help", "query", "--json"]);
+    expect(result.status, `status=${result.status} stderr=${result.stderr}`).toBe(0);
+    expect(result.stdout.startsWith("{")).toBe(false);
+    expect(result.stdout).not.toContain('"ok":false');
+    expect(result.stdout).toContain("Usage:");
+  });
+
+  it("still returns ok:false with a nonzero exit for a real error in --json mode alongside --help/--version handling", { timeout: 20_000 }, () => {
+    const dataDir = join(tmpdir(), "unused-oracle-json-real-error-regression");
+    const result = runCli(dataDir, ["search", "--json", "--unknown"]);
+    expect(result.status).not.toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: false,
+      error: { message: expect.any(String) },
+    });
   });
 });

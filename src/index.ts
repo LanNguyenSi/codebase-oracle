@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { Command } from "commander";
+import { Command, CommanderError } from "commander";
 import { loadEnvFromFile } from "./env.js";
 import { loadConfig } from "./config.js";
 import { createEmbeddings } from "./store/embeddings.js";
@@ -306,6 +306,19 @@ if (isMainModule) {
     for (const command of program.commands) command.exitOverride();
   }
   Promise.resolve().then(() => program.parseAsync()).catch((err: unknown) => {
+    // commander's exitOverride() (enabled above for --json invocations so a
+    // real error can be rendered as a JSON document instead of a raw
+    // process.exit) also intercepts the library's own successful, non-error
+    // exits: --help, --version, and the `help` subcommand. Those all throw a
+    // CommanderError with exitCode 0 (real errors use error(), which always
+    // defaults to exitCode 1), so they're the one case that must NOT be
+    // rendered as an ok:false JSON document here: help/version output is
+    // already written to stdout/stderr by commander itself, and the CLI
+    // should just exit 0 quietly, in and out of --json mode alike.
+    if (err instanceof CommanderError && err.exitCode === 0) {
+      process.exitCode = 0;
+      return;
+    }
     if (jsonMode) {
       console.log(formatErrorJson(err));
       process.exitCode = 1;
