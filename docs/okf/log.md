@@ -2,6 +2,10 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-23T11:37:34Z, release 0.13.0: `package.json`'s version field changed
+  in place (line 3, no cited line moved); `index-freshness-vs-code-freshness.md`
+  re-checked and re-stamped.
+
 - 2026-09-23T10:28:00Z, task 844aac2c: added an invoke-level overall
   deadline (`chain.invoke(..., { timeout: config.llmTimeoutMs })`) in
   `queryCodebase` alongside the constructor-level timeout, raised the
