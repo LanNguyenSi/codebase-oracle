@@ -9,7 +9,10 @@
   (comment-only, no line-count shift). Re-checked `index-freshness-vs-code-freshness.md`
   and `ingest-size-limit-enforcement.md` against the changed `src/config.ts`
   and `src/index.ts` (cited line numbers unaffected, claims still hold) and
-  re-stamped both.
+  re-stamped both. `provider-enums-and-token-budget.md` and
+  `sources-expansion.md` were re-checked against the same comment-only
+  `src/config.ts` and `src/retrieval/chain.ts` edits (cited lines unaffected)
+  and carry the 04:55:48Z re-stamp.
 
 - 2026-09-26T04:55:48Z, docs refresh: the `expand_sources` flag-table
   pointer moved from README.md to `docs/cli-reference.md` (the flag table
