@@ -2,7 +2,16 @@
 
 <!-- Add new entries at the top, newest first. -->
 
-- 2026-09-26T04:44:36Z, docs refresh: the `expand_sources` flag-table
+- 2026-09-26T04:57:06Z, README CLI-flag guard retarget: `tests/unit/readme-cli-flags.test.ts`
+  now reads `docs/cli-reference.md` instead of README.md, and three comments
+  in `src/index.ts`, `src/config.ts`, and `src/retrieval/chain.ts` were
+  retargeted from README.md to `docs/cli-reference.md` / `docs/configuration.md`
+  (comment-only, no line-count shift). Re-checked `index-freshness-vs-code-freshness.md`
+  and `ingest-size-limit-enforcement.md` against the changed `src/config.ts`
+  and `src/index.ts` (cited line numbers unaffected, claims still hold) and
+  re-stamped both.
+
+- 2026-09-26T04:55:48Z, docs refresh: the `expand_sources` flag-table
   pointer moved from README.md to `docs/cli-reference.md` (the flag table
   itself moved there in a prior README restructure); re-verified and
   re-pointed in `sources-expansion.md` and `index.md`, and re-verified the
