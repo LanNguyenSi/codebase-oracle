@@ -1,6 +1,6 @@
 # CLI reference
 
-Full command list, flags, and the `--json` output contract for the `codebase-oracle` CLI (`npm run dev -- <command>` from a source checkout, or the global binary after `npm i -g @lannguyensi/codebase-oracle`).
+Full command list, flags, and the `--json` output contract for the `codebase-oracle` CLI (`npm run dev -- <command>` from a source checkout, or the global binary after `npm i -g @lannguyensi/codebase-oracle`). Besides serving agents over MCP, the CLI is also meant for direct human use: spot checks against the index, debugging what got indexed, and getting a terminal answer without going through an agent.
 
 The CLI auto-loads `.env` from the current working directory if present (the repo root when run via the `npm run` scripts below).
 
@@ -31,6 +31,8 @@ npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to 
 - agent-tasks: 1842 chunks across 287 files (indexed 2026-04-27T10:14:02Z, 14 min ago)
 - agent-tasks-cli: 421 chunks across 68 files (indexed 2026-04-27T10:14:18Z, 14 min ago)
 ```
+
+(This sample uses a colon for readability; the actual CLI output separates the repo name from its counts with an em dash. Run `list-repos --json` for the exact machine-readable shape instead.)
 
 See [architecture.md#watch-mode](architecture.md#watch-mode) for watch-mode debounce/backfill behaviour and [configuration.md](configuration.md#scheduled-refresh-macos-launchd) for scheduled reindexing.
 

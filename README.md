@@ -10,12 +10,14 @@ codebase-oracle builds one semantic index over every git repo under a root direc
 
 - One incremental index over every git repo under `ORACLE_SCAN_ROOT`, shared by the CLI and the MCP server.
 - MCP server (5 tools over stdio, 4 over HTTP) so agents query a pre-built index without scanning or embedding anything themselves.
-- OpenAI or fully local Ollama for embeddings and answer generation, chosen independently per lane.
+- OpenAI or local Ollama embeddings; Anthropic, OpenAI, or any OpenAI-compatible endpoint for answers.
 - Answers are grounded: retrieved chunks carry `path:line_start-line_end (repo)` locations and are cited in generated answers.
 - OKF frontmatter awareness: `type`/`tags` search filters and an automatic `Pointers` section built from a doc's `sources:` metadata.
-- `--json` output on every CLI command, with a documented success/failure/degraded contract for scripting.
+- `--json` output on the query, search, list-repos, and expand commands, with a documented success/failure/degraded contract for scripting.
 
 ## Quick start
+
+Prerequisites: Node.js 22+, and an embedding provider (an OpenAI API key by default, or a local Ollama instance with `ORACLE_EMBEDDING_PROVIDER=ollama`; see [docs/configuration.md](docs/configuration.md)).
 
 ```bash
 npm i -g @lannguyensi/codebase-oracle
@@ -50,6 +52,10 @@ From any Claude Code session on the same machine you can now call `oracle_search
 ## Usage
 
 `oracle_search` (also available as `codebase-oracle search` / `npm run dev -- search`) returns matching chunks with line-number locations:
+
+```bash
+codebase-oracle search "where do we read AGENT_TASKS_TOKEN"
+```
 
 ```
 [1] src/auth/token.ts:14-32 (my-repo):

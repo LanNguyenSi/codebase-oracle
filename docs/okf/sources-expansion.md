@@ -1,7 +1,7 @@
 ---
 type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
-description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in README.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
+description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in docs/cli-reference.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
 tags: [okf, sources-expansion, retrieval, search]
 timestamp: 2026-09-23T10:28:00Z
 sources:
@@ -26,8 +26,8 @@ docs WHERE repo = ? AND file_path = ? ORDER BY rowid LIMIT 1`
 second bound caps synchronous store lookups against an adversarial doc that
 lists thousands of sources.
 
-The `expand_sources` parameter itself is documented: README.md's CLI flag
-table lists `--no-expand-sources`, and `docs/mcp.md` lists `expand_sources` in
+The `expand_sources` parameter itself is documented: `docs/cli-reference.md`'s
+flag table lists `--no-expand-sources`, and `docs/mcp.md` lists `expand_sources` in
 the tool table and the stdio tool-inputs summary. What is documented only here
 and in code is the semantics: the parent-namespace-first resolution, the
 `(repo, filePath)` dedup with organic-wins, the hoist behavior, and the
