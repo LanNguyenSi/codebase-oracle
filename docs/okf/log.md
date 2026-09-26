@@ -8,7 +8,7 @@
   re-pointed in `sources-expansion.md` and `index.md`, and re-verified the
   `ORACLE_LLM_TIMEOUT_MS` default-reasoning pointer in
   `provider-enums-and-token-budget.md` against `docs/configuration.md`
-  (claim still holds). All three docs re-stamped.
+  (claim still holds). Both docs re-stamped; index.md pointer updated.
 
 - 2026-09-23T11:37:34Z, release 0.13.0: `package.json`'s version field changed
   in place (line 3, no cited line moved); `index-freshness-vs-code-freshness.md`

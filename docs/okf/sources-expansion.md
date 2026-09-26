@@ -3,7 +3,7 @@ type: invariant
 title: Sources-expansion — how fmSources become retrievable chunks
 description: oracle_search injects the first chunk of each file an organic hit's OKF fmSources points at, parent-namespace-first, deduped by (repo,filePath); since 0.10.2 a below-parent organic hit is hoisted into the injection slot instead of skipped, capped to limit. The expand_sources parameter is listed in docs/cli-reference.md and mcp.md; the dedup/hoist/per-parent-cap semantics live only here and in code.
 tags: [okf, sources-expansion, retrieval, search]
-timestamp: 2026-09-26T04:44:36Z
+timestamp: 2026-09-26T04:55:48Z
 sources:
   - src/retrieval/chain.ts
   - src/store/sqlite-store.ts
