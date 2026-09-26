@@ -5,28 +5,31 @@ import { dirname, resolve } from "node:path";
 import type { Option } from "commander";
 import { buildProgram } from "../../src/index.js";
 
-// Guards the README's "## CLI reference" flag table against drift from the
+// Guards docs/cli-reference.md's "## Flags" table against drift from the
 // commander option registrations in src/index.ts: the 2026-08-21 audit found
-// `-g, --path-glob` missing from the README table (PR #84) and a stale `-k`
+// `-g, --path-glob` missing from that table (PR #84) and a stale `-k`
 // default annotation (PR #83). This test fails with a readable diff if a
-// flag is added to commander without a matching README row, if a row is
-// scoped to the wrong command (e.g. moved from `search` to `query` in
-// commander but the README still says "(`search` only)"), or if a row's
-// documented default value stops matching the actual commander default.
+// flag is added to commander without a matching row, if a row is scoped to
+// the wrong command (e.g. moved from `search` to `query` in commander but
+// the doc still says "(`search` only)"), or if a row's documented default
+// value stops matching the actual commander default.
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "../..");
-const readme = readFileSync(resolve(repoRoot, "README.md"), "utf8");
+const cliReference = readFileSync(
+  resolve(repoRoot, "docs/cli-reference.md"),
+  "utf8",
+);
 
-// The README's flag table (below the `## CLI reference` usage block) only
-// documents the `query`/`search` commands' options; `index`/`expand`/`watch`
-// are documented via the usage examples above the table instead.
+// The doc's flag table (below the `## Flags` usage block) only documents
+// the `query`/`search` commands' options; `index`/`expand`/`watch` are
+// documented via the usage examples above the table instead.
 const READABLE_COMMANDS = ["query", "search"] as const;
 
 // The full set of commands buildProgram() is expected to register. This is
 // a conscious allowlist, not derived from the program itself: if a new
 // command is added, the test below fails until this list (and, if the new
-// command's flags belong in the README table, READABLE_COMMANDS) is updated
+// command's flags belong in the doc table, READABLE_COMMANDS) is updated
 // by hand, rather than silently leaving the new command's flags unchecked.
 const ALL_KNOWN_COMMANDS = [
   "mcp",
@@ -83,11 +86,11 @@ function parseReadmeFlagTable(
   knownCommands: readonly string[],
 ): ReadmeRow[] {
   const section = markdown.match(
-    /## CLI reference[\s\S]*?\| Flag \| Description \|\n\|[-\s|]+\|\n([\s\S]*?)(?:\n\n|$)/,
+    /## Flags[\s\S]*?\| Flag \| Description \|\n\|[-\s|]+\|\n([\s\S]*?)(?:\n\n|$)/,
   );
   if (!section) {
     throw new Error(
-      "Could not locate the '## CLI reference' flag table in README.md",
+      "Could not locate the '## Flags' table in docs/cli-reference.md",
     );
   }
   const rows: ReadmeRow[] = [];
@@ -135,7 +138,7 @@ function collectCommanderFlags(
   return flags;
 }
 
-describe("README CLI flag table vs commander registrations", () => {
+describe("cli-reference.md flag table vs commander registrations", () => {
   it("does not register a command outside the ALL_KNOWN_COMMANDS allowlist", () => {
     const program = buildProgram();
     const actual = program.commands.map((c) => c.name()).sort();
@@ -144,12 +147,12 @@ describe("README CLI flag table vs commander registrations", () => {
       "buildProgram() registered a command not listed in this test's " +
         "ALL_KNOWN_COMMANDS. If this is a real new command, add it to " +
         "ALL_KNOWN_COMMANDS and decide whether it belongs in " +
-        "READABLE_COMMANDS (and the README table) too.",
+        "READABLE_COMMANDS (and the doc table) too.",
     ).toEqual([...ALL_KNOWN_COMMANDS].sort());
   });
 
   const commanderFlags = collectCommanderFlags(READABLE_COMMANDS);
-  const readmeRows = parseReadmeFlagTable(readme, READABLE_COMMANDS);
+  const readmeRows = parseReadmeFlagTable(cliReference, READABLE_COMMANDS);
   const commanderPairs = new Set(
     commanderFlags.map((f) => `${f.command}:${f.flag}`),
   );
@@ -158,25 +161,25 @@ describe("README CLI flag table vs commander registrations", () => {
     for (const command of row.commands) readmePairs.add(`${command}:${row.flag}`);
   }
 
-  it("has a README row for every query/search commander option, scoped to the right command", () => {
+  it("has a row for every query/search commander option, scoped to the right command", () => {
     const missing = [...commanderPairs].filter((p) => !readmePairs.has(p));
     expect(
       missing,
       `command:flag pairs registered in src/index.ts (query/search) but missing (or wrongly ` +
-        `scoped) in the README "## CLI reference" table: ${missing.join(", ") || "(none)"}`,
+        `scoped) in docs/cli-reference.md's "## Flags" table: ${missing.join(", ") || "(none)"}`,
     ).toEqual([]);
   });
 
-  it("has no README row documenting a command:flag pair that is not registered", () => {
+  it("has no row documenting a command:flag pair that is not registered", () => {
     const extra = [...readmePairs].filter((p) => !commanderPairs.has(p));
     expect(
       extra,
-      `README "## CLI reference" table rows documenting a command:flag pair not registered on ` +
+      `docs/cli-reference.md "## Flags" table rows documenting a command:flag pair not registered on ` +
         `the query/search commands in src/index.ts: ${extra.join(", ") || "(none)"}`,
     ).toEqual([]);
   });
 
-  it("documents each commander default value for the correct command in its README row", () => {
+  it("documents each commander default value for the correct command in its row", () => {
     const rowByFlag = new Map(readmeRows.map((r) => [r.flag, r]));
     const mismatches: string[] = [];
     for (const entry of commanderFlags) {
@@ -187,7 +190,7 @@ describe("README CLI flag table vs commander registrations", () => {
       const documented = row.defaultByCommand.get(entry.command);
       if (documented !== expected) {
         mismatches.push(
-          `--${entry.flag}: README row does not document "${expected}" as the "${entry.command}" ` +
+          `--${entry.flag}: docs/cli-reference.md row does not document "${expected}" as the "${entry.command}" ` +
             `command's default (found ${documented === undefined ? "nothing" : `"${documented}"`} instead). ` +
             `Row: ${row.raw.trim()}`,
         );
