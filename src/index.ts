@@ -46,7 +46,7 @@ function jsonStoreLog(message: string): void {
 }
 
 // Builds the commander program without executing it, so tests can inspect
-// the registered commands/options (e.g. to check the README stays in sync)
+// the registered commands/options (e.g. to check docs/cli-reference.md stays in sync)
 // without triggering a real CLI run.
 export function buildProgram(): Command {
   const program = new Command();

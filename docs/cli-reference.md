@@ -1,0 +1,65 @@
+# CLI reference
+
+Full command list, flags, and the `--json` output contract for the `codebase-oracle` CLI (`npm run dev -- <command>` from a source checkout, or the global binary after `npm i -g @lannguyensi/codebase-oracle`). Besides serving agents over MCP, the CLI is also meant for direct human use: spot checks against the index, debugging what got indexed, and getting a terminal answer without going through an agent.
+
+The CLI auto-loads `.env` from the current working directory if present (the repo root when run via the `npm run` scripts below).
+
+## Commands
+
+```bash
+npm run index                            # build/refresh the index over ORACLE_SCAN_ROOT
+npm run index -- --path /path/to/repos   # custom scan root
+npm run query -- "what is the audit system?"
+npm run query -- "what is the audit system?" --json
+npm run query -- -r my-repo "where is the schema defined?"
+npm run query -- -k 20 "list all API endpoints"
+npm run dev -- search "evaluateTransitionRules"
+npm run dev -- search "evaluateTransitionRules" --json
+npm run dev -- search "okf backend" --type module --tags okf,backend
+npm run dev -- list-repos                # indexed repos with chunk/file counts + freshness
+npm run dev -- list-repos --json         # one machine-readable JSON document
+npm run dev -- list-repos --json | jq '.repos[] | {repo, lastIndexedAt}'
+npm run dev -- expand my-repo path/to/file.ts -l 42   # read a window of lines around a position
+npm run dev -- expand my-repo path/to/file.ts --json
+npm run watch                            # keep the index fresh in the background
+npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to the SQLite store
+```
+
+`list-repos` shows what's indexed and how fresh each repo is:
+
+```
+- agent-tasks: 1842 chunks across 287 files (indexed 2026-04-27T10:14:02Z, 14 min ago)
+- agent-tasks-cli: 421 chunks across 68 files (indexed 2026-04-27T10:14:18Z, 14 min ago)
+```
+
+(This sample uses a colon for readability; the actual CLI output separates the repo name from its counts with an em dash. Run `list-repos --json` for the exact machine-readable shape instead.)
+
+See [architecture.md#watch-mode](architecture.md#watch-mode) for watch-mode debounce/backfill behaviour and [configuration.md](configuration.md#scheduled-refresh-macos-launchd) for scheduled reindexing.
+
+## Flags
+
+| Flag | Description |
+|------|-------------|
+| `-r, --repo <name>` | Filter results to a specific repo |
+| `-k, --limit <n>` | Number of chunks to retrieve (default: 12 for `query`, 10 for `search`) |
+| `-g, --path-glob <glob>` | (`search` only) Filter results by file path glob (e.g. `**/.github/workflows/*.yml`) |
+| `-t, --type <type>` | (`search` only) Filter to chunks whose `fmType` OKF frontmatter metadata strictly equals this value. Excludes chunks without frontmatter metadata. |
+| `--tags <tags>` | (`search` only) Comma-separated; filter to chunks whose `fmTags` OKF frontmatter metadata contains ALL listed tags. Excludes chunks without frontmatter metadata. |
+| `--no-expand-sources` | (`search` only) Disable OKF sources-expansion (do not inject files pointed at by a retrieved doc's `sources:` frontmatter); expansion is on by default. |
+| `--json` | (`query`, `search`, `list-repos`, and `expand`) Emit exactly one JSON document on stdout. Search returns complete chunk text; diagnostics go to stderr. JSON errors exit nonzero. |
+
+`oracle_query`'s answer gets an automatic `Pointers (from OKF sources metadata):` section appended after the sources list when any retrieved chunk carries `fmSources`, listing the deduped union of paths in retrieval-rank order (capped at 10, with a truncation note past that). No LLM involvement, and the section is omitted entirely when nothing in the retrieved context has `fmSources`.
+
+## `--json` contract
+
+One JSON document on stdout, same shape rules for all four commands:
+
+- **Success**: the document carries `"ok": true` alongside the command's own keys (`query`'s `question`/`answer`/`sources`/`pointers`, `search`'s `query`/`repo`/`limit`/`results`, `list-repos`'s `repos`, `expand`'s `repo`/`path`/`lineStart`/`lineEnd`/`totalLines`/`text`). This is additive to every existing key; nothing already shipped in 0.12.0 was removed or renamed.
+- **Failure**: the process exits nonzero and the document is `{"ok": false, "error": {"message": "..."}}` for an argument or unknown-option error, on any of the four commands, `expand` included. `expand` additionally has its own lookup-failure shape, `{"ok": false, "reason": "...", "message": "..."}` (`reason` one of `not_indexed`, `no_absolute_path`, `file_missing`, `read_error`), returned instead when the command runs but the requested file cannot be resolved; it does not carry an `error` key. This was already true in 0.12.0.
+- **Degraded success** (`query` only): when the LLM call fails and `query` falls back to returning raw retrieved context instead of a generated answer, the document additionally carries `"degraded": true` and `"degradedReason": "llm_request_failed"`. `ok` stays `true` and the exit status stays `0`: retrieval succeeded and the document contains real (if unsynthesized) content, so this is a successful call with a degraded answer, not a failure. A consumer that wants a hard error on LLM failure should treat `degraded: true` as its own outcome and branch on it explicitly.
+
+A machine consumer can therefore always tell success, degraded success, and failure apart from the document alone: check `ok` first, then `degraded` on a `query` document with `ok: true`. `oracle_query` (the MCP tool) does not carry `degraded` into its output: it renders only `answer` + sources + pointers as plain text, so the marker is CLI `--json`-only by construction, not by a separate code path that could drift from it.
+
+`--help` and `--version` are never JSON-mode output, on any of the four commands or the top level, even when `--json` is also passed: they are commander's own pre-existing plain-text output. `<command> --json --help`, `<command> --json --version`, and `help <command> --json` print that plain text and exit 0, with no `ok:false` document on stdout; a real error (an unknown option, a missing argument) in `--json` mode still produces the `{"ok": false, ...}` document above with a nonzero exit.
+
+A `query` whose retrieval finds nothing, and a `query` that falls through to the raw-context answer because no LLM is configured at all (`auto` with no provider credentials set, rather than a configured provider whose call failed), are both ordinary successes: `ok: true` with no `degraded` key. A consumer that needs to detect empty retrieval specifically should check `sources: []` rather than `degraded`, which marks only the LLM-call-failed fallback.

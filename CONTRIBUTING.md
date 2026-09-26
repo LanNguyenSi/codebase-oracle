@@ -36,3 +36,26 @@ Register as a Claude Code MCP server per `README.md` once `dist/` is built.
 ## Style
 
 Match the surrounding code. Prefer small, reviewable diffs.
+
+## Releasing
+
+Retrieval quality is guarded by a hand-labelled eval set rather than by CI. The
+eval needs an embedding provider (`OPENAI_API_KEY`, or an OpenAI-compatible
+endpoint such as Ollama) and costs under a cent per run, so it runs as a
+**manual pre-release gate**, not on every PR:
+
+```bash
+npm run eval           # compares retrieval against tests/eval/baseline.json
+```
+
+Run it before tagging a release and paste the final line into the release PR. A
+regression vs. baseline blocks the release until the cause is fixed or the
+baseline is updated with a documented reason. See
+[tests/eval/README.md](tests/eval/README.md) for the full workflow, including
+how to add questions and corpus repos.
+
+Two guards keep the tag and the changelog from drifting apart: a vitest unit
+test fails when `CHANGELOG.md`'s first `## [x.y.z] - date` heading doesn't
+match `package.json`'s version, and the release workflow's changelog-extraction
+step (`scripts/extract-changelog-notes.sh`) fails loudly if no release notes
+are found for the tagged version.

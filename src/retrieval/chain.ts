@@ -370,7 +370,7 @@ function ensureV1BaseUrl(baseUrl: string): string {
 
 // Every LLM constructor below sets its request timeout from this one config
 // value (config.llmTimeoutMs, env ORACLE_LLM_TIMEOUT_MS; see config.ts for
-// the documented default and README.md for the Ollama-cold-start reasoning
+// the documented default and docs/configuration.md for the Ollama-cold-start reasoning
 // behind that default) and its retry count to this fixed constant. Retries
 // are disabled (0) rather than left at LangChain's own AsyncCaller default
 // (6, with exponential backoff between attempts) because a retried call

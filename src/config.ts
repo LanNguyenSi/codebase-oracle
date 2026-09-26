@@ -101,7 +101,7 @@ const configSchema = z.object({
   // multi-GB model into memory plus evaluating a long prompt on CPU can
   // take well over a minute on a cold start, so a shorter bound would cut
   // off slow-but-healthy local setups rather than just genuinely
-  // unreachable endpoints (see README.md for the full reasoning). Raise
+  // unreachable endpoints (see docs/configuration.md for the full reasoning). Raise
   // ORACLE_LLM_TIMEOUT_MS for a slow local setup that still trips this
   // default. Same fail-loud parse contract as maxFileSizeBytes /
   // maxTextFileSizeBytes: unset (or empty string) falls back to the
