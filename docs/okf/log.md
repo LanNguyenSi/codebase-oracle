@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-09-26T04:44:36Z, docs refresh: the `expand_sources` flag-table
+  pointer moved from README.md to `docs/cli-reference.md` (the flag table
+  itself moved there in a prior README restructure); re-verified and
+  re-pointed in `sources-expansion.md` and `index.md`, and re-verified the
+  `ORACLE_LLM_TIMEOUT_MS` default-reasoning pointer in
+  `provider-enums-and-token-budget.md` against `docs/configuration.md`
+  (claim still holds). All three docs re-stamped.
+
 - 2026-09-23T11:37:34Z, release 0.13.0: `package.json`'s version field changed
   in place (line 3, no cited line moved); `index-freshness-vs-code-freshness.md`
   re-checked and re-stamped.
