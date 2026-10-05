@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-09-26T04:57:06Z
+timestamp: 2026-10-05T04:30:46Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -41,8 +41,8 @@ Verified cross-process visibility:
 - The store is a single SQLite file opened with WAL:
   `db.pragma("journal_mode = WAL")` plus `synchronous = NORMAL` and
   `busy_timeout = 5000` (`src/store/sqlite-store.ts:218-224`). WAL lets readers
-  and a separate writer share one store; the header comment states exactly this
-  (`src/store/sqlite-store.ts:220-224`).
+  and a separate writer share one store; the comment on the busy timeout names
+  only that contention (`src/store/sqlite-store.ts:220-224#"busy_timeout = 5000"`).
 - Every read runs a **fresh prepared statement** each call — `listRepos.all()`,
   the `similaritySearch` `db.prepare(sql).all(...)`
   (`src/store/sqlite-store.ts:476, 531, 554`). There is no long-lived read

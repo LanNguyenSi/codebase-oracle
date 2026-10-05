@@ -2,6 +2,17 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-05T04:30:46Z, `index-freshness-vs-code-freshness.md` re-verified after the
+  `package.json` change that raised the `ip-address` override floor
+  (`package.json:75#"ip-address"`, tracker task 0a71fd3d). That edit only
+  touched the `overrides` block, so every `package.json` claim in the doc
+  (bin, scripts, `prepublishOnly`) still holds at its cited line. Every other
+  cited line in the doc was re-checked against the current source. One claim
+  was corrected: the comment above the `busy_timeout` pragma
+  (`src/store/sqlite-store.ts:220-224#"busy_timeout = 5000"`) describes
+  write contention, not the WAL cross-process guarantee, so the doc no longer
+  says it states exactly that. Doc re-stamped.
+
 - 2026-10-03T12:12:29Z, okf-staleness workflow re-synced from the okf-kit
   workflow template (fleet convergence ticket fdc01728): the workflow header
   now names the template as its source instead of calling the file a pattern
