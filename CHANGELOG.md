@@ -7,9 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-05
+
+### Security
+
+- Raised the `ip-address` override floor to `^10.7.2` and refreshed the
+  lockfile (`ip-address` 10.7.2, `fast-uri` 3.1.8) to pick up patched releases
+  for the advisories reported against the previous versions. No code change.
+
 ### Changed
 
 - Publish workflows now install npm with `npm install -g npm@^11.5.1` (the documented trusted-publishing floor) instead of the floating `npm@11`. CI only; no package code change.
+- The README is restructured around the MCP use case, and the CLI reference moved to `docs/cli-reference.md`. Documentation only.
 
 ## [0.13.0] - 2026-09-23
 
