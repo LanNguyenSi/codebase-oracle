@@ -2,6 +2,10 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-05T12:58:37Z, release 0.13.1: `package.json`'s version field changed
+  in place (line 3, no cited line moved);
+  `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
+
 - 2026-10-05T04:30:46Z, `index-freshness-vs-code-freshness.md` re-verified after the
   `package.json` change that raised the `ip-address` override floor
   (`package.json:75#"ip-address"`, tracker task 0a71fd3d). That edit only
