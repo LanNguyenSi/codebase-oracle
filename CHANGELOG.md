@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Docs: the Groq example in `docs/configuration.md` now uses
+  `openai/gpt-oss-120b`; Groq retired `llama-3.3-70b-versatile`, which now
+  returns 404. The unit tests use the new id as test data too.
+
 ## [0.13.1] - 2026-10-05
 
 ### Security

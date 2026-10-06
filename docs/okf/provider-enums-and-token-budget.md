@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-09-26T04:55:48Z
+timestamp: 2026-10-06T04:08:19Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts

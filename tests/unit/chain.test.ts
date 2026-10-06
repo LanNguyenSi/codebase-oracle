@@ -114,7 +114,7 @@ describe("createLlm", () => {
     const config = baseConfig({
       llmProvider: "openai-compatible",
       llmApiKey: "gsk-test",
-      llmModel: "llama-3.3-70b-versatile",
+      llmModel: "openai/gpt-oss-120b",
       // ollamaBaseUrl has no schema default (config.ts); leaving it unset
       // here exercises the missing-baseUrl path directly.
       ollamaBaseUrl: undefined,
@@ -178,7 +178,7 @@ describe("createLlm", () => {
       llmProvider: "openai-compatible",
       llmBaseUrl: "https://api.groq.com/openai/v1",
       llmApiKey: "gsk-test",
-      llmModel: "llama-3.3-70b-versatile",
+      llmModel: "openai/gpt-oss-120b",
     });
     const llm = createLlm(config) as {
       constructor: { name: string };
