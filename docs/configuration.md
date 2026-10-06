@@ -64,7 +64,7 @@ Any inference endpoint that speaks the OpenAI `chat/completions` shape can serve
 export ORACLE_LLM_PROVIDER=openai-compatible
 export ORACLE_LLM_BASE_URL=https://api.groq.com/openai/v1
 export ORACLE_LLM_API_KEY=gsk_...
-export ORACLE_LLM_MODEL=llama-3.3-70b-versatile
+export ORACLE_LLM_MODEL=openai/gpt-oss-120b
 ```
 
 ```bash

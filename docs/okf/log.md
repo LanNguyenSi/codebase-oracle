@@ -2,6 +2,12 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-06T04:08:19Z, `docs/configuration.md` Groq example now names `openai/gpt-oss-120b`
+  instead of the retired Llama 3.3 70B model id (line 67 changed in place,
+  no line moved; tracker task c007327b). Neither doc that lists it as a source
+  makes a claim about the example model, so `configuration-pointer.md` and
+  `provider-enums-and-token-budget.md` were re-checked and re-stamped.
+
 - 2026-10-05T12:58:37Z, release 0.13.1: `package.json`'s version field changed
   in place (line 3, no cited line moved);
   `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
