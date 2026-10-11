@@ -40,16 +40,20 @@ Verified cross-process visibility:
 
 - The store is a single SQLite file opened with WAL:
   `db.pragma("journal_mode = WAL")` plus `synchronous = NORMAL` and
-  `busy_timeout = 5000` (`src/store/sqlite-store.ts:218-224`). WAL lets readers
+  `busy_timeout = 5000` (`src/store/sqlite-store.ts:218-224#"busy_timeout = 5000"`). WAL lets readers
   and a separate writer share one store; the comment on the busy timeout names
   only that contention (`src/store/sqlite-store.ts:220-224#"busy_timeout = 5000"`).
-- Every read runs a **fresh prepared statement** each call — `listRepos.all()`,
-  the `similaritySearch` `db.prepare(sql).all(...)`
-  (`src/store/sqlite-store.ts:476, 531, 554`). There is no long-lived read
+- Every read executes its statement anew on each call: `listRepos.all()` on
+  the statement prepared at store open
+  (`src/store/sqlite-store.ts:476#"stmts.listRepos.all()"`), and the two
+  `similaritySearch` `db.prepare(sql).all(...)` calls, which prepare their SQL
+  per call
+  (`src/store/sqlite-store.ts:531#"db.prepare(sql).all("`,
+  `src/store/sqlite-store.ts:554#"db.prepare(sql).all("`). There is no long-lived read
   transaction and no JS-level result cache, so each query observes the latest
   committed state, including writes committed by *another* process (a CLI
   `npm run index`, `npm run watch`, or a systemd reindex).
-- `docs/architecture.md:46-49` asserts the same guarantee: WAL store, "Writes
+- `docs/architecture.md:94-97#"without restarting."` asserts the same guarantee: WAL store, "Writes
   and reads can safely happen from different processes," and "A running stdio or
   HTTP MCP server sees `npm run watch` writes on its next query without
   restarting." **The code supports this claim.**
@@ -58,11 +62,14 @@ Practical consequence: after reindexing, you do **not** restart the MCP server.
 The next `oracle_search` / `oracle_query` / `oracle_list_repos` call re-reads the
 store. `oracle_reindex` even closes and drops the cached store handle so the
 indexer does not contend for the write lock; the next tool call re-opens it
-(`src/mcp-server.ts:246-260`).
+(`src/mcp-server.ts:248-258#"storePromise = null;"`).
 
 Note on `writeEpoch`: the store exposes a `bumpWriteEpoch()` / `getWriteEpoch()`
-heartbeat bumped on every mutation (`src/store/sqlite-store.ts:159-161,
-596, 620, 810-818`). It is written but **no reader in `src/` currently consumes
+heartbeat bumped on every mutation (interface
+`src/store/sqlite-store.ts:159-161#"getWriteEpoch(): number;"`, bump calls
+`src/store/sqlite-store.ts:596#"bumpEpochInternal();"` and
+`src/store/sqlite-store.ts:620#"bumpEpochInternal();"`, implementation
+`src/store/sqlite-store.ts:815-818#"stmts.upsertEpoch.run(next);"`). It is written but **no reader in `src/` currently consumes
 `getWriteEpoch()` to invalidate a cache** — the freshness guarantee rests on WAL
 plus per-statement reads, not on epoch polling. Do not rely on the epoch as the
 mechanism; it is a hook, not the load-bearing part.
@@ -70,19 +77,19 @@ mechanism; it is a hook, not the load-bearing part.
 ### Verify new chunks are visible
 
 1. Reindex via the **CLI** to isolate the ingest from the server:
-   `npm run index` (which is `tsx src/index.ts index`, `package.json:23`).
+   `npm run index` (which is `tsx src/index.ts index`, `package.json:23#"tsx src/index.ts index"`).
 2. From the still-running MCP session call `oracle_list_repos` and check the
    per-repo chunk/file counts and the indexed timestamp (rendered from
-   `last_indexed_at`; `src/store/sqlite-store.ts:323-351`,
+   `last_indexed_at`; `src/store/sqlite-store.ts:323-350#"ORDER BY repo"`,
    `src/format-freshness.ts`). Or call `oracle_search` for a string you know is
    only in the new content. A hit without any restart confirms DATA freshness.
 
 ## 2) Server CODE freshness — build + reconnect, and it depends how the client launches it
 
 The published/`bin` entry is a **compiled artifact**:
-`"bin": { "codebase-oracle": "./dist/index.js" }` (`package.json:6-8`). Editing
+`"bin": { "codebase-oracle": "./dist/index.js" }` (`package.json:6-7#"./dist/index.js"`). Editing
 `src/` does nothing for a process running that binary until you rebuild:
-`"build": "tsc"` (`package.json:21`). Even after rebuild, a *running* server
+`"build": "tsc"` (`package.json:21#"tsc"`). Even after rebuild, a *running* server
 still executes the already-`exec`'d old binary — the MCP client must
 reconnect/restart the server process to `exec` the new one.
 
@@ -93,11 +100,11 @@ build is even needed**:
   installed `codebase-oracle mcp`), then: edit `src/` → **`npm run build`** →
   reconnect.
 - If the client runs `npm run mcp`, that is `tsx src/mcp-server.ts`
-  (`package.json:26`) — it transpiles **source** on each spawn. No `npm run
+  (`package.json:26#"tsx src/mcp-server.ts"`): it transpiles **source** on each spawn. No `npm run
   build` is needed; a fresh spawn is already code-fresh. But the server is still
   a long-lived process, so you **still must reconnect** for edits to take
   effect. (`npm run dev` / `index` / `query` / `watch` are likewise `tsx
-  src/...`, `package.json:22-27`.)
+  src/...`, `package.json:22-27#"tsx src/http-server.ts"`.)
 
 So the folklore is only half-right: a running server never hot-reloads its own
 code, but a *newly spawned* server is code-fresh only on the `tsx` path, and
@@ -108,37 +115,41 @@ needs a build on the `dist` path.
 - The version string flows from `package.json` through `src/version.ts`
   (`VERSION = pkg.version`, reading `../package.json`) into the MCP handshake
   (`new McpServer({ name: "codebase-oracle", version: VERSION })`,
-  `src/mcp-server.ts:19, 37-41`). If you bumped the version, the reconnected
+  `src/mcp-server.ts:19#"import { VERSION }"`, `src/mcp-server.ts:38-40#"version: VERSION,"`). If you bumped the version, the reconnected
   client's server-info version proves the new process is live. Note: `VERSION`
   tracks `package.json`, **not** arbitrary `src/` edits, so a same-version code
   change is not distinguishable this way — for those, exercise the changed
   behavior directly after reconnecting.
 - On the `dist` path, if behavior did not change, confirm you actually rebuilt:
   `dist/` is only regenerated by `npm run build` (`prepublishOnly` also runs it,
-  `package.json:30`). A stale `dist` is the classic "I edited src and nothing
+  `package.json:30#"npm run build"`). A stale `dist` is the classic "I edited src and nothing
   happened" trap.
 
 ## Config (`.env` / `ORACLE_*`) — parsed once at process start
 
-Config is **not** re-read per call. `src/mcp-server.ts:21-23` runs
+Config is **not** re-read per call. `src/mcp-server.ts:21-23#"const config = loadConfig();"` runs
 `loadEnvFromFile()` and `const config = loadConfig()` at **module load**, once.
-`loadConfig()` reads `process.env.ORACLE_*` (`src/config.ts:129-168`), and
+`loadConfig()` reads `process.env.ORACLE_*` (`src/config.ts:129-166#"...overrides,"`), and
 `loadEnvFromFile()` only sets vars that are not already defined
-(`src/env.ts:32-33`). The lazy `getStore()` retry rebuilds the store/embeddings
+(`src/env.ts:32-33#"process.env[key] = parseEnvValue(rawValue);"`). The lazy `getStore()` retry rebuilds the store/embeddings
 from that **already-parsed `cfg`** — it does not re-read `process.env`
-(`src/mcp-server.ts:44-57`). The "config fix on disk … visible to the next tool
+(`src/mcp-server.ts:44-56#"return storePromise;"`). The "config fix on disk … visible to the next tool
 call" comment there refers to not caching a *rejected* store promise (e.g. a
 fixed store file gets re-opened), **not** to re-reading env vars.
 
 Therefore: changing `.env` / `ORACLE_*` requires reconnecting/restarting the MCP
 server. Every CLI subcommand calls `loadConfig()` fresh per invocation
-(`src/index.ts:74, 90, 150, 192, 221, 247, 263`), so the CLI always reflects current
+(`src/index.ts:74#"loadConfig("`, `src/index.ts:90#"loadConfig("`,
+`src/index.ts:150#"loadConfig("`, `src/index.ts:192#"loadConfig("`,
+`src/index.ts:221#"loadConfig("`, `src/index.ts:247#"loadConfig("`,
+`src/index.ts:263#"loadConfig("`), so the CLI always reflects current
 env — another reason to verify config-sensitive behavior via the CLI.
 
 Verify: reconnect, then call `oracle_list_repos` / `oracle_search`; a
 provider/model mismatch against the store fails loud with an
 `IndexFingerprintError` naming the expected values
-(`src/store/sqlite-store.ts:460-473`, `docs/architecture.md:52-56`).
+(`src/store/sqlite-store.ts:460-470#"set ORACLE_EMBEDDING_MODEL="`,
+`docs/architecture.md:100-104#"revert the env change"`).
 
 ## The repeated operator trap
 
@@ -147,8 +158,9 @@ both axes: your `src/` edit to the ingest pipeline is invisible until build +
 reconnect (axis 2), while any pre-existing store data is served fresh (axis 1) —
 so the server can show old *behavior* for a new reason and you chase a phantom.
 Verify ingest changes via the **CLI** instead: `npm run index` runs `tsx
-src/index.ts index` (`package.json:23`, `src/index.ts:70-79`), transpiling your
+src/index.ts index` (`package.json:23#"tsx src/index.ts index"`,
+`src/index.ts:70-77#"warn: (line) => process.stderr.write(line),"`), transpiling your
 edited source on the spot and driving the same `runIndex` the MCP tool uses
-(`src/ingest/runner.ts:3-4`). That isolates "did my ingest change work" from
+(`src/ingest/runner.ts:3-4#"the systemd-driven background reindex"`). That isolates "did my ingest change work" from
 "is the server running new code." Once the CLI proves the store is correct, the
 running MCP server sees the result on its next query with no restart (axis 1).

@@ -10,9 +10,10 @@ sources:
 
 # Architecture — pointer
 
-[../architecture.md](../architecture.md) is authoritative and current for the
-ingest pipeline, chunking, the four `fm*` frontmatter metadata keys, embeddings,
-the SQLite + sqlite-vec store, incremental indexing, and watch mode. It is not
+[../architecture.md](../architecture.md) is the reference for the entry points
+(CLI, stdio and HTTP MCP servers, watch mode, refresh script), the ingest
+pipeline, chunking, the four `fm*` frontmatter metadata keys, embeddings, the
+SQLite + sqlite-vec store, incremental indexing, and watch mode. It is not
 duplicated here.
 
 What it does **not** cover, and where to read instead:
@@ -22,6 +23,7 @@ What it does **not** cover, and where to read instead:
   [sources-expansion.md](sources-expansion.md). Note it is a different mechanism
   from the `Pointers (from OKF sources metadata):` section that
   `architecture.md` does describe for `oracle_query`.
-- **The two enforcement sites for the ingest size limit** (scanner and watch
-  implement it independently). See
+- **The two enforcement sites for the ingest size limit.** It says watch mode
+  mirrors both size ceilings, but not that the scanner and watch implement the
+  check independently, so a change to one does not reach the other. See
   [ingest-size-limit-enforcement.md](ingest-size-limit-enforcement.md).

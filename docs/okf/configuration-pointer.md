@@ -10,8 +10,8 @@ sources:
 
 # Configuration — pointer
 
-[../configuration.md](../configuration.md) is authoritative and exhaustive for
-environment variables, including `ORACLE_MAX_FILE_SIZE` semantics and the two
+[../configuration.md](../configuration.md) is the reference for environment
+variables, including `ORACLE_MAX_FILE_SIZE` semantics and the two
 separate provider enums (`ORACLE_EMBEDDING_PROVIDER`: `openai` | `ollama` |
 `stub`; `ORACLE_LLM_PROVIDER`: `auto` | `anthropic` | `openai` |
 `openai-compatible` | `ollama`). Not duplicated here.

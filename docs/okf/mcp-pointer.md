@@ -11,8 +11,8 @@ sources:
 
 # MCP tools — pointer
 
-[../mcp.md](../mcp.md) is authoritative for the MCP tool surface: the stdio
-tools, the documented HTTP parity gap (HTTP exposes four of five tools and no
+[../mcp.md](../mcp.md) is the reference for the MCP tool surface: the stdio
+tools and their inputs, the documented HTTP parity gap (HTTP exposes four of five tools and no
 `path_glob`), and the `type` / `tags` frontmatter filters on `oracle_search`.
 Not duplicated here.
 

@@ -336,7 +336,7 @@
   index-freshness-vs-code-freshness.md:150 cited `package.json:22` for the
   `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
   already cited :23 correctly elsewhere, at line 73), fixed, restamped.
-  provider-enums-and-token-budget.md:33 presented a paraphrase as a verbatim
+  provider-enums-and-token-budget.md:34 presented a paraphrase as a verbatim
   quote ("so embedding and LLM live..." vs src/config.ts:52-55's actual "lets
   embedding and LLM live...") was reworded so the quoted span matches the
   source exactly, restamped.
