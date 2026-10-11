@@ -4,7 +4,7 @@ Thanks for your interest. codebase-oracle is a local-first MCP server that seman
 
 ## Issues
 
-- Bug reports: include repro steps, expected vs. actual, the verb (`oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`), Node version, and OS.
+- Bug reports: include repro steps, expected vs. actual, the verb (`oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`, `oracle_reindex`), Node version, and OS.
 - Feature requests: describe the use case before the proposed shape.
 
 ## Pull Requests
@@ -17,6 +17,7 @@ Thanks for your interest. codebase-oracle is a local-first MCP server that seman
    npm install
    npm run build
    npm test
+   npm run test:typecheck   # type-check the test tree, as CI does
    ```
 
 4. After native-dep changes (`better-sqlite3`, `sqlite-vec`), verify the install boundary loads cleanly: `node -e "require('better-sqlite3'); require('sqlite-vec')"`.
@@ -40,8 +41,8 @@ Match the surrounding code. Prefer small, reviewable diffs.
 ## Releasing
 
 Retrieval quality is guarded by a hand-labelled eval set rather than by CI. The
-eval needs an embedding provider (`OPENAI_API_KEY`, or an OpenAI-compatible
-endpoint such as Ollama) and costs under a cent per run, so it runs as a
+eval needs an embedding provider (`OPENAI_API_KEY`, or a local Ollama with
+`ORACLE_EMBEDDING_PROVIDER=ollama`) and costs under a cent per run, so it runs as a
 **manual pre-release gate**, not on every PR:
 
 ```bash

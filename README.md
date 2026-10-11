@@ -4,11 +4,11 @@ Semantic search across all your local repos, via MCP or CLI.
 
 [![CI](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml/badge.svg)](https://github.com/LanNguyenSi/codebase-oracle/actions/workflows/ci.yml)
 
-codebase-oracle builds one semantic index over every git repo under a root directory, then exposes it to agents via MCP or to humans via CLI. The vector store lives on your machine; embeddings are computed by OpenAI by default, or fully local via Ollama (configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
+codebase-oracle builds one semantic index over every git repo directly under a root directory, then exposes it to agents via MCP or to humans via CLI. The vector store lives on your machine; embeddings are computed by OpenAI by default, or fully local via Ollama (configurable). Indexing is incremental: only new and changed files are re-embedded. Built for agents first, humans second.
 
 ## Key features
 
-- One incremental index over every git repo under `ORACLE_SCAN_ROOT`, shared by the CLI and the MCP server.
+- One incremental index over every git repo directly under `ORACLE_SCAN_ROOT`, shared by the CLI and the MCP server.
 - MCP server (5 tools over stdio, 4 over HTTP) so agents query a pre-built index without scanning or embedding anything themselves.
 - OpenAI or local Ollama embeddings; Anthropic, OpenAI, or any OpenAI-compatible endpoint for answers.
 - Answers are grounded: retrieved chunks carry `path:line_start-line_end (repo)` locations and are cited in generated answers.
@@ -44,8 +44,10 @@ codebase-oracle query "where do we handle auth?"
 Or wire it into Claude Code as an MCP server:
 
 ```bash
-claude mcp add codebase-oracle -- codebase-oracle mcp
+claude mcp add -s user codebase-oracle -- codebase-oracle mcp
 ```
+
+The MCP server reads its configuration once at startup, from its own environment and from a `.env` file in the directory it is started in (variables already set in the environment take precedence). For a global install, make sure the client passes the provider keys to the server process, or start the server in a directory that holds a `.env`, as the multi-repo recipe in [docs/mcp.md](docs/mcp.md) does with its `cd` wrapper. `ORACLE_SCAN_ROOT` is only needed for `oracle_reindex`. Restart the server after changing configuration.
 
 From any Claude Code session on the same machine you can now call `oracle_search`, `oracle_query`, `oracle_expand`, `oracle_list_repos`, and `oracle_reindex` against the shared index. See [docs/mcp.md](docs/mcp.md) for registration recipes and the full tool surface.
 
@@ -58,13 +60,15 @@ codebase-oracle search "where do we read AGENT_TASKS_TOKEN"
 ```
 
 ```
-[1] src/auth/token.ts:14-32 (my-repo):
+--- my-repo/src/auth/token.ts:14-32 (my-repo) ---
 function loadToken(): string {
   const value = process.env.AGENT_TASKS_TOKEN;
   if (!value) throw new Error("AGENT_TASKS_TOKEN missing");
   return value;
 }
 ```
+
+Paths start with the repo directory, because indexed paths are relative to `ORACLE_SCAN_ROOT`. The CLI prints at most 500 characters per chunk; `--json` returns the full text.
 
 `oracle_query` asks a natural-language question and returns an LLM answer with citations instead of raw chunks. Every answer LLM call is bounded by `ORACLE_LLM_TIMEOUT_MS` (default 120000ms): an unreachable or unresponsive endpoint falls back to raw retrieved context within that bound instead of hanging; see [docs/configuration.md](docs/configuration.md) for the full reasoning and env-var reference. Full CLI flags, `--json` output shapes, and more examples: [docs/cli-reference.md](docs/cli-reference.md).
 
@@ -84,6 +88,7 @@ function loadToken(): string {
 npm run build          # TypeScript compilation
 npm test               # vitest run
 npx tsc --noEmit       # type check only
+npm run test:typecheck # type-check the test tree, as CI does
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the PR workflow, dev setup, and the release process.
