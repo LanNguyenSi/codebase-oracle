@@ -18,11 +18,11 @@ The `.env` loader reads `KEY=value` lines and uses each value literally: surroun
 | `ORACLE_EMBEDDING_PROVIDER` | No | `openai` | Embedding provider: `openai` or `ollama`. `stub` exists for tests only (deterministic 8-dim vectors, no network) and is refused under `NODE_ENV=production` |
 | `ORACLE_LLM_PROVIDER` | No | `auto` | LLM provider: `auto`, `anthropic`, `openai`, `openai-compatible`, `ollama`. `openai-compatible` is the generic lane for Groq, OpenRouter, Together, vLLM, etc.; `ollama` is kept as a deprecated alias for the same lane (prints a one-shot warning). `auto` uses Anthropic when `ANTHROPIC_API_KEY` is set, otherwise OpenAI with the fixed model `gpt-4o-mini` when `OPENAI_API_KEY` is set, otherwise no LLM (`query` then returns the raw retrieved chunks). `auto` never selects `openai-compatible` or `ollama`. See [How the answer LLM is chosen](#how-the-answer-llm-is-chosen) |
 | `ORACLE_LLM_BASE_URL` | Conditionally | — | Required when `ORACLE_LLM_PROVIDER=openai-compatible`. The provider's OpenAI-compatible `/v1` endpoint (e.g. `https://api.groq.com/openai/v1`) |
-| `ORACLE_LLM_API_KEY` | No | — | API key for the `openai-compatible` lane. Leave unset for endpoints that don't require auth (local Ollama, some vLLM setups); the SDK surfaces a 401 if one is required. Falls back to `OLLAMA_API_KEY` when unset. The `openai-compatible` lane never falls back to `OPENAI_API_KEY` |
+| `ORACLE_LLM_API_KEY` | No | — | API key for the `openai-compatible` lane. Falls back to `OLLAMA_API_KEY` when unset. The `openai-compatible` lane never falls back to `OPENAI_API_KEY`. Set a non-empty value even for an endpoint that does not check auth (local Ollama, some vLLM setups), for example `ORACLE_LLM_API_KEY=ollama`: with neither key set the lane passes an empty key, the OpenAI SDK refuses it with `Missing credentials` before sending any request, and `query` returns the raw retrieved chunks marked as degraded |
 | `OPENAI_API_KEY` | Conditionally | — | Required when `ORACLE_EMBEDDING_PROVIDER=openai`; also used for OpenAI LLM |
 | `OPENAI_BASE_URL` | No | — | Override OpenAI-compatible base URL for OpenAI provider |
 | `ANTHROPIC_API_KEY` | No | — | Anthropic API key for answer generation |
-| `OLLAMA_API_KEY` | No | — | API key sent to the Ollama endpoint. Embeddings (`ORACLE_EMBEDDING_PROVIDER=ollama`) use `OLLAMA_API_KEY`, else `OPENAI_API_KEY` if it is set, else the literal `ollama`. Set `OLLAMA_API_KEY` explicitly whenever `OPENAI_API_KEY` is also set and you do not want that key sent to the Ollama endpoint. The answer LLM's `openai-compatible` lane uses `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else no key; its deprecated `ollama` alias uses the same order with the literal `ollama` as the last fallback |
+| `OLLAMA_API_KEY` | No | — | API key sent to the Ollama endpoint. Embeddings (`ORACLE_EMBEDDING_PROVIDER=ollama`) use `OLLAMA_API_KEY`, else `OPENAI_API_KEY` if it is set, else the literal `ollama`. Set `OLLAMA_API_KEY` explicitly whenever `OPENAI_API_KEY` is also set and you do not want that key sent to the Ollama endpoint. The answer LLM's `openai-compatible` lane uses `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else an empty key, which the OpenAI SDK refuses (see `ORACLE_LLM_API_KEY`); its deprecated `ollama` alias uses the same order with the literal `ollama` as the last fallback |
 | `ORACLE_OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible base URL. The plain `OLLAMA_BASE_URL` env var is honored as a fallback alias when `ORACLE_OLLAMA_BASE_URL` is unset |
 | `ORACLE_SCAN_ROOT` | Yes (for `index` / `watch`) | — (none) | Root directory to scan for git repos. Only its direct child directories that contain a `.git` entry are indexed. Hidden directories are skipped, and nested layouts such as `<root>/<org>/<repo>` are not discovered. The directory name becomes the repo name, and indexed paths are relative to this root, so they start with the repo directory. There is no default: the writer commands (`index`, `watch`) exit with `ORACLE_SCAN_ROOT is required` when it is unset. Read-only commands (`query`, `search`, `list-repos`) never read it; the stdio `mcp` server reads it only when its `oracle_reindex` tool is invoked (which runs the indexer and so requires it) |
 | `ORACLE_DATA_DIR` | No | `~/.codebase-oracle` | Directory for persisted index data. In `.env`, use an absolute path: `~` is not expanded there |
@@ -43,10 +43,10 @@ The `.env` loader reads `KEY=value` lines and uses each value literally: surroun
 Retrieval runs first; only the answer step of `query` / `oracle_query` depends on this choice, and `search` never calls an LLM. `ORACLE_LLM_PROVIDER` picks the lane:
 
 - `anthropic` and `openai` require `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` respectively, and use `ORACLE_LLM_MODEL`.
-- `openai-compatible` requires `ORACLE_LLM_BASE_URL` (or an Ollama base URL); `ollama` is its deprecated alias, with `http://localhost:11434/v1` as the default base URL.
+- `openai-compatible` requires `ORACLE_LLM_BASE_URL` (or an Ollama base URL) and a non-empty `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY`; any placeholder works for an endpoint that does not check auth. `ollama` is its deprecated alias, with `http://localhost:11434/v1` as the default base URL and the literal `ollama` as the default key.
 - `auto` (the default) uses Anthropic when `ANTHROPIC_API_KEY` is set, otherwise OpenAI with the fixed model `gpt-4o-mini` when `OPENAI_API_KEY` is set, otherwise no LLM.
 
-A lane whose required key or base URL is missing fails the query with an error. With no LLM, `query` returns the raw retrieved chunks as an ordinary answer. When the LLM call fails or exceeds `ORACLE_LLM_TIMEOUT_MS`, `query` returns the raw chunks marked as degraded (`"degraded": true` in `--json` output).
+An `anthropic` or `openai` lane without its key, or an `openai-compatible` lane without a base URL, fails the query with an error. An `openai-compatible` lane without a key does not: the OpenAI SDK refuses the empty key when the LLM is called, and `query` returns the degraded raw chunks described next. With no LLM, `query` returns the raw retrieved chunks as an ordinary answer. When the LLM call fails or exceeds `ORACLE_LLM_TIMEOUT_MS`, `query` returns the raw chunks marked as degraded (`"degraded": true` in `--json` output).
 
 The flowchart shows the same decision, from the provider setting to the answer.
 
@@ -57,7 +57,8 @@ flowchart TD
   O["OpenAI client<br/>needs OPENAI_API_KEY<br/>model ORACLE_LLM_MODEL"]
   A["Anthropic client<br/>needs ANTHROPIC_API_KEY<br/>model ORACLE_LLM_MODEL"]
   O2["OpenAI client<br/>fixed model gpt-4o-mini"]
-  C["OpenAI-compatible client<br/>needs ORACLE_LLM_BASE_URL<br/>model ORACLE_LLM_MODEL"]
+  C["OpenAI-compatible client<br/>needs ORACLE_LLM_BASE_URL or an Ollama base URL<br/>non-empty key ORACLE_LLM_API_KEY<br/>or OLLAMA_API_KEY<br/>model ORACLE_LLM_MODEL"]
+  C2["same client, ollama alias<br/>base URL defaults to localhost:11434/v1<br/>key defaults to ollama<br/>model ORACLE_LLM_MODEL, default llama3.1"]
   R["no LLM<br/>answer = raw retrieved chunks"]
   I["LLM call<br/>bounded by ORACLE_LLM_TIMEOUT_MS"]
   ANS["cited answer"]
@@ -65,7 +66,8 @@ flowchart TD
   P -- openai --> O
   P -- anthropic --> A
   P -- auto --> K
-  P -- "openai-compatible<br/>or ollama (deprecated)" --> C
+  P -- openai-compatible --> C
+  P -- "ollama (deprecated)" --> C2
   K -- ANTHROPIC_API_KEY --> A
   K -- "only OPENAI_API_KEY" --> O2
   K -- neither --> R
@@ -73,6 +75,7 @@ flowchart TD
   A --> I
   O2 --> I
   C --> I
+  C2 --> I
   I -- ok --> ANS
   I -- "error or timeout" --> D
 ```
@@ -111,9 +114,10 @@ export ORACLE_LLM_MODEL=openai/gpt-oss-120b
 ```
 
 ```bash
-# Local Ollama (no key needed)
+# Local Ollama (does not check the key, but it must be non-empty)
 export ORACLE_LLM_PROVIDER=openai-compatible
 export ORACLE_LLM_BASE_URL=http://localhost:11434/v1
+export ORACLE_LLM_API_KEY=ollama
 export ORACLE_LLM_MODEL=llama3.1
 ```
 
