@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-11T15:34:35Z, `provider-enums-and-token-budget.md` gained a paragraph on the HTTP
+  MCP transport's inbound bearer token and its loopback-only default, and
+  lists `src/http-auth.ts` and `src/http-server.ts` under `sources:`. The two
+  new `sources:` lines moved the historical provider-enums citation of the
+  2026-08-22T05:39:39Z entry down again; it now points at line 36. Re-stamped.
+  `okf-kit check --json docs/okf` and `okf-kit check --json --require-anchors
+  docs/okf` (okf-kit 0.16.0): no errors, no warnings, no notices.
+
 - 2026-10-11T12:57:37Z, docs audit: `docs/architecture.md`, `docs/configuration.md` and
   `docs/mcp.md` were corrected against the code, so every doc listing one of
   them under `sources:` was re-checked. The two `docs/architecture.md`
@@ -361,7 +369,7 @@
   index-freshness-vs-code-freshness.md:150 cited `package.json:22` for the
   `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
   already cited :23 correctly elsewhere, at line 73), fixed, restamped.
-  provider-enums-and-token-budget.md:34 presented a paraphrase as a verbatim
+  provider-enums-and-token-budget.md:36 presented a paraphrase as a verbatim
   quote ("so embedding and LLM live..." vs src/config.ts:52-55's actual "lets
   embedding and LLM live...") was reworded so the quoted span matches the
   source exactly, restamped.
