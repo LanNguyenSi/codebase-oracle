@@ -19,11 +19,14 @@ npm run dev -- search "okf backend" --type module --tags okf,backend
 npm run dev -- list-repos                # indexed repos with chunk/file counts + freshness
 npm run dev -- list-repos --json         # one machine-readable JSON document
 npm run dev -- list-repos --json | jq '.repos[] | {repo, lastIndexedAt}'
-npm run dev -- expand my-repo path/to/file.ts -l 42   # read a window of lines around a position
-npm run dev -- expand my-repo path/to/file.ts --json
+npm run dev -- expand my-repo my-repo/path/to/file.ts -l 42   # read a window of lines around a position
+npm run dev -- expand my-repo my-repo/path/to/file.ts --json
 npm run watch                            # keep the index fresh in the background
 npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to the SQLite store
+npm run dev -- mcp                       # stdio MCP server (see mcp.md)
 ```
+
+`expand` takes the file path exactly as `search` prints it. Indexed paths are relative to `ORACLE_SCAN_ROOT`, so they start with the repo directory.
 
 `list-repos` shows what's indexed and how fresh each repo is:
 
@@ -49,6 +52,15 @@ See [architecture.md#watch-mode](architecture.md#watch-mode) for watch-mode debo
 | `--json` | (`query`, `search`, `list-repos`, and `expand`) Emit exactly one JSON document on stdout. Search returns complete chunk text; diagnostics go to stderr. JSON errors exit nonzero. |
 
 `oracle_query`'s answer gets an automatic `Pointers (from OKF sources metadata):` section appended after the sources list when any retrieved chunk carries `fmSources`, listing the deduped union of paths in retrieval-rank order (capped at 10, with a truncation note past that). No LLM involvement, and the section is omitted entirely when nothing in the retrieved context has `fmSources`.
+
+## Options of other commands
+
+| Command | Option | Description |
+|---------|--------|-------------|
+| `index`, `watch` | `-p, --path <path>` | Scan root; overrides `ORACLE_SCAN_ROOT` |
+| `watch` | `--debounce <ms>` | Quiet period after the last file event before a batch is processed (default 3000). A non-numeric or non-positive value falls back to the default |
+| `expand` | `-l, --line <n>` | 1-indexed line to center the window on (default 1) |
+| `expand` | `-w, --window <n>` | Window size in lines, centered on `--line` (default 30, max 200) |
 
 ## `--json` contract
 

@@ -7,14 +7,18 @@ codebase-oracle ships an MCP (Model Context Protocol) server so any local Claude
 After `npm i -g @lannguyensi/codebase-oracle`:
 
 ```bash
-claude mcp add codebase-oracle -- codebase-oracle mcp
+claude mcp add -s user codebase-oracle -- codebase-oracle mcp
 ```
 
-From a local source checkout (no global install):
+The MCP server reads its configuration once at startup, from its own environment and from a `.env` file in the directory it is started in (variables already set in the environment take precedence). For a global install, make sure the client passes the provider keys to the server process, or start the server in a directory that holds a `.env`, as the `sh -c 'cd ... && exec ...'` wrapper in the [multi-repo workspace recipe](#multi-repo-workspace-recipe-source-checkout-user-scope) below does (for a global install, exec `codebase-oracle mcp` there). `ORACLE_SCAN_ROOT` is only needed for `oracle_reindex`. Restart the server after changing configuration.
+
+From a local source checkout (no global install), run inside the checkout:
 
 ```bash
 claude mcp add codebase-oracle -- npx tsx src/mcp-server.ts
 ```
+
+This registers at local scope with a relative path, so it connects only for sessions started in the checkout directory. For every session, use the multi-repo workspace recipe below.
 
 Or run the server standalone for local development:
 
@@ -22,14 +26,14 @@ Or run the server standalone for local development:
 npm run mcp
 ```
 
-From that point on, any Claude Code session on the same machine can call the tools below without a separate scan or API key per session.
+With the user-scope registration, any Claude Code session on the same machine can call the tools below without a separate scan or API key per session.
 
 ## Multi-repo workspace recipe (source checkout, user scope)
 
-The battle-tested registration for a multi-repo workspace like `~/git/pandora`, where sessions start in changing directories and the oracle must be available in all of them (verified on the Mac mini, 2026-08-16):
+A registration for a multi-repo workspace where sessions start in different directories and the oracle must be available in all of them:
 
 1. **Prerequisites, once per machine:**
-   - `.env` in the checkout with at least `ORACLE_SCAN_ROOT` (the directory containing your git repos) and the provider keys you use (`OPENAI_API_KEY`, or `ORACLE_EMBEDDING_PROVIDER` / `ORACLE_LLM_PROVIDER` / `ORACLE_LLM_BASE_URL` / `ORACLE_LLM_API_KEY` / `ORACLE_LLM_MODEL` for a local provider). The server resolves `.env` from its **working directory**, which is why the command below cds first.
+   - `.env` in the checkout with at least `ORACLE_SCAN_ROOT` (the absolute path of the directory containing your git repos; `~` is not expanded in `.env`) and the provider keys you use (`OPENAI_API_KEY`, or `ORACLE_EMBEDDING_PROVIDER` / `ORACLE_LLM_PROVIDER` / `ORACLE_LLM_BASE_URL` / `ORACLE_LLM_API_KEY` / `ORACLE_LLM_MODEL` for a local provider). The server resolves `.env` from its **working directory**, which is why the command below cds first.
    - `npm run build` in the checkout (the recipe runs the compiled `dist/`; rebuild after pulling changes, a stale `dist` serves stale behavior).
    - An index: `npm run index` (or wait for the first `oracle_reindex` call).
 
@@ -53,13 +57,13 @@ The battle-tested registration for a multi-repo workspace like `~/git/pandora`, 
 
 ## Tools
 
-| Tool | Description |
-|------|-------------|
-| `oracle_query` | Ask a natural-language question, get an LLM answer with citations |
-| `oracle_search` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts optional `path_glob`, `type`, and `tags` filters, plus `expand_sources` (boolean, default `true`) to toggle OKF sources-expansion |
-| `oracle_expand` | Read a window of lines around a position in an indexed file (use after `oracle_search` for more context) |
-| `oracle_list_repos` | List repos present in the index with chunk counts, file counts, and the indexed timestamp |
-| `oracle_reindex` | Rebuild the incremental index from disk; new chunks visible to the next `oracle_search` / `oracle_query` call |
+| Tool | Inputs | Description |
+|------|--------|-------------|
+| `oracle_query` | `question`, `repo?` | Ask a natural-language question, get an LLM answer with citations |
+| `oracle_search` | `query`, `repo?`, `limit?` (1-50, default 10), `path_glob?`, `type?`, `tags?`, `expand_sources?` | Raw vector similarity search, returns code chunks with `path:line_start-line_end (repo)` headers. Accepts optional `path_glob`, `type`, and `tags` filters, plus `expand_sources` (boolean, default `true`) to toggle OKF sources-expansion |
+| `oracle_expand` | `repo`, `path` (as printed by `oracle_search`, starting with the repo directory), `line?` (default 1), `window?` (default 30, max 200) | Read a window of lines around a position in an indexed file (use after `oracle_search` for more context) |
+| `oracle_list_repos` | none | List repos present in the index with chunk counts, file counts, and the indexed timestamp |
+| `oracle_reindex` | none | Rebuild the incremental index from disk; new chunks visible to the next `oracle_search` / `oracle_query` call |
 
 ## OKF frontmatter filters (`type` / `tags`)
 
@@ -72,13 +76,13 @@ Both filters AND-compose with `repo` and `path_glob` (and with each other). A fi
 
 Like `path_glob`, `type` and `tags` are applied as a post-filter over an over-fetched window: the result count may fall short of `limit` for highly selective filters because that window is capped to keep the SQLite scan bounded. Raise `limit` if you need more matches.
 
-Matching chunks show their `fmType` in the result header (e.g. `[3] docs/okf/backend.md:1-40 (agent-tasks) [module]`) and, when `fmSources` is present, an additional `sources: path1, path2` line. Chunks without frontmatter metadata render exactly as before.
+Matching chunks show their `fmType` in the result header (e.g. `[3] agent-tasks/docs/okf/backend.md:1-40 (agent-tasks) [module]`) and, when `fmSources` is present, an additional `sources: path1, path2` line. Chunks without frontmatter metadata render exactly as before.
 
 `oracle_query` needs no new params: when any retrieved chunk carries `fmSources`, the answer gets a mechanically assembled `Pointers (from OKF sources metadata):` section appended after the sources list, listing the deduped union of `fmSources` paths in retrieval-rank order (capped at 10, with a `... and N more` note when truncated). No LLM involvement, and the section is omitted entirely when no retrieved chunk has `fmSources`.
 
 ## Example agent prompts
 
-Once the MCP server is registered, an agent can issue calls like the following. The actual tool inputs are `{ question }` for `oracle_query` and `{ query }` for `oracle_search`, both optionally with `repo` plus `path_glob` / `type` / `tags` for `oracle_search`, plus `expand_sources` (boolean, default `true`) for `oracle_search`.
+Once the MCP server is registered, an agent can issue calls like the following. The inputs of each tool are listed in the [Tools](#tools) table above.
 
 - `oracle_search` with `query="AGENT_TASKS_TOKEN"`: find every repo that reads the token, across all indexed repos.
 - `oracle_search` with `query="tag-driven release"`, `path_glob="**/.github/workflows/*.yml"`: scoped to GitHub Actions workflow files only. picomatch semantics: `*` within a segment, `**` recursive, `?` single char, `{a,b}` alternatives.
@@ -95,6 +99,18 @@ The returned chunks include file path plus repo name, so the agent can read the 
 ## HTTP MCP
 
 `npm run serve` starts the MCP server over Streamable HTTP instead of stdio. Defaults: `127.0.0.1:3100`, no authentication. Appropriate for a single local agent on the same machine.
+
+`npm run serve` needs a source checkout with dev dependencies. After `npm run build`, `node dist/http-server.js` run in the checkout starts the same server. The `codebase-oracle` binary has no subcommand for the HTTP transport. Register the endpoint with Claude Code:
+
+```bash
+claude mcp add codebase-oracle --transport http http://localhost:3100/mcp
+```
+
+This registers at local scope, so it connects only for sessions started in that directory; add `-s user` for every session. With `ORACLE_HTTP_TOKEN` set, the client must send `Authorization: Bearer <token>`, which `claude mcp add` sets with `--header`:
+
+```bash
+claude mcp add -s user --transport http codebase-oracle http://localhost:3100/mcp --header "Authorization: Bearer <token>"
+```
 
 The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, `tags`, and `expand_sources`, the last a boolean defaulting to `true`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
 

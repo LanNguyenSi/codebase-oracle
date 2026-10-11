@@ -1,17 +1,17 @@
 ---
 type: overview
 title: Configuration — where the env vars are documented
-description: Pointer doc — ../configuration.md is the authoritative env-var reference and already separates the embedding and LLM provider enums; this entry only points at the token-budget asymmetry it does not mention.
+description: Pointer doc — ../configuration.md is the reference for the env vars and already separates the embedding and LLM provider enums; this entry only points at the token-budget asymmetry it does not mention.
 tags: [overview, configuration, env, pointer]
-timestamp: 2026-10-06T04:08:19Z
+timestamp: 2026-10-11T16:13:41Z
 sources:
   - docs/configuration.md
 ---
 
 # Configuration — pointer
 
-[../configuration.md](../configuration.md) is authoritative and exhaustive for
-environment variables, including `ORACLE_MAX_FILE_SIZE` semantics and the two
+[../configuration.md](../configuration.md) is the reference for environment
+variables, including `ORACLE_MAX_FILE_SIZE` semantics and the two
 separate provider enums (`ORACLE_EMBEDDING_PROVIDER`: `openai` | `ollama` |
 `stub`; `ORACLE_LLM_PROVIDER`: `auto` | `anthropic` | `openai` |
 `openai-compatible` | `ollama`). Not duplicated here.

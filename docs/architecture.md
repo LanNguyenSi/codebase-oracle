@@ -2,32 +2,82 @@
 
 How codebase-oracle turns a directory of git repos into a queryable semantic index.
 
+## Components
+
+The CLI, the stdio MCP server, the HTTP MCP server, watch mode and the refresh script are entry points into the same pipeline functions, and all of them use one store, `store.db` under `ORACLE_DATA_DIR`. The HTTP transport has no reindex tool and no `path_glob` filter.
+
+| Entry point | Command or tool | Calls |
+|-------------|-----------------|-------|
+| CLI `codebase-oracle` | `index` | `runIndex` |
+| | `query` | `queryCodebase` |
+| | `search` | `searchCodebase` |
+| | `expand` | `expandFile` |
+| | `list-repos` | the store's repo listing |
+| stdio MCP server (`codebase-oracle mcp`) | `oracle_reindex` | `runIndex` |
+| stdio and HTTP MCP servers (`npm run serve` for HTTP) | `oracle_query` | `queryCodebase` |
+| | `oracle_search` | `searchCodebase` |
+| | `oracle_expand` | `expandFile` |
+| | `oracle_list_repos` | the store's repo listing |
+| Watch mode (`codebase-oracle watch`) | file events | `splitFile`, `createEmbeddings`, store upserts |
+| `scripts/oracle-refresh.sh` | after pulling the repos | `npm run index` |
+
+`runIndex` calls the scanner (`discoverRepos`, `walkRepo`), `splitFile` and `createEmbeddings`, then writes per file to the store. `queryCodebase` and `searchCodebase` run a similarity search against the store, and only `queryCodebase` calls an LLM (`createLlm`). `expandFile` looks up the file's metadata in the store and reads the file from disk. The flowchart shows the same structure.
+
+```mermaid
+flowchart TD
+  subgraph Entry["Entry points"]
+    WATCH["watch mode"]
+    REFRESH["scripts/oracle-refresh.sh"]
+    CLI["CLI: codebase-oracle"]
+    STDIO["stdio MCP server"]
+    HTTP["HTTP MCP server"]
+  end
+  subgraph Read["Read functions"]
+    EXPAND["expandFile"]
+    SEARCH["searchCodebase"]
+    QUERY["queryCodebase"]
+  end
+  RUN["runIndex"]
+  LLM["createLlm"]
+  DB[("store.db<br/>SQLite + sqlite-vec")]
+  REFRESH -- "npm run index" --> CLI
+  CLI -- index --> RUN
+  STDIO -- oracle_reindex --> RUN
+  CLI --> Read
+  STDIO --> Read
+  HTTP --> Read
+  WATCH -- "split, embed, upsert" --> DB
+  RUN -- "scan, split, embed, upsert" --> DB
+  SEARCH -- "similarity search" --> DB
+  QUERY -- "similarity search" --> DB
+  EXPAND -- "file metadata" --> DB
+  QUERY --> LLM
+```
+
 ## Pipeline
 
-```
-$ORACLE_SCAN_ROOT/**/*.ts,md,prisma
-        |
-        v
-   [Scanner]  ── walk repos, filter files
-        |
-        v
-   [Splitter] ── code-aware chunking (function/class boundaries)
-        |
-        v
-  [Embeddings] ── OpenAI text-embedding-3-small
-        |
-        v
- [Vector Store] ── sqlite-vec (SQLite virtual table, cosine distance, WAL)
-        |
-        v
-  [RAG Chain]  ── retrieved chunks + question → Claude/OpenAI/Ollama → cited answer
+The index pipeline turns the repos under the scan root into chunks, embeddings and rows in the store; `search` and `query` read from that store. The flowchart shows the stages in order.
+
+```mermaid
+flowchart TD
+  ROOT["ORACLE_SCAN_ROOT/repo<br/>direct child git repos"]
+  SCANNER["Scanner<br/>default extension allowlist, skip dirs, size ceilings"]
+  SPLITTER["Splitter<br/>recursive splitter, 1500 chars / 200 overlap<br/>TS/JS declaration and Markdown heading separators"]
+  EMBED["Embeddings<br/>OpenAI (default) or Ollama"]
+  STORE[("Vector store<br/>sqlite-vec, cosine distance, WAL")]
+  SEARCHP["search<br/>ranked chunks, no LLM"]
+  RAG["RAG chain (query)<br/>retrieved chunks + question<br/>Anthropic / OpenAI / OpenAI-compatible"]
+  ANSWER["cited answer<br/>raw chunks if no LLM<br/>or the LLM call fails"]
+  ROOT --> SCANNER --> SPLITTER --> EMBED --> STORE
+  STORE --> SEARCHP
+  STORE --> RAG --> ANSWER
 ```
 
-The index pipeline scans all git repos under a root directory, splits source files into chunks with language-aware boundaries, embeds them via OpenAI-compatible APIs (OpenAI or Ollama), and stores the vectors locally. Queries retrieve the most relevant chunks and feed them to an LLM for answer generation with source citations.
+The index pipeline scans every git repo directly under a root directory, splits files into chunks with per-language separators, embeds them via OpenAI-compatible APIs (OpenAI or Ollama), and stores the vectors locally. `search` returns the most relevant chunks without an LLM. `query` feeds them to an LLM for answer generation with source citations, or returns the raw chunks when no LLM is configured or the call fails.
 
 ## Chunking
 
-The splitter uses LangChain's code-aware splitters where available, falling back to a recursive character splitter for text. Chunks record `lineStart` / `lineEnd` so search results can render as `path:line_start-line_end (repo)`. Older chunks indexed before the line-number rollout fall back to the bare `filePath` form.
+The splitter is LangChain's recursive character splitter with per-language separators: TS/JS split preferably at export, function, class, interface, type and const boundaries, Markdown at headings, and everything else at blank lines and line breaks. Chunks record `lineStart` / `lineEnd` so search results can render as `path:line_start-line_end (repo)`. Older chunks indexed before the line-number rollout fall back to the bare `filePath` form.
 
 Markdown files that lead with a YAML frontmatter block (`---` ... `---` as the first lines) get four additional flat metadata keys: `fmType`, `fmTitle`, `fmTags`, and `fmSources`, read from the frontmatter's `type`, `title`, `tags`, and `sources` fields respectively. Each key is included only when the source field is present with the right type (non-empty string for `fmType`/`fmTitle`, an array of non-empty strings for `fmTags`/`fmSources`); anything else is silently omitted, and the frontmatter text itself is left in the chunked content rather than stripped out. A malformed frontmatter block fails soft: the ingest logs a warning naming the file and continues without any `fm*` keys, never throwing.
 
@@ -57,11 +107,11 @@ If you change `ORACLE_EMBEDDING_PROVIDER` or `ORACLE_EMBEDDING_MODEL`, the next 
 
 ## Incremental indexing
 
-Indexing is incremental when `ORACLE_VECTOR_STORE=directory`: unchanged files are reused from persisted vectors (via file hashes), and only new/changed files are re-embedded. Progress is checkpointed batch-by-batch during embedding, so interrupted runs can resume without redoing all completed batches.
+Indexing is always incremental: a file whose content hash matches the stored hash is reused, only new or changed files are split and embedded, and files that vanished from disk are pruned. The run embeds all changed files first (in batches of 100) and then writes them to the store file by file, so an interrupted run persists none of its new embeddings and the next run embeds those files again.
 
 ## Watch mode
 
-`npm run watch` runs a [chokidar](https://github.com/paulmillr/chokidar) watcher over the scan root. File add/change/delete events are accumulated and, after a quiet period (default 3 s), processed in one batch: changed files are re-embedded, deleted files drop their vectors, vanished repo roots purge all their vectors. Editor save-storms (e.g. VS Code's atomic-rename trick) collapse into a single re-embed thanks to chokidar's `awaitWriteFinish` plus the debounce. Newly dropped `.git` roots are detected and logged; back-fill them with one explicit `npm run index` so the first-time ingestion is consistent, then watch picks up subsequent edits.
+`npm run watch` runs a [chokidar](https://github.com/paulmillr/chokidar) watcher over the scan root. File add/change/delete events are accumulated and, after a quiet period (default 3 s, set with `--debounce <ms>`), processed in one batch: changed files are re-embedded, deleted files drop their vectors, vanished repo roots purge all their vectors. Editor save-storms (e.g. VS Code's atomic-rename trick) collapse into a single re-embed thanks to chokidar's `awaitWriteFinish` plus the debounce. Newly dropped `.git` roots are detected and logged; back-fill them with one explicit `npm run index` so the first-time ingestion is consistent, then watch picks up subsequent edits.
 
 Watch mode is additive: it does not replace `npm run index`, which remains the ground-truth bootstrap path.
 

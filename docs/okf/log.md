@@ -2,6 +2,69 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-11T16:13:41Z, `docs/mcp.md` shows the user-scope HTTP registration with
+  its bearer token header, `docs/configuration.md` names the legacy Ollama
+  base URL fallback and the missing default key after leaving the `ollama`
+  alias, and `docs/architecture.md`'s component diagram draws one store edge
+  per read function. The two `docs/architecture.md` citations in
+  `index-freshness-vs-code-freshness.md` moved two lines down with the new
+  edges and were re-pointed. The pointer docs' `description` fields now match
+  their bodies, and `architecture-pointer.md` names watch mode once. Four
+  historical references in this log into
+  `index-freshness-vs-code-freshness.md`, shifted by the 2026-10-11T12:57:37Z
+  edits, were re-pointed to the lines that hold their content now: the
+  `loadConfig()` call-site list and the `index` command citation of the
+  2026-08-22T07:23:49Z entry, and the `package.json` citation and its
+  sibling line reference of the 2026-08-22T05:39:39Z entry. The five docs
+  listing a changed file under `sources:` were re-checked and re-stamped.
+  `okf-kit check --json docs/okf` and `okf-kit check --json --require-anchors
+  docs/okf` (okf-kit 0.16.0) on the committed tree: no errors, no warnings,
+  no notices.
+
+- 2026-10-11T16:02:25Z, `docs/configuration.md` now says the `openai-compatible` LLM lane
+  needs a non-empty `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY`, because the
+  OpenAI SDK refuses the empty-string fallback, and its flowchart gives the
+  deprecated `ollama` alias its own node. `provider-enums-and-token-budget.md`
+  states the same consequence after its key-resolution citation;
+  `configuration-pointer.md` was re-checked and needed no change. Both
+  re-stamped. No citation points into `docs/configuration.md`, and no line of
+  `provider-enums-and-token-budget.md` cited from this log moved.
+  `okf-kit check --json docs/okf` and `okf-kit check --json --require-anchors
+  docs/okf` (okf-kit 0.16.0): no errors, no warnings, no notices.
+
+- 2026-10-11T15:34:35Z, `provider-enums-and-token-budget.md` gained a paragraph on the HTTP
+  MCP transport's inbound bearer token and its loopback-only default, and
+  lists `src/http-auth.ts` and `src/http-server.ts` under `sources:`. The two
+  new `sources:` lines moved the historical provider-enums citation of the
+  2026-08-22T05:39:39Z entry down again; it now points at line 36. Re-stamped.
+  `okf-kit check --json docs/okf` and `okf-kit check --json --require-anchors
+  docs/okf` (okf-kit 0.16.0): no errors, no warnings, no notices.
+
+- 2026-10-11T12:57:37Z, docs audit: `docs/architecture.md`, `docs/configuration.md` and
+  `docs/mcp.md` were corrected against the code, so every doc listing one of
+  them under `sources:` was re-checked. The two `docs/architecture.md`
+  passages cited by `index-freshness-vs-code-freshness.md` had moved down
+  with the new Components section and now cite the WAL and fingerprint
+  paragraphs at their new lines. The pointer docs and `index.md` no longer
+  call the `docs/` tree accurate and current. `provider-enums-and-token-budget.md`
+  dropped its copy of a machine-local `.env`, stale line comments and
+  tracker ids, gained a section on which key each lane sends to which
+  endpoint (adding `src/store/embeddings.ts` to its `sources:`), and now
+  matches what `docs/configuration.md` covers. `sources-expansion.md` and
+  `ingest-size-limit-enforcement.md` dropped tracker ids;
+  `ingest-size-limit-enforcement.md` notes that watch mode does not honor the
+  `.codebase-oracle-skip` sentinel. Every citation in the four concept docs
+  now carries a string anchor on its last content line, with continuations
+  lifted into standalone citations; re-resolving them corrected the
+  sources-expansion early-break citation, the writeEpoch implementation
+  range, and narrowed the `src/mcp-server.ts` reindex and handshake ranges. One
+  historical citation in this log, the provider-enums line of the
+  2026-08-22T05:39:39Z entry, moved one line down with that doc's new
+  `sources:` entry and was re-pointed. All seven non-reserved docs were
+  re-stamped. `okf-kit check --json docs/okf` and `okf-kit check --json
+  --require-anchors docs/okf` (okf-kit 0.16.0) on the re-stamped tree:
+  no errors, no warnings, no notices.
+
 - 2026-10-06T04:08:19Z, `docs/configuration.md` Groq example now names `openai/gpt-oss-120b`
   instead of the retired Llama 3.3 70B model id (line 67 changed in place,
   no line moved; tracker task c007327b). Neither doc that lists it as a source
@@ -321,8 +384,8 @@
   entry-guard fix (`isMainModule` now realpath-resolves `process.argv[1]`
   before comparing to `import.meta.url`, so the CLI works when reached
   through a symlink such as the npm bin shim) shifted every subsequent line
-  in the file. index-freshness-vs-code-freshness.md:135's seven `loadConfig()`
-  call-site line numbers (`src/index.ts:...`) and :150's `index` command
+  in the file. index-freshness-vs-code-freshness.md:142-145's seven `loadConfig()`
+  call-site line numbers (`src/index.ts:...`) and :161-162's `index` command
   citation were re-measured against current source and fixed; no other
   `src/index.ts:NN` citation exists in docs/okf outside this file (checked
   via `grep -rn 'index.ts:[0-9]' docs/`; the two hits in log.md are dated
@@ -333,10 +396,10 @@
   the prior entry's "everything else matched" / "real drift" claims for
   index-freshness-vs-code-freshness.md and provider-enums-and-token-budget.md
   were incomplete; a review pass found two more issues the first pass missed.
-  index-freshness-vs-code-freshness.md:150 cited `package.json:22` for the
+  index-freshness-vs-code-freshness.md:161 cited `package.json:22` for the
   `index` npm script; line 22 is `dev`, the script is at line 23 (the doc
-  already cited :23 correctly elsewhere, at line 73), fixed, restamped.
-  provider-enums-and-token-budget.md:33 presented a paraphrase as a verbatim
+  already cited :23 correctly elsewhere, at line 80), fixed, restamped.
+  provider-enums-and-token-budget.md:36 presented a paraphrase as a verbatim
   quote ("so embedding and LLM live..." vs src/config.ts:52-55's actual "lets
   embedding and LLM live...") was reworded so the quoted span matches the
   source exactly, restamped.

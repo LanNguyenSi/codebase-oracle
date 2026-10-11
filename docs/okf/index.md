@@ -1,8 +1,8 @@
 # Knowledge bundle index
 
 Curated OKF knowledge bundle for codebase-oracle. The `docs/` tree one level up
-is already accurate and current for architecture, the MCP tool surface, and
-configuration; those get pointer entries here rather than copies. The concept
+is the reference for architecture, the MCP tool surface, and configuration;
+those get pointer entries here rather than copies. The concept
 docs below cover semantics that live only in code, or that no doc states.
 
 Note: this repo indexes its own `docs/` tree, so these files are retrievable
@@ -25,11 +25,13 @@ through the very tool they describe.
   The parameter is documented in docs/cli-reference.md and mcp.md; the
   semantics live only here and in code.
 - [Ingest size limit](ingest-size-limit-enforcement.md), oversize and read-error
-  skips are loud while empty-file skips are silent, and the gate is implemented
-  independently in `scanner.ts` and `watch.ts`.
+  skips are loud while empty-file skips are silent, the gate is implemented
+  independently in `scanner.ts` and `watch.ts`, and only the scanner honors the
+  `.codebase-oracle-skip` sentinel.
 - [Provider enums and token budget](provider-enums-and-token-budget.md), two
-  separate provider enums, and why only the Anthropic lane caps `maxTokens`
-  (the blank-answer failure mode on thinking models).
+  separate provider enums, which key each lane sends to which endpoint, and why
+  only the Anthropic lane caps `maxTokens` (the blank-answer failure mode on
+  thinking models).
 
 ## Runbooks
 

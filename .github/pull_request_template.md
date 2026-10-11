@@ -10,6 +10,7 @@
 
 - [ ] `npm run build`
 - [ ] `npm test`
+- [ ] `npm run test:typecheck`
 - [ ] For native-dep changes: `node -e "require('better-sqlite3'); require('sqlite-vec')"` succeeds
 - [ ] Manual smoke check: <!-- command or scenario -->
 

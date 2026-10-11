@@ -21,14 +21,14 @@ tests/eval/
     └── db-toy/                // toy Prisma DB layer (schema + query helpers)
 ```
 
-The `.codebase-oracle-skip` sentinel at `corpus/` is what stops the user's primary index from absorbing fixture content when it walks this repo. The eval runner sets its `scanRoot` to `corpus/` and walks each per-repo subdir, so it never trips on the sentinel itself.
+The `.codebase-oracle-skip` sentinel at `corpus/` is what stops the user's primary index from absorbing fixture content when a full index run (`npm run index`, `oracle_reindex`) walks this repo. `npm run watch` does not check the sentinel, so fixture files edited while watch runs enter the main index until the next full index run prunes them. The eval runner sets its `scanRoot` to `corpus/` and walks each per-repo subdir, so it never trips on the sentinel itself.
 
 ## Running
 
 ```bash
-# Real embeddings (OPENAI_API_KEY by default; Ollama via the
-# openai-compatible provider is fine too). Compares against baseline.json
-# and exits non-zero on any regression.
+# Real embeddings (OPENAI_API_KEY by default, or a local Ollama with
+# ORACLE_EMBEDDING_PROVIDER=ollama). Compares against baseline.json and
+# exits non-zero on any regression.
 npm run eval
 
 # Same run, but overwrite baseline.json with the current results.
@@ -66,4 +66,4 @@ Each fixture repo lives at `corpus/<name>/` and is treated as a real repo by the
 
 ## Pre-release hook
 
-Following the `feedback_release_dogfood` pattern: before tagging a release, run `npm run eval` and paste the final line into the release PR. A regression vs. baseline blocks merge until either the cause is fixed or the baseline is updated with a documented reason.
+Before tagging a release, run `npm run eval` and paste the final line into the release PR. A regression vs. baseline blocks merge until the cause is fixed or the baseline is updated with a documented reason.
