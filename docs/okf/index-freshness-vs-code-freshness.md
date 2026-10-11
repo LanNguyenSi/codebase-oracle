@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-10-11T12:57:37Z
+timestamp: 2026-10-11T16:13:41Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -53,7 +53,7 @@ Verified cross-process visibility:
   transaction and no JS-level result cache, so each query observes the latest
   committed state, including writes committed by *another* process (a CLI
   `npm run index`, `npm run watch`, or a systemd reindex).
-- `docs/architecture.md:94-97#"without restarting."` asserts the same guarantee: WAL store, "Writes
+- `docs/architecture.md:96-99#"without restarting."` asserts the same guarantee: WAL store, "Writes
   and reads can safely happen from different processes," and "A running stdio or
   HTTP MCP server sees `npm run watch` writes on its next query without
   restarting." **The code supports this claim.**
@@ -149,7 +149,7 @@ Verify: reconnect, then call `oracle_list_repos` / `oracle_search`; a
 provider/model mismatch against the store fails loud with an
 `IndexFingerprintError` naming the expected values
 (`src/store/sqlite-store.ts:460-470#"set ORACLE_EMBEDDING_MODEL="`,
-`docs/architecture.md:100-104#"revert the env change"`).
+`docs/architecture.md:102-106#"revert the env change"`).
 
 ## The repeated operator trap
 

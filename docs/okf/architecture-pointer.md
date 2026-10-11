@@ -1,9 +1,9 @@
 ---
 type: overview
 title: Architecture — where the pipeline is documented
-description: Pointer doc — ../architecture.md is the authoritative pipeline overview (ingest, chunking, OKF frontmatter metadata, embeddings, store, incremental indexing, watch); this entry only names what it does NOT cover.
+description: Pointer doc — ../architecture.md is the reference pipeline overview (ingest, chunking, OKF frontmatter metadata, embeddings, store, incremental indexing, watch); this entry only names what it does NOT cover.
 tags: [overview, architecture, pointer]
-timestamp: 2026-10-11T12:57:37Z
+timestamp: 2026-10-11T16:13:41Z
 sources:
   - docs/architecture.md
 ---
@@ -13,8 +13,8 @@ sources:
 [../architecture.md](../architecture.md) is the reference for the entry points
 (CLI, stdio and HTTP MCP servers, watch mode, refresh script), the ingest
 pipeline, chunking, the four `fm*` frontmatter metadata keys, embeddings, the
-SQLite + sqlite-vec store, incremental indexing, and watch mode. It is not
-duplicated here.
+SQLite + sqlite-vec store, and incremental indexing. It is not duplicated
+here.
 
 What it does **not** cover, and where to read instead:
 
