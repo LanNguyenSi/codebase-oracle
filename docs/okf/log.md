@@ -2,6 +2,17 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-11T16:02:25Z, `docs/configuration.md` now says the `openai-compatible` LLM lane
+  needs a non-empty `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY`, because the
+  OpenAI SDK refuses the empty-string fallback, and its flowchart gives the
+  deprecated `ollama` alias its own node. `provider-enums-and-token-budget.md`
+  states the same consequence after its key-resolution citation;
+  `configuration-pointer.md` was re-checked and needed no change. Both
+  re-stamped. No citation points into `docs/configuration.md`, and no line of
+  `provider-enums-and-token-budget.md` cited from this log moved.
+  `okf-kit check --json docs/okf` and `okf-kit check --json --require-anchors
+  docs/okf` (okf-kit 0.16.0): no errors, no warnings, no notices.
+
 - 2026-10-11T15:34:35Z, `provider-enums-and-token-budget.md` gained a paragraph on the HTTP
   MCP transport's inbound bearer token and its loopback-only default, and
   lists `src/http-auth.ts` and `src/http-server.ts` under `sources:`. The two

@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-10-11T15:34:35Z
+timestamp: 2026-10-11T16:02:25Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -95,7 +95,7 @@ Each lane resolves its own credential and base URL:
 - **Embeddings, `ollama`**: `OLLAMA_API_KEY`, else `OPENAI_API_KEY`, else the literal `"ollama"`, sent to `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else `DEFAULT_OLLAMA_BASE_URL` (`src/store/embeddings.ts:51-59#"config.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL"`). Set `OLLAMA_API_KEY` explicitly when `OPENAI_API_KEY` is also set and that key must not reach the Ollama endpoint.
 - **LLM, `anthropic`** (and `auto` with `ANTHROPIC_API_KEY`): `ANTHROPIC_API_KEY` to the Anthropic SDK default endpoint (`chain.ts:397-399#"anthropicApiKey: config.anthropicApiKey!"`).
 - **LLM, `openai`** (and `auto` with only `OPENAI_API_KEY`): `OPENAI_API_KEY` to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`chain.ts:415-424#": undefined,"`). This lane shares both values with the `openai` embedding lane.
-- **LLM, `openai-compatible` and the legacy `ollama` alias**: `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else `""` (or `"ollama"` for the legacy alias), sent to `ORACLE_LLM_BASE_URL`, else `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else (legacy alias only) `DEFAULT_OLLAMA_BASE_URL` (`chain.ts:441-450#"const apiKey = config.llmApiKey"`). It never falls back to `OPENAI_API_KEY` (`chain.ts:431-432#"for the LLM was the old footgun"`).
+- **LLM, `openai-compatible` and the legacy `ollama` alias**: `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else `""` (or `"ollama"` for the legacy alias), sent to `ORACLE_LLM_BASE_URL`, else `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else (legacy alias only) `DEFAULT_OLLAMA_BASE_URL` (`chain.ts:441-450#"const apiKey = config.llmApiKey"`). It never falls back to `OPENAI_API_KEY` (`chain.ts:431-432#"for the LLM was the old footgun"`). The empty-string fallback does not reach the endpoint: the OpenAI SDK client behind `ChatOpenAI` rejects an empty key with `Missing credentials` when the LLM is called, so `query` returns degraded raw chunks. The `openai-compatible` lane therefore needs a non-empty `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY`, a placeholder for an endpoint that does not check auth, as `docs/configuration.md` says.
 
 The HTTP MCP transport's credential runs the other way: `ORACLE_HTTP_TOKEN` is the bearer token that clients must present on `POST /mcp` (`src/http-server.ts:270#"verifyBearer(req.headers.authorization, bindConfig.token)"`), compared in constant time (`src/http-auth.ts:47-48#"timingSafeEqual(a, b)"`). It is never sent to a provider. The server binds to `127.0.0.1` by default and refuses to start on a bind address outside `127.0.0.1`, `localhost` and `::1` when no token is set (`src/http-auth.ts:19-20#"if (!loopbackAllowlist.has(bind) && !token)"`).
 
