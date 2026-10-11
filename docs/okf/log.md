@@ -2,6 +2,31 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-11T12:57:37Z, docs audit: `docs/architecture.md`, `docs/configuration.md` and
+  `docs/mcp.md` were corrected against the code, so every doc listing one of
+  them under `sources:` was re-checked. The two `docs/architecture.md`
+  passages cited by `index-freshness-vs-code-freshness.md` had moved down
+  with the new Components section and now cite the WAL and fingerprint
+  paragraphs at their new lines. The pointer docs and `index.md` no longer
+  call the `docs/` tree accurate and current. `provider-enums-and-token-budget.md`
+  dropped its copy of a machine-local `.env`, stale line comments and
+  tracker ids, gained a section on which key each lane sends to which
+  endpoint (adding `src/store/embeddings.ts` to its `sources:`), and now
+  matches what `docs/configuration.md` covers. `sources-expansion.md` and
+  `ingest-size-limit-enforcement.md` dropped tracker ids;
+  `ingest-size-limit-enforcement.md` notes that watch mode does not honor the
+  `.codebase-oracle-skip` sentinel. Every citation in the four concept docs
+  now carries a string anchor on its last content line, with continuations
+  lifted into standalone citations; re-resolving them corrected the
+  sources-expansion early-break citation, the writeEpoch implementation
+  range, and narrowed the `src/mcp-server.ts` reindex and handshake ranges. One
+  historical citation in this log, the provider-enums line of the
+  2026-08-22T05:39:39Z entry, moved one line down with that doc's new
+  `sources:` entry and was re-pointed. All seven non-reserved docs were
+  re-stamped. `okf-kit check --json docs/okf` and `okf-kit check --json
+  --require-anchors docs/okf` (okf-kit 0.16.0) on the re-stamped tree:
+  no errors, no warnings, no notices.
+
 - 2026-10-06T04:08:19Z, `docs/configuration.md` Groq example now names `openai/gpt-oss-120b`
   instead of the retired Llama 3.3 70B model id (line 67 changed in place,
   no line moved; tracker task c007327b). Neither doc that lists it as a source
