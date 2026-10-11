@@ -10,7 +10,7 @@ After `npm i -g @lannguyensi/codebase-oracle`:
 claude mcp add -s user codebase-oracle -- codebase-oracle mcp
 ```
 
-The MCP server reads its configuration once at startup, from its own environment and from a `.env` file in the directory it is started in (variables already set in the environment take precedence). For a global install, make sure the client passes the provider keys to the server process, or use the `cd` wrapper from the [multi-repo workspace recipe](#multi-repo-workspace-recipe-source-checkout-user-scope) below. `ORACLE_SCAN_ROOT` is only needed for `oracle_reindex`. Restart the server after changing configuration.
+The MCP server reads its configuration once at startup, from its own environment and from a `.env` file in the directory it is started in (variables already set in the environment take precedence). For a global install, make sure the client passes the provider keys to the server process, or start the server in a directory that holds a `.env`, as the `sh -c 'cd ... && exec ...'` wrapper in the [multi-repo workspace recipe](#multi-repo-workspace-recipe-source-checkout-user-scope) below does (for a global install, exec `codebase-oracle mcp` there). `ORACLE_SCAN_ROOT` is only needed for `oracle_reindex`. Restart the server after changing configuration.
 
 From a local source checkout (no global install), run inside the checkout:
 
@@ -106,7 +106,11 @@ The returned chunks include file path plus repo name, so the agent can read the 
 claude mcp add codebase-oracle --transport http http://localhost:3100/mcp
 ```
 
-With `ORACLE_HTTP_TOKEN` set, the client must send `Authorization: Bearer <token>`.
+This registers at local scope, so it connects only for sessions started in that directory; add `-s user` for every session. With `ORACLE_HTTP_TOKEN` set, the client must send `Authorization: Bearer <token>`, which `claude mcp add` sets with `--header`:
+
+```bash
+claude mcp add -s user --transport http codebase-oracle http://localhost:3100/mcp --header "Authorization: Bearer <token>"
+```
 
 The HTTP transport currently exposes four of the five stdio tools: `oracle_query`, `oracle_search`, `oracle_list_repos`, and `oracle_expand`. `oracle_reindex` is stdio-only, and the HTTP `oracle_search` does not accept the `path_glob` filter (it takes `query`, `repo`, `limit`, `type`, `tags`, and `expand_sources`, the last a boolean defaulting to `true`). Use the stdio transport if you need on-demand reindexing or path-glob scoping.
 

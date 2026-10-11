@@ -48,7 +48,9 @@ flowchart TD
   HTTP --> Read
   WATCH -- "split, embed, upsert" --> DB
   RUN -- "scan, split, embed, upsert" --> DB
-  Read -- "similarity search, file metadata" --> DB
+  SEARCH -- "similarity search" --> DB
+  QUERY -- "similarity search" --> DB
+  EXPAND -- "file metadata" --> DB
   QUERY --> LLM
 ```
 
@@ -65,7 +67,7 @@ flowchart TD
   STORE[("Vector store<br/>sqlite-vec, cosine distance, WAL")]
   SEARCHP["search<br/>ranked chunks, no LLM"]
   RAG["RAG chain (query)<br/>retrieved chunks + question<br/>Anthropic / OpenAI / OpenAI-compatible"]
-  ANSWER["cited answer<br/>raw chunks if no LLM"]
+  ANSWER["cited answer<br/>raw chunks if no LLM<br/>or the LLM call fails"]
   ROOT --> SCANNER --> SPLITTER --> EMBED --> STORE
   STORE --> SEARCHP
   STORE --> RAG --> ANSWER
