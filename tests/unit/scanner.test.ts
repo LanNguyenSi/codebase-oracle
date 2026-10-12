@@ -8,7 +8,7 @@ import {
   type SkippedFile,
 } from "../../src/ingest/scanner.js";
 import { join } from "node:path";
-import { mkdtemp, mkdir, writeFile, rm, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, chmod, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 describe("discoverRepos", () => {
@@ -560,6 +560,19 @@ describe("isUnderSkipSentinel", () => {
       // At the repo root itself.
       await writeFile(join(repo, ".codebase-oracle-skip"), "");
       expect(isUnderSkipSentinel(join(repo, "a", "b", "f.ts"), repo)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("ignores a symlinked sentinel, like the scanner's Dirent check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    try {
+      const repo = join(root, "repo");
+      await mkdir(join(repo, "a"), { recursive: true });
+      await writeFile(join(root, "target"), "");
+      await symlink(join(root, "target"), join(repo, "a", ".codebase-oracle-skip"));
+      expect(isUnderSkipSentinel(join(repo, "a", "f.ts"), repo)).toBe(false);
     } finally {
       await rm(root, { recursive: true });
     }

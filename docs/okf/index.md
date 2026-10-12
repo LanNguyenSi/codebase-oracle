@@ -27,7 +27,8 @@ through the very tool they describe.
 - [Ingest size limit](ingest-size-limit-enforcement.md), oversize and read-error
   skips are loud while empty-file skips are silent, the gate is implemented
   independently in `scanner.ts` and `watch.ts`, while both honor the
-  `.codebase-oracle-skip` sentinel through one shared helper.
+  `.codebase-oracle-skip` sentinel (one shared constant; watch checks it
+  through the scanner's `isUnderSkipSentinel` helper).
 - [Provider enums and token budget](provider-enums-and-token-budget.md), two
   separate provider enums, which key each lane sends to which endpoint, and why
   only the Anthropic lane caps `maxTokens` (the blank-answer failure mode on

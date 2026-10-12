@@ -1,5 +1,5 @@
 import { readdir, stat, readFile } from "node:fs/promises";
-import { statSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { join, relative, extname, dirname, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
@@ -9,10 +9,10 @@ import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 // docs/configuration.md.
 export const SKIP_SENTINEL = ".codebase-oracle-skip";
 
-/** True when `dir` directly contains the skip sentinel as a regular file. */
+/** True when `dir` directly holds the sentinel as a regular file (no symlink, as in the scan). */
 export function dirHasSkipSentinel(dir: string): boolean {
   try {
-    return statSync(join(dir, SKIP_SENTINEL)).isFile();
+    return lstatSync(join(dir, SKIP_SENTINEL)).isFile();
   } catch {
     return false;
   }
