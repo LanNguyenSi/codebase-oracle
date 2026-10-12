@@ -466,6 +466,39 @@ describe("runWatchMode integration", () => {
     }
   }, 30000);
 
+  it("ignores a sentinel above the repo root (in the scan root), at enqueue and at flush", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // The full scan only honours sentinels inside a repo; one in the scan
+    // root itself must not hide the repo's files from watch either.
+    await writeFile(join(scanRoot, ".codebase-oracle-skip"), "", "utf8");
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
+    });
+    try {
+      await writeFile(join(repoDir, "above.ts"), "export const above = true;", "utf8");
+      await waitForPending(watcher, 1);
+
+      await watcher.flushOnce();
+
+      expect(embedSpy).toHaveBeenCalled();
+      expect(watcher.stats().vectors).toBeGreaterThan(0);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 30000);
+
   it("collapses a save-storm into a single re-embed", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
     const config = testConfig(scanRoot, dataDir);
