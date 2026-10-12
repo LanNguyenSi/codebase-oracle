@@ -2,6 +2,19 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-12T07:32:48Z, watch mode now honors the `.codebase-oracle-skip` sentinel through the
+  scanner's shared `isUnderSkipSentinel` helper, so `ingest-size-limit-enforcement.md`
+  and the `index.md` summary no longer say only the scanner honors it. The
+  `openai-compatible` LLM lane now sends the non-empty placeholder
+  `not-needed` instead of an empty key when none is configured, and the unused
+  `vectorStoreType` config field is gone; `provider-enums-and-token-budget.md`
+  states both. The citations in `index-freshness-vs-code-freshness.md`,
+  `ingest-size-limit-enforcement.md`, `provider-enums-and-token-budget.md` and
+  `sources-expansion.md` that moved with those edits were re-pointed to the
+  lines holding their content now, and the two pointer docs were re-checked and
+  re-stamped. `okf-kit check --json --require-anchors docs/okf` (okf-kit
+  0.16.0) on the committed tree: no errors, no warnings, no notices.
+
 - 2026-10-11T16:13:41Z, `docs/mcp.md` shows the user-scope HTTP registration with
   its bearer token header, `docs/configuration.md` names the legacy Ollama
   base URL fallback and the missing default key after leaving the `ollama`
