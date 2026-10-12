@@ -3,11 +3,12 @@ import {
   DEFAULT_MAX_FILE_SIZE_BYTES,
   DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
   discoverRepos,
+  isUnderSkipSentinel,
   walkRepo,
   type SkippedFile,
 } from "../../src/ingest/scanner.js";
 import { join } from "node:path";
-import { mkdtemp, mkdir, writeFile, rm, chmod } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, chmod, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 describe("discoverRepos", () => {
@@ -531,6 +532,58 @@ describe("walkRepo per-type size ceiling (.md vs. general files)", () => {
       }
 
       expect(files).toEqual(["ts-unaffected-repo/normal.ts"]);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+});
+
+describe("isUnderSkipSentinel", () => {
+  it("detects a sentinel in an ancestor up to and including the repo root, and not above it", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    try {
+      const repo = join(root, "repo");
+      await mkdir(join(repo, "a", "b"), { recursive: true });
+      await writeFile(join(repo, "a", "f.ts"), "x");
+      await writeFile(join(repo, "a", "b", "f.ts"), "x");
+      expect(isUnderSkipSentinel(join(repo, "a", "b", "f.ts"), repo)).toBe(false);
+
+      await writeFile(join(repo, "a", ".codebase-oracle-skip"), "");
+      expect(isUnderSkipSentinel(join(repo, "a", "b", "f.ts"), repo)).toBe(true);
+      expect(isUnderSkipSentinel(join(repo, "a", "f.ts"), repo)).toBe(true);
+
+      // A sentinel above the repo root is outside the scan walk: ignored.
+      await rm(join(repo, "a", ".codebase-oracle-skip"));
+      await writeFile(join(root, ".codebase-oracle-skip"), "");
+      expect(isUnderSkipSentinel(join(repo, "a", "b", "f.ts"), repo)).toBe(false);
+
+      // At the repo root itself.
+      await writeFile(join(repo, ".codebase-oracle-skip"), "");
+      expect(isUnderSkipSentinel(join(repo, "a", "b", "f.ts"), repo)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("ignores a symlinked sentinel, like the scanner's Dirent check", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    try {
+      const repo = join(root, "repo");
+      await mkdir(join(repo, "a"), { recursive: true });
+      await writeFile(join(root, "target"), "");
+      await symlink(join(root, "target"), join(repo, "a", ".codebase-oracle-skip"));
+      expect(isUnderSkipSentinel(join(repo, "a", "f.ts"), repo)).toBe(false);
+    } finally {
+      await rm(root, { recursive: true });
+    }
+  });
+
+  it("ignores a sentinel that is a directory, like the scanner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    try {
+      const repo = join(root, "repo");
+      await mkdir(join(repo, ".codebase-oracle-skip"), { recursive: true });
+      expect(isUnderSkipSentinel(join(repo, "f.ts"), repo)).toBe(false);
     } finally {
       await rm(root, { recursive: true });
     }

@@ -12,7 +12,6 @@ describe("loadConfig", () => {
     // legacy localhost fallback now lives at the `ollama` alias call sites
     // in retrieval/chain.ts and store/embeddings.ts instead.
     expect(config.ollamaBaseUrl).toBeUndefined();
-    expect(config.vectorStoreType).toBe("directory");
   });
 
   it("loads without scanRoot for read-only commands", () => {
@@ -35,14 +34,12 @@ describe("loadConfig", () => {
       ollamaBaseUrl: "http://localhost:11434/v1",
       embeddingModel: "text-embedding-3-large",
       llmModel: "llama3.1",
-      vectorStoreType: "memory",
     });
     expect(config.scanRoot).toBe("/custom/path");
     expect(config.embeddingProvider).toBe("ollama");
     expect(config.llmProvider).toBe("ollama");
     expect(config.embeddingModel).toBe("text-embedding-3-large");
     expect(config.llmModel).toBe("llama3.1");
-    expect(config.vectorStoreType).toBe("memory");
   });
 
   it("uses provider-aware model defaults", () => {

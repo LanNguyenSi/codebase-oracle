@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **`@modelcontextprotocol/sdk` 1.32.1** (GHSA-6qxp-vccf-f47h, task aff72e2b): the lockfile resolves 1.32.1 and the dependency range is now `^1.32.1`, so consumers cannot resolve an affected version. Since 1.30.1 the SDK's HTTP server transports apply a 4 MiB default request-body limit and a 100-message batch cap.
 
+### Fixed
+
+- `npm run watch` now honors the `.codebase-oracle-skip` sentinel in any
+  directory from the file's own directory up to the repo root, like the full
+  scan; files under such a directory are no longer embedded by watch.
+- The `openai-compatible` LLM lane sends the fixed placeholder key
+  `not-needed` when no key is configured, so keyless endpoints (llama-server,
+  local proxies) work; the OpenAI SDK used to reject the empty key before
+  sending any request. A configured `ORACLE_LLM_API_KEY` / `OLLAMA_API_KEY`
+  still wins.
+- The HTTP server entry point resolves `process.argv[1]` with `realpathSync`
+  before its is-entry-module check, so starting it through a symlinked path
+  works.
+- The `openai-compatible` missing-base-URL error now names
+  `ORACLE_OLLAMA_BASE_URL` / `OLLAMA_BASE_URL` as accepted alternatives, and
+  the `expand` `<path>` help text describes the `search` path form.
+
+### Removed
+
+- The unused `vectorStoreType` config field and the `ORACLE_VECTOR_STORE`
+  environment variable (accepted before, but with no runtime effect).
+
 ### Changed
 
 - Docs: the Groq example in `docs/configuration.md` now uses

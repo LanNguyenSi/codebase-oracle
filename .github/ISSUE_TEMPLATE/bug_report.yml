@@ -11,6 +11,7 @@ body:
         - oracle_query
         - oracle_expand
         - oracle_list_repos
+        - oracle_reindex
         - indexing pipeline
         - install / native deps
         - other / unsure
@@ -40,7 +41,7 @@ body:
     id: node
     attributes:
       label: Node.js version
-      placeholder: "20.x"
+      placeholder: "22.x"
   - type: input
     id: os
     attributes:

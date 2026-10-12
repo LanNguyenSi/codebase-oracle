@@ -45,7 +45,6 @@ function directoryConfig(dataDir: string, overrides: Partial<Config> = {}): Conf
     ollamaBaseUrl: "http://localhost:11434/v1",
     embeddingModel: "test",
     llmModel: "test",
-    vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
     llmTimeoutMs: 120_000,

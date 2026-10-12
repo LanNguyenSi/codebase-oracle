@@ -21,7 +21,7 @@ tests/eval/
     └── db-toy/                // toy Prisma DB layer (schema + query helpers)
 ```
 
-The `.codebase-oracle-skip` sentinel at `corpus/` is what stops the user's primary index from absorbing fixture content when a full index run (`npm run index`, `oracle_reindex`) walks this repo. `npm run watch` does not check the sentinel, so fixture files edited while watch runs enter the main index until the next full index run prunes them. The eval runner sets its `scanRoot` to `corpus/` and walks each per-repo subdir, so it never trips on the sentinel itself.
+The `.codebase-oracle-skip` sentinel at `corpus/` is what stops the user's primary index from absorbing fixture content when a full index run (`npm run index`, `oracle_reindex`) walks this repo. `npm run watch` checks it too, so fixture files edited while watch runs are not embedded. The eval runner sets its `scanRoot` to `corpus/` and walks each per-repo subdir, so it never trips on the sentinel itself.
 
 ## Running
 

@@ -57,9 +57,6 @@ const configSchema = z.object({
   llmApiKey: z.string().optional(),
   llmModel: z.string().default("claude-sonnet-4-6"),
 
-  // Vector store
-  vectorStoreType: z.enum(["memory", "directory"]).default("directory"),
-
   // Ingest — optional override of the file-extension allowlist
   includeExtensions: z.array(z.string().startsWith(".")).optional(),
 
@@ -155,7 +152,6 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     embeddingModel: process.env.ORACLE_EMBEDDING_MODEL ?? defaultEmbeddingModel,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     llmModel: process.env.ORACLE_LLM_MODEL ?? defaultLlmModel,
-    vectorStoreType: process.env.ORACLE_VECTOR_STORE,
     llmBaseUrl: process.env.ORACLE_LLM_BASE_URL,
     llmApiKey: process.env.ORACLE_LLM_API_KEY,
     includeExtensions: parseExtensionsList(process.env.ORACLE_INCLUDE_EXTENSIONS),

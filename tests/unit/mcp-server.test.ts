@@ -59,7 +59,6 @@ const testConfig: Config = {
   ollamaBaseUrl: "http://localhost:11434/v1",
   embeddingModel: "text-embedding-3-small",
   llmModel: "claude-sonnet-4-6",
-  vectorStoreType: "directory",
   maxFileSizeBytes: 500_000,
   maxTextFileSizeBytes: 2_000_000,
   llmTimeoutMs: 120_000,

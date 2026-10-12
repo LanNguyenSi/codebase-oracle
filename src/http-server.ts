@@ -14,6 +14,7 @@
  * Connect from Claude Code:
  *   claude mcp add codebase-oracle --transport http http://localhost:3100/mcp
  */
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createServer as createHttpServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -444,8 +445,20 @@ export function startHttpServer(): void {
 //   httpServer.listen(port, ...) unconditionally at module load time.
 // Now those side effects live exclusively inside startHttpServer(), which only
 // runs when the file is invoked directly.
-const invokedDirectly = process.argv[1]
-  ? fileURLToPath(import.meta.url) === process.argv[1]
-  : false;
+//
+// argv[1] is resolved through the filesystem before the compare: Node
+// realpath's import.meta.url, so a symlinked start path (a bin link, a
+// symlinked checkout) would otherwise never match and the server would not start.
+function resolveEntryPath(argv1: string | undefined): string | undefined {
+  if (argv1 === undefined) return undefined;
+  try {
+    return realpathSync(argv1);
+  } catch {
+    return undefined;
+  }
+}
+
+const invokedDirectly =
+  resolveEntryPath(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedDirectly) startHttpServer();

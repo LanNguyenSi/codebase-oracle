@@ -113,6 +113,8 @@ Indexing is always incremental: a file whose content hash matches the stored has
 
 `npm run watch` runs a [chokidar](https://github.com/paulmillr/chokidar) watcher over the scan root. File add/change/delete events are accumulated and, after a quiet period (default 3 s, set with `--debounce <ms>`), processed in one batch: changed files are re-embedded, deleted files drop their vectors, vanished repo roots purge all their vectors. Editor save-storms (e.g. VS Code's atomic-rename trick) collapse into a single re-embed thanks to chokidar's `awaitWriteFinish` plus the debounce. Newly dropped `.git` roots are detected and logged; back-fill them with one explicit `npm run index` so the first-time ingestion is consistent, then watch picks up subsequent edits.
 
+Watch applies the same filters as the full scan to which events it accepts: skip directories, the extension allowlist, and the `.codebase-oracle-skip` sentinel (a file under a directory holding the sentinel, up to the repo root, is never embedded).
+
 Watch mode is additive: it does not replace `npm run index`, which remains the ground-truth bootstrap path.
 
 ## Tech stack

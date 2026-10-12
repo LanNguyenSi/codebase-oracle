@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createLlm,
+  OPENAI_COMPATIBLE_FALLBACK_KEY,
   extractSourcePointers,
   extractSources,
   formatChunkExpandedTag,
@@ -34,7 +35,6 @@ function baseConfig(overrides: Partial<Config> = {}): Config {
     ollamaBaseUrl: "http://localhost:11434/v1",
     embeddingModel: "text-embedding-3-small",
     llmModel: "claude-sonnet-4-6",
-    vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
     llmTimeoutMs: 120_000,
@@ -120,6 +120,7 @@ describe("createLlm", () => {
       ollamaBaseUrl: undefined,
     });
     expect(() => createLlm(config)).toThrow(/ORACLE_LLM_BASE_URL/);
+    expect(() => createLlm(config)).toThrow(/ORACLE_OLLAMA_BASE_URL or OLLAMA_BASE_URL/);
   });
 
   // Regression coverage for the dead-guard bug: `ollamaBaseUrl` used to
@@ -206,10 +207,47 @@ describe("createLlm", () => {
       apiKey?: string;
     } | null;
     const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
-    // Strict: must be the documented empty-string fallback, not the
+    // Strict: must be the fixed non-empty placeholder, not the
     // embedding-lane key. Future regressions that reintroduce ANY other
     // fallback (openaiApiKey, env, etc.) would change this and fail loudly.
-    expect(resolvedKey).toBe("");
+    expect(resolvedKey).toBe("not-needed");
+    expect(resolvedKey).toBe(OPENAI_COMPATIBLE_FALLBACK_KEY);
+  });
+
+  it("provider=openai-compatible with no key constructs a client carrying the non-empty placeholder (keyless endpoints)", () => {
+    const config = baseConfig({
+      llmProvider: "openai-compatible",
+      llmBaseUrl: "http://localhost:8080/v1",
+    });
+    const llm = createLlm(config) as {
+      constructor: { name: string };
+      openAIApiKey?: string;
+      apiKey?: string;
+    } | null;
+    expect(llm?.constructor.name).toBe("ChatOpenAI");
+    const resolvedKey = llm?.openAIApiKey ?? llm?.apiKey;
+    expect(typeof resolvedKey).toBe("string");
+    expect((resolvedKey as string).length).toBeGreaterThan(0);
+  });
+
+  it("provider=openai-compatible: a configured key wins over the placeholder, and ollamaApiKey is used before it", () => {
+    const withLlmKey = createLlm(
+      baseConfig({
+        llmProvider: "openai-compatible",
+        llmBaseUrl: "http://localhost:8080/v1",
+        llmApiKey: "configured",
+      }),
+    ) as { openAIApiKey?: string; apiKey?: string } | null;
+    expect(withLlmKey?.openAIApiKey ?? withLlmKey?.apiKey).toBe("configured");
+
+    const withOllamaKey = createLlm(
+      baseConfig({
+        llmProvider: "openai-compatible",
+        llmBaseUrl: "http://localhost:8080/v1",
+        ollamaApiKey: "legacy",
+      }),
+    ) as { openAIApiKey?: string; apiKey?: string } | null;
+    expect(withOllamaKey?.openAIApiKey ?? withOllamaKey?.apiKey).toBe("legacy");
   });
 
   it("new llmBaseUrl takes precedence over legacy ollamaBaseUrl", () => {
@@ -998,7 +1036,6 @@ describe("searchCodebase type/tags filters (real store)", () => {
       ollamaBaseUrl: "http://localhost:11434/v1",
       embeddingModel: "test",
       llmModel: "test",
-      vectorStoreType: "directory",
       maxFileSizeBytes: 500_000,
       maxTextFileSizeBytes: 2_000_000,
       llmTimeoutMs: 120_000,

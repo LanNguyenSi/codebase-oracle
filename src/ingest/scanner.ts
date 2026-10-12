@@ -1,5 +1,6 @@
 import { readdir, stat, readFile } from "node:fs/promises";
-import { join, relative, extname } from "node:path";
+import { lstatSync } from "node:fs";
+import { join, relative, extname, dirname, isAbsolute } from "node:path";
 import { createHash } from "node:crypto";
 import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 
@@ -7,6 +8,34 @@ import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 // scan tree) is treated as "do not index this subtree". Documented in
 // docs/configuration.md.
 export const SKIP_SENTINEL = ".codebase-oracle-skip";
+
+/** True when `dir` directly holds the sentinel as a regular file (no symlink, as in the scan). */
+export function dirHasSkipSentinel(dir: string): boolean {
+  try {
+    return lstatSync(join(dir, SKIP_SENTINEL)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * True when any directory from the one holding `filePath` up to and including
+ * `repoRoot` contains the skip sentinel. Mirrors the full scan, which prunes a
+ * directory containing the sentinel (walking from the repo root down), so a
+ * file under such a directory never enters the index.
+ */
+export function isUnderSkipSentinel(filePath: string, repoRoot: string): boolean {
+  let dir = dirname(filePath);
+  const rel = relative(repoRoot, dir);
+  if (rel.startsWith("..") || isAbsolute(rel)) return false;
+  for (;;) {
+    if (dirHasSkipSentinel(dir)) return true;
+    if (dir === repoRoot) return false;
+    const parent = dirname(dir);
+    if (parent === dir) return false;
+    dir = parent;
+  }
+}
 
 export const DEFAULT_INCLUDE_EXTENSIONS: ReadonlySet<string> = new Set([
   // JS / TS ecosystem
