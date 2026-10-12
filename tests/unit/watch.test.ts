@@ -162,7 +162,6 @@ describe("runWatchMode integration", () => {
       ollamaBaseUrl: "http://localhost:11434/v1",
       embeddingModel: "fake-model",
       llmModel: "fake-llm",
-      vectorStoreType: "directory",
       maxFileSizeBytes: 500_000,
       maxTextFileSizeBytes: 2_000_000,
       llmTimeoutMs: 120_000,
@@ -373,6 +372,49 @@ describe("runWatchMode integration", () => {
         "utf8",
       );
       await writeFile(join(repoDir, "hand.ts"), "export const hand = 2;", "utf8");
+
+      await waitForPending(watcher, 1);
+      await new Promise((r) => setTimeout(r, 150));
+      expect(watcher.stats().pending).toBe(1);
+
+      await watcher.flushOnce();
+
+      const repos = await listIndexedRepos(config);
+      expect(repos).toMatchObject([{ repo: "auth", chunkCount: 1, fileCount: 1 }]);
+      expect(embedSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 30000);
+
+  it("does not embed a file under a directory holding the .codebase-oracle-skip sentinel (ancestor, like the full scan)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Sentinel on an ancestor of the file, not in the file's own directory.
+    const fixtures = join(repoDir, "fixtures");
+    await mkdir(join(fixtures, "nested"), { recursive: true });
+    await writeFile(join(fixtures, ".codebase-oracle-skip"), "", "utf8");
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
+    });
+    try {
+      await writeFile(
+        join(fixtures, "nested", "skipped.ts"),
+        "export const skipped = true;",
+        "utf8",
+      );
+      await writeFile(join(repoDir, "kept.ts"), "export const kept = 2;", "utf8");
 
       await waitForPending(watcher, 1);
       await new Promise((r) => setTimeout(r, 150));

@@ -208,7 +208,10 @@ export function buildProgram(): Command {
     .command("expand")
     .description("Read a window of lines around a position in an indexed file")
     .argument("<repo>", "Repo name (must be indexed)")
-    .argument("<path>", "File path relative to the repo root")
+    .argument(
+      "<path>",
+      "File path as `search` prints it: relative to ORACLE_SCAN_ROOT, starting with the repo directory",
+    )
     .option("-l, --line <n>", "1-indexed line to center the window on", "1")
     .option(
       "-w, --window <n>",

@@ -429,7 +429,11 @@ function createOpenAILlm(config: Config, modelName: string) {
 // Resolution prefers the new ORACLE_LLM_* env pair and falls back to the
 // legacy ollama-named pair so existing setups keep working without edits.
 // We deliberately do NOT fall back to `openaiApiKey` — embedding-key reuse
-// for the LLM was the old footgun (PR for task 5e4eb1f3).
+// for the LLM was the old footgun (a key meant for the embedding
+// endpoint would be sent to the LLM endpoint).
+/** Placeholder sent when an openai-compatible endpoint has no key configured. */
+export const OPENAI_COMPATIBLE_FALLBACK_KEY = "not-needed";
+
 function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
   if (isLegacyOllama) {
     warnOllamaProviderDeprecated();
@@ -442,11 +446,12 @@ function createOpenAICompatibleLlm(config: Config, isLegacyOllama: boolean) {
     ?? (isLegacyOllama ? DEFAULT_OLLAMA_BASE_URL : undefined);
   const baseURL = ensureV1BaseUrl(config.llmBaseUrl ?? ollamaBaseUrl!);
   // For local Ollama the conventional sentinel key is the literal "ollama"
-  // (the server ignores it). For openai-compatible we prefer to leave the
-  // key blank and let the SDK surface a clear 401 if the endpoint requires
-  // auth — the error-surfacing fix from task 7549a1ce now makes that
-  // legible.
-  const fallbackKey = isLegacyOllama ? "ollama" : "";
+  // (the server ignores it). For openai-compatible the OpenAI SDK throws
+  // "Missing credentials" before it sends any request when the key is empty,
+  // which would break keyless endpoints (vLLM, llama-server, local proxies).
+  // Use a fixed non-empty placeholder only when no key is configured; an
+  // endpoint that requires auth still rejects it with a 401.
+  const fallbackKey = isLegacyOllama ? "ollama" : OPENAI_COMPATIBLE_FALLBACK_KEY;
   const apiKey = config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey;
   return new ChatOpenAI({
     apiKey,
@@ -501,7 +506,8 @@ export function createLlm(config: Config) {
     // resolving to the legacy Ollama localhost default.
     if (!config.llmBaseUrl && !config.ollamaBaseUrl) {
       throw new Error(
-        "ORACLE_LLM_PROVIDER=openai-compatible requires ORACLE_LLM_BASE_URL.",
+        "ORACLE_LLM_PROVIDER=openai-compatible requires ORACLE_LLM_BASE_URL " +
+          "(ORACLE_OLLAMA_BASE_URL or OLLAMA_BASE_URL also satisfy this check).",
       );
     }
     return createOpenAICompatibleLlm(config, false);

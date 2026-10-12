@@ -199,3 +199,57 @@ describe("cli-reference.md flag table vs commander registrations", () => {
     expect(mismatches, mismatches.join("\n")).toEqual([]);
   });
 });
+
+// The "## Options of other commands" table documents `index`, `watch` and
+// `expand` options as | Command(s) | Option | Description | rows. Guard it the
+// same way: every documented (command, long flag) pair must be registered in
+// commander, and every flag those commands register must have a row.
+const OTHER_COMMANDS = ["index", "watch", "expand"] as const;
+
+function parseOtherCommandsTable(markdown: string): Set<string> {
+  const section = markdown.match(
+    /## Options of other commands\n\n\|[^\n]*\n\|[-\s|]+\|\n([\s\S]*?)(?:\n\n|$)/,
+  );
+  if (!section) {
+    throw new Error(
+      "Could not locate the '## Options of other commands' table in docs/cli-reference.md",
+    );
+  }
+  const pairs = new Set<string>();
+  for (const line of section[1].split("\n")) {
+    const cells = line.split("|").map((c) => c.trim());
+    // ["", commands, option, description, ""]
+    if (cells.length < 4) continue;
+    const flag = cells[2].match(/--([a-zA-Z][a-zA-Z0-9-]*)/)?.[1];
+    if (!flag) continue;
+    for (const cmd of cells[1].matchAll(/`([a-z-]+)`/g)) {
+      pairs.add(`${cmd[1]}:${flag}`);
+    }
+  }
+  return pairs;
+}
+
+describe("cli-reference.md 'Options of other commands' table vs commander registrations", () => {
+  const documented = parseOtherCommandsTable(cliReference);
+  const registered = new Set(
+    collectCommanderFlags(OTHER_COMMANDS)
+      // `--json` is documented once in the "## Flags" table, which names
+      // `expand` among the commands it applies to.
+      .filter((f) => f.flag !== "help" && f.flag !== "json")
+      .map((f) => `${f.command}:${f.flag}`),
+  );
+
+  it("documents every option the index, watch and expand commands register", () => {
+    const missing = [...registered].filter((p) => !documented.has(p));
+    expect(missing, "registered in commander but missing from the table").toEqual([]);
+  });
+
+  it("documents no option those commands do not register", () => {
+    const stale = [...documented].filter((p) => !registered.has(p));
+    expect(stale, "documented in the table but not registered in commander").toEqual([]);
+  });
+
+  it("finds a non-empty table", () => {
+    expect(documented.size).toBeGreaterThan(0);
+  });
+});

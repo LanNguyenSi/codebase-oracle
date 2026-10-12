@@ -12,6 +12,7 @@ import {
   DEFAULT_MAX_TEXT_FILE_SIZE_BYTES,
   TEXT_FILE_EXTENSIONS,
   discoverRepos,
+  isUnderSkipSentinel,
   type ScannedFile,
 } from "./ingest/scanner.js";
 import { mergeSkipDirs } from "./ingest/skip-dirs.js";
@@ -377,6 +378,10 @@ export async function runWatchMode(
     const resolved = computeRepoAndRelativePath(absolutePath, config.scanRoot, repoRoots);
     if (!resolved) return;
     if (kind === "upsert") {
+      // Same tree-level opt-out as the full scan: a file under a directory
+      // holding the skip sentinel is never embedded.
+      const repoRoot = join(config.scanRoot, resolved.relativePath.split(sep)[0]);
+      if (isUnderSkipSentinel(absolutePath, repoRoot)) return;
       pending.recordUpsert(absolutePath, resolved.repo, resolved.relativePath);
     } else {
       pending.recordDelete(resolved.repo, resolved.relativePath);

@@ -23,7 +23,6 @@ function testConfig(dir: string, overrides: Partial<Config> = {}): Config {
     ollamaBaseUrl: "http://localhost:11434/v1",
     embeddingModel: "text-embedding-3-small",
     llmModel: "test",
-    vectorStoreType: "directory",
     maxFileSizeBytes: 500_000,
     maxTextFileSizeBytes: 2_000_000,
     llmTimeoutMs: 120_000,
