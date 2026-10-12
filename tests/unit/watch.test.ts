@@ -432,6 +432,40 @@ describe("runWatchMode integration", () => {
     }
   }, 30000);
 
+  it("does not embed a file whose directory gains the sentinel after the event was queued (same debounce window)", async () => {
+    const { scanRoot, dataDir, repoDir } = await setupScanRoot();
+    const config = testConfig(scanRoot, dataDir);
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const fixtures = join(repoDir, "fixtures");
+    await mkdir(fixtures, { recursive: true });
+
+    const fake = fakeEmbeddings();
+    const embedSpy = vi.spyOn(fake, "embedDocuments");
+
+    const watcher = await runWatchMode(config, {
+      embeddings: fake,
+      debounceMs: 20_000,
+      usePolling: true, // see waitForPending comment above
+    });
+    try {
+      await writeFile(join(fixtures, "late.ts"), "export const late = true;", "utf8");
+      await waitForPending(watcher, 1);
+      // The upsert is queued; now the sentinel appears before the flush.
+      await writeFile(join(fixtures, ".codebase-oracle-skip"), "", "utf8");
+
+      await watcher.flushOnce();
+
+      expect(embedSpy).not.toHaveBeenCalled();
+      expect(watcher.stats().vectors).toBe(0);
+    } finally {
+      await watcher.close();
+      logSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  }, 30000);
+
   it("collapses a save-storm into a single re-embed", async () => {
     const { scanRoot, dataDir, repoDir } = await setupScanRoot();
     const config = testConfig(scanRoot, dataDir);
