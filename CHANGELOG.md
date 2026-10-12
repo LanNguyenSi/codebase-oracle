@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- `npm run watch` re-checks the `.codebase-oracle-skip` sentinel at flush time, so a file edited and then covered by a new sentinel within one debounce window is no longer embedded; `isUnderSkipSentinel` resolves both arguments, so relative or trailing-slash roots no longer walk past the repo root. Sentinel removal does not back-fill and is documented as such (task a1029859).
 - `npm run watch` now honors the `.codebase-oracle-skip` sentinel in any
   directory from the file's own directory up to the repo root, like the full
   scan; files under such a directory are no longer embedded by watch.

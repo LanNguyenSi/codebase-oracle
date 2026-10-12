@@ -1,6 +1,6 @@
 import { readdir, stat, readFile } from "node:fs/promises";
 import { lstatSync } from "node:fs";
-import { join, relative, extname, dirname, isAbsolute } from "node:path";
+import { join, relative, extname, dirname, isAbsolute, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { DEFAULT_SKIP_DIRS } from "./skip-dirs.js";
 
@@ -24,8 +24,12 @@ export function dirHasSkipSentinel(dir: string): boolean {
  * directory containing the sentinel (walking from the repo root down), so a
  * file under such a directory never enters the index.
  */
-export function isUnderSkipSentinel(filePath: string, repoRoot: string): boolean {
-  let dir = dirname(filePath);
+export function isUnderSkipSentinel(filePath: string, repoRootPath: string): boolean {
+  // Resolve both so `./x/repo/a/f.ts` against `x/repo/` compares like with
+  // like: a trailing slash or `./` prefix must not defeat the `dir === root`
+  // stop condition and walk past the repo root.
+  const repoRoot = resolve(repoRootPath);
+  let dir = dirname(resolve(filePath));
   const rel = relative(repoRoot, dir);
   if (rel.startsWith("..") || isAbsolute(rel)) return false;
   for (;;) {

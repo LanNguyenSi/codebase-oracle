@@ -98,7 +98,7 @@ Override the extension allowlist with `ORACLE_INCLUDE_EXTENSIONS`. Add repo-spec
 
 For "lives in the source tree but must not enter the index" subtrees (vendored fixtures, generated golden files, sample apps shipped for documentation purposes), drop a `.codebase-oracle-skip` file into the directory. The scanner prunes any subtree that contains this sentinel, regardless of the directory name. The eval-set fixture corpus under `tests/eval/corpus/` uses this so the toy repos never pollute the user's main index.
 
-Both the full scan (`npm run index`, `oracle_reindex`) and `npm run watch` honor the sentinel: watch ignores add/change events for a file whose directory, or any directory above it up to the repo root, contains the sentinel. A sentinel dropped into a directory whose files are already indexed does not remove them by itself; the next full index run does.
+Both the full scan (`npm run index`, `oracle_reindex`) and `npm run watch` honor the sentinel: watch ignores add/change events for a file whose directory, or any directory above it up to the repo root, contains the sentinel. A file edited and then covered by a new sentinel within one debounce window is not embedded, because watch re-checks the sentinel when it flushes. A sentinel dropped into a directory whose files are already indexed does not remove them by itself; the next full index run does. Removing a sentinel does not back-fill either: watch only reacts to file events, so files already present in the formerly skipped subtree are indexed by the next full index run (or when they next change); watch does not scan the subtree on its own.
 
 ## OpenAI-compatible providers (Groq, OpenRouter, Together, vLLM, Ollama…)
 

@@ -296,6 +296,12 @@ export async function runWatchMode(
           continue;
         }
 
+        // The sentinel may have appeared after the event was enqueued
+        // (edit and sentinel creation inside one debounce window): re-check
+        // at flush time so nothing under it is embedded.
+        const evRepoRoot = join(config.scanRoot, ev.relativePath.split(sep)[0]);
+        if (isUnderSkipSentinel(ev.absolutePath, evRepoRoot)) continue;
+
         // Upsert: compute new vectors FIRST, only swap on success. An embed
         // failure leaves the old vectors in place instead of net-losing them.
         let loaded: LoadResult;

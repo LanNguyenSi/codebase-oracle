@@ -2,6 +2,14 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-12T10:03:22Z, re-verified `configuration-pointer.md` and `provider-enums-and-token-budget.md`
+  against `docs/configuration.md` after its sentinel paragraph changed; neither
+  doc's claims touch the sentinel, so only their timestamps moved.
+- 2026-10-12T10:03:12Z, watch mode re-checks the `.codebase-oracle-skip` sentinel at flush time and
+  `isUnderSkipSentinel` resolves both arguments; `ingest-size-limit-enforcement.md`
+  records both, and states that sentinel removal does not back-fill. Its
+  `scanner.ts` and `watch.ts` citations were re-verified against the changed
+  lines and re-anchored.
 - 2026-10-12T07:32:48Z, watch mode now honors the `.codebase-oracle-skip` sentinel through the
   scanner's shared `isUnderSkipSentinel` helper, so `ingest-size-limit-enforcement.md`
   and the `index.md` summary no longer say only the scanner honors it. The

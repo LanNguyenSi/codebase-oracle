@@ -565,6 +565,27 @@ describe("isUnderSkipSentinel", () => {
     }
   });
 
+  it("resolves both arguments: ./ prefixes and a trailing slash on the root respect the root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
+    const prev = process.cwd();
+    try {
+      await mkdir(join(root, "x", "repo", "a"), { recursive: true });
+      await writeFile(join(root, "x", "repo", "a", "f.ts"), "x");
+      // Sentinel above the repo root must stay ignored.
+      await writeFile(join(root, "x", ".codebase-oracle-skip"), "");
+      process.chdir(root);
+      expect(isUnderSkipSentinel("./x/repo/a/f.ts", "x/repo/")).toBe(false);
+      expect(isUnderSkipSentinel("./x/repo/a/f.ts", "./x/repo")).toBe(false);
+      expect(isUnderSkipSentinel(join(root, "x", "repo", "a", "f.ts"), "x/repo/")).toBe(false);
+
+      await writeFile(join(root, "x", "repo", "a", ".codebase-oracle-skip"), "");
+      expect(isUnderSkipSentinel("./x/repo/a/f.ts", "x/repo/")).toBe(true);
+    } finally {
+      process.chdir(prev);
+      await rm(root, { recursive: true });
+    }
+  });
+
   it("ignores a symlinked sentinel, like the scanner's Dirent check", async () => {
     const root = await mkdtemp(join(tmpdir(), "oracle-test-"));
     try {
