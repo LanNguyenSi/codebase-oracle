@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-10-17T07:32:59Z
+timestamp: 2026-10-17T07:40:12Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -93,7 +93,7 @@ Each lane resolves its own credential and base URL:
 
 - **Embeddings, `openai`**: `OPENAI_API_KEY` (required, the constructor throws without it) to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`src/store/embeddings.ts:98-110#": undefined,"`).
 - **Embeddings, `ollama`**: `OLLAMA_API_KEY`, else `OPENAI_API_KEY`, else the literal `"ollama"`, sent to `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else `DEFAULT_OLLAMA_BASE_URL` (`src/store/embeddings.ts:85-93#"config.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL"`). Set `OLLAMA_API_KEY` explicitly when `OPENAI_API_KEY` is also set and that key must not reach the Ollama endpoint.
-- On **either** embedding lane, `ORACLE_EMBEDDING_QUERY_PREFIX` (`config.embeddingQueryPrefix`) additionally wraps the provider client (`createEmbeddings`, `src/store/embeddings.ts:66-70#"return new QueryPrefixedEmbeddings"`) so the query text embeds as `prefix + query`; `embedDocuments` delegates unprefixed, so documents never see the prefix. A text-level query-path knob only — it changes neither the key nor the endpoint resolution above, is not part of the store fingerprint, and needs no reindex.
+- On **either** embedding lane, `ORACLE_EMBEDDING_QUERY_PREFIX` (`config.embeddingQueryPrefix`) additionally wraps the provider client (`createEmbeddings`, `src/store/embeddings.ts:66-70#"return new QueryPrefixedEmbeddings"`) so the query text embeds as `prefix + query`; `embedDocuments` delegates unprefixed, so documents never see the prefix. A text-level query-path knob only: it changes neither the key nor the endpoint resolution above, is not part of the store fingerprint, and needs no reindex.
 - **LLM, `anthropic`** (and `auto` with `ANTHROPIC_API_KEY`): `ANTHROPIC_API_KEY` to the Anthropic SDK default endpoint (`chain.ts:397-399#"anthropicApiKey: config.anthropicApiKey!"`).
 - **LLM, `openai`** (and `auto` with only `OPENAI_API_KEY`): `OPENAI_API_KEY` to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`chain.ts:415-424#": undefined,"`). This lane shares both values with the `openai` embedding lane.
 - **LLM, `openai-compatible` and the legacy `ollama` alias**: `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else `"not-needed"` (or `"ollama"` for the legacy alias), sent to `ORACLE_LLM_BASE_URL`, else `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else (legacy alias only) `DEFAULT_OLLAMA_BASE_URL` (`chain.ts:445-455#"const apiKey = config.llmApiKey"`). It never falls back to `OPENAI_API_KEY` (`chain.ts:431-432#"for the LLM was the old footgun"`). The placeholder is non-empty on purpose: the OpenAI SDK client behind `ChatOpenAI` rejects an empty key with `Missing credentials` before sending any request, which would break keyless endpoints. An endpoint that checks auth rejects the placeholder, and `query` then returns degraded raw chunks. A configured `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY` always wins, as `docs/configuration.md` says.

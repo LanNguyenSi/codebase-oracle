@@ -46,9 +46,9 @@ const configSchema = z.object({
   // call sites instead of here.
   ollamaBaseUrl: z.string().optional(),
   embeddingModel: z.string().default("text-embedding-3-small"),
-  // Embeddings — optional instruction prefix prepended verbatim to every
+  // Embeddings: optional instruction prefix prepended verbatim to every
   // search query before it is embedded (query path only; documents are
-  // never prefixed — see store/embeddings.ts). For instruction-tuned
+  // never prefixed, see store/embeddings.ts). For instruction-tuned
   // embedding models (e.g. Qwen3-Embedding) that expect an instruction in
   // front of the query but not in front of the documents it is matched
   // against. No trim: a trailing space or newline is part of the

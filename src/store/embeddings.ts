@@ -39,7 +39,7 @@ function ensureV1BaseUrl(baseUrl: string): string {
 // lands strictly on the query path: instruction-tuned embedding models
 // (e.g. Qwen3-Embedding) expect it in front of the query but not in front
 // of the documents it is matched against. embedDocuments therefore
-// delegates completely unprefixed — prefixing it here would quietly
+// delegates completely unprefixed; prefixing it here would quietly
 // corrupt every future index.
 class QueryPrefixedEmbeddings extends Embeddings {
   constructor(

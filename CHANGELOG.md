@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `ORACLE_EMBEDDING_QUERY_PREFIX` (config field `embeddingQueryPrefix`): an optional instruction prepended verbatim to every search query before it is embedded, for instruction-tuned embedding models (e.g. Qwen3-Embedding). Document chunks are never prefixed, so the stored index is unaffected: no reindex is needed, and the value is not part of the store fingerprint (keep it constant for all queries against one index). Unset or empty keeps query embedding exactly as before. See `docs/configuration.md` (task T-001).
+- `ORACLE_EMBEDDING_QUERY_PREFIX` (config field `embeddingQueryPrefix`): an optional instruction prepended to every search query before it is embedded, for instruction-tuned embedding models (e.g. Qwen3-Embedding). Document chunks are never prefixed, so the stored index is unaffected: no reindex is needed, and the value is not part of the store fingerprint (keep it constant for all queries against one index). Unset or empty keeps query embedding exactly as before. In `.env`, quote the value to keep a trailing space. See `docs/configuration.md`.
 
 ### Security
 

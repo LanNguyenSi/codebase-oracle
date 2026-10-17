@@ -211,7 +211,7 @@ describe("loadConfig embeddingQueryPrefix / ORACLE_EMBEDDING_QUERY_PREFIX", () =
     expect(config.embeddingQueryPrefix).toBe("");
   });
 
-  it("keeps a set env var verbatim — no trim (a trailing space or newline is part of the instruction)", () => {
+  it("keeps a set env var verbatim, no trim (a trailing space or newline is part of the instruction)", () => {
     process.env.ORACLE_EMBEDDING_QUERY_PREFIX =
       "Instruct: Given a question about a codebase, retrieve the code that answers it\nQuery: ";
     const config = loadConfig({ scanRoot: "/tmp/repos" });

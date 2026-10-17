@@ -64,6 +64,17 @@ describe("loadEnvFromFile", () => {
     expect(process.env.ORACLE_TEST_ENV_C).toBe("quoted");
   });
 
+  it("keeps a trailing space inside quotes but trims it from an unquoted value", async () => {
+    addedKeys.push("ORACLE_TEST_ENV_Q", "ORACLE_TEST_ENV_U");
+    delete process.env.ORACLE_TEST_ENV_Q;
+    delete process.env.ORACLE_TEST_ENV_U;
+    const file = await makeTmpEnvFile('ORACLE_TEST_ENV_Q="Query: "\nORACLE_TEST_ENV_U=Query: \n');
+    const { loadEnvFromFile } = await freshEnv();
+    loadEnvFromFile(file);
+    expect(process.env.ORACLE_TEST_ENV_Q).toBe("Query: ");
+    expect(process.env.ORACLE_TEST_ENV_U).toBe("Query:");
+  });
+
   it("strips single quotes from values", async () => {
     addedKeys.push("ORACLE_TEST_ENV_D");
     delete process.env.ORACLE_TEST_ENV_D;
