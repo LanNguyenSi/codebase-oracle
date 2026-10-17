@@ -262,6 +262,10 @@ export function buildProgram(): Command {
       "Debounce window in ms after the last event",
       "3000",
     )
+    .option(
+      "--polling",
+      "Use stat-based polling instead of native fs.watch events: reliably detects changes under freshly created directories, at higher CPU/IO cost on large scan roots (default off)",
+    )
     .action(async (opts) => {
       const config = loadConfig(opts.path ? { scanRoot: opts.path } : {});
       const debounceMs = Number.parseInt(opts.debounce, 10);
@@ -270,6 +274,7 @@ export function buildProgram(): Command {
           Number.isFinite(debounceMs) && debounceMs > 0
             ? debounceMs
             : undefined,
+        usePolling: opts.polling === true,
       });
       const shutdown = async (signal: NodeJS.Signals) => {
         console.log(`\nwatch: ${signal} received, flushing and closing...`);

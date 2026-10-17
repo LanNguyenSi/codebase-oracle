@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- `oracle watch --polling`: runs chokidar in stat-based polling mode instead of native fs.watch events, as a workaround for the known limitation that native fs.watch can miss all events for freshly created directories. Default off: without the flag, watch keeps native events (cheaper on large scan roots); polling trades higher CPU/IO cost on large scan roots for reliable detection. See the known-limitation note in `docs/architecture.md#watch-mode`.
 - `ORACLE_EMBEDDING_QUERY_PREFIX` (config field `embeddingQueryPrefix`): an optional instruction prepended to every search query before it is embedded, for instruction-tuned embedding models (e.g. Qwen3-Embedding). Document chunks are never prefixed, so the stored index is unaffected: no reindex is needed, and the value is not part of the store fingerprint (keep it constant for all queries against one index). Unset or empty keeps query embedding exactly as before. In `.env`, quote the value to keep a trailing space. See `docs/configuration.md`.
 
 ### Security

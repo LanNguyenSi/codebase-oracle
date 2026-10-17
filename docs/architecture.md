@@ -117,6 +117,8 @@ Watch applies the same filters as the full scan to which events it accepts: skip
 
 Watch mode is additive: it does not replace `npm run index`, which remains the ground-truth bootstrap path.
 
+Known limitation: watch relies on native OS filesystem events (fs.watch), which can miss all events for freshly created directories (observed roughly 1 in 20-40 watcher lifecycles on the test platform). When that happens no chokidar event of any kind fires for the new directory, not even the low-level raw event, so the running watcher keeps waiting for a notification the OS never sent and files under that directory are never picked up. Workarounds: run `oracle watch --polling` to switch chokidar to stat-based polling (reliable detection, higher CPU/IO cost on large scan roots, off by default), or rely on the periodic reindex (`npm run index`, scheduled refresh in [configuration.md](configuration.md#scheduled-refresh-macos-launchd)). The test suite opts into polling for the same reason (see `WatchOptions.usePolling` in `src/watch.ts`).
+
 ## Tech stack
 
 - **LangChain.js**: document splitting, embeddings orchestration, RAG chain
