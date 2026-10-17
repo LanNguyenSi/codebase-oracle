@@ -197,6 +197,36 @@ describe("loadConfig llmTimeoutMs / ORACLE_LLM_TIMEOUT_MS", () => {
   });
 });
 
+describe("loadConfig embeddingQueryPrefix / ORACLE_EMBEDDING_QUERY_PREFIX", () => {
+  const prevEnv = process.env.ORACLE_EMBEDDING_QUERY_PREFIX;
+
+  afterEach(() => {
+    if (prevEnv === undefined) delete process.env.ORACLE_EMBEDDING_QUERY_PREFIX;
+    else process.env.ORACLE_EMBEDDING_QUERY_PREFIX = prevEnv;
+  });
+
+  it("defaults to an empty string when unset", () => {
+    delete process.env.ORACLE_EMBEDDING_QUERY_PREFIX;
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.embeddingQueryPrefix).toBe("");
+  });
+
+  it("keeps a set env var verbatim, no trim (a trailing space or newline is part of the instruction)", () => {
+    process.env.ORACLE_EMBEDDING_QUERY_PREFIX =
+      "Instruct: Given a question about a codebase, retrieve the code that answers it\nQuery: ";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.embeddingQueryPrefix).toBe(
+      "Instruct: Given a question about a codebase, retrieve the code that answers it\nQuery: ",
+    );
+  });
+
+  it("treats an empty string as no prefix (an `ORACLE_EMBEDDING_QUERY_PREFIX=` .env line must not crash)", () => {
+    process.env.ORACLE_EMBEDDING_QUERY_PREFIX = "";
+    const config = loadConfig({ scanRoot: "/tmp/repos" });
+    expect(config.embeddingQueryPrefix).toBe("");
+  });
+});
+
 describe("assertScanRoot", () => {
   it("throws a friendly error when scanRoot is undefined", () => {
     const prev = process.env.ORACLE_SCAN_ROOT;

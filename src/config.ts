@@ -46,6 +46,16 @@ const configSchema = z.object({
   // call sites instead of here.
   ollamaBaseUrl: z.string().optional(),
   embeddingModel: z.string().default("text-embedding-3-small"),
+  // Embeddings: optional instruction prefix prepended verbatim to every
+  // search query before it is embedded (query path only; documents are
+  // never prefixed, see store/embeddings.ts). For instruction-tuned
+  // embedding models (e.g. Qwen3-Embedding) that expect an instruction in
+  // front of the query but not in front of the documents it is matched
+  // against. No trim: a trailing space or newline is part of the
+  // instruction. Optional in the schema (a required field would force
+  // every hand-built Config literal to name it); loadConfig falls back to
+  // the empty string, and an empty prefix means no prefixing at all.
+  embeddingQueryPrefix: z.string().optional(),
 
   // LLM for answer generation
   anthropicApiKey: z.string().optional(),
@@ -150,6 +160,10 @@ export function loadConfig(overrides: Partial<Config> = {}): Config {
     ollamaApiKey: process.env.OLLAMA_API_KEY,
     ollamaBaseUrl: process.env.ORACLE_OLLAMA_BASE_URL ?? process.env.OLLAMA_BASE_URL,
     embeddingModel: process.env.ORACLE_EMBEDDING_MODEL ?? defaultEmbeddingModel,
+    // Verbatim value, no trim (the trailing space/newline of an
+    // instruction is part of it). Unset or empty both load as "" = no
+    // prefixing.
+    embeddingQueryPrefix: process.env.ORACLE_EMBEDDING_QUERY_PREFIX ?? "",
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     llmModel: process.env.ORACLE_LLM_MODEL ?? defaultLlmModel,
     llmBaseUrl: process.env.ORACLE_LLM_BASE_URL,

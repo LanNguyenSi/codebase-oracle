@@ -35,7 +35,41 @@ function ensureV1BaseUrl(baseUrl: string): string {
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
+// Wraps a provider client so the ORACLE_EMBEDDING_QUERY_PREFIX instruction
+// lands strictly on the query path: instruction-tuned embedding models
+// (e.g. Qwen3-Embedding) expect it in front of the query but not in front
+// of the documents it is matched against. embedDocuments therefore
+// delegates completely unprefixed; prefixing it here would quietly
+// corrupt every future index.
+class QueryPrefixedEmbeddings extends Embeddings {
+  constructor(
+    private readonly base: Embeddings,
+    private readonly queryPrefix: string,
+  ) {
+    super({});
+  }
+
+  async embedDocuments(texts: string[]): Promise<number[][]> {
+    return this.base.embedDocuments(texts);
+  }
+
+  async embedQuery(text: string): Promise<number[]> {
+    return this.base.embedQuery(this.queryPrefix + text);
+  }
+}
+
+// Unset or empty prefix returns the provider client un-wrapped, so the
+// default behavior is exactly the pre-prefix behavior. The prefix is
+// deliberately not part of the store fingerprint: changing it only affects
+// how queries are embedded, so it needs no reindex (but it should stay the
+// same for all queries against one index).
 export function createEmbeddings(config: Config): Embeddings {
+  const embeddings = buildEmbeddings(config);
+  if (!config.embeddingQueryPrefix) return embeddings;
+  return new QueryPrefixedEmbeddings(embeddings, config.embeddingQueryPrefix);
+}
+
+function buildEmbeddings(config: Config): Embeddings {
   if (config.embeddingProvider === "stub") {
     // Test-only path. Refuse to produce a stub provider in production so a
     // stray ORACLE_EMBEDDING_PROVIDER=stub export can't quietly populate a

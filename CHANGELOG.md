@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `ORACLE_EMBEDDING_QUERY_PREFIX` (config field `embeddingQueryPrefix`): an optional instruction prepended to every search query before it is embedded, for instruction-tuned embedding models (e.g. Qwen3-Embedding). Document chunks are never prefixed, so the stored index is unaffected: no reindex is needed, and the value is not part of the store fingerprint (keep it constant for all queries against one index). Unset or empty keeps query embedding exactly as before. In `.env`, quote the value to keep a trailing space. See `docs/configuration.md`.
+
 ### Security
 
 - **`@modelcontextprotocol/sdk` 1.32.1** (GHSA-6qxp-vccf-f47h, task aff72e2b): the lockfile resolves 1.32.1 and the dependency range is now `^1.32.1`, so consumers cannot resolve an affected version. Since 1.30.1 the SDK's HTTP server transports apply a 4 MiB default request-body limit and a 100-message batch cap.

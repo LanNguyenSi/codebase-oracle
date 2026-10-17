@@ -3,7 +3,7 @@ type: invariant
 title: Two provider enums, and the token budget only one of them sets
 description: embeddingProvider and llmProvider are independent enums with independent env vars; only the Anthropic LLM lane caps maxTokens, so an uncapped OpenAI-compatible thinking model can return empty content.
 tags: [config, providers, llm, embeddings, gotcha]
-timestamp: 2026-10-12T10:03:22Z
+timestamp: 2026-10-17T07:40:12Z
 sources:
   - src/config.ts
   - src/retrieval/chain.ts
@@ -30,12 +30,12 @@ llmProvider: z.enum([
 ]).default("auto"),
 ```
 
-- `embeddingProvider`, env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:127-128#"process.env.ORACLE_EMBEDDING_PROVIDER"`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only, `config.ts:22-24#"tests/integration/index-cli.test.ts"`.)
-- `llmProvider`, env `ORACLE_LLM_PROVIDER` (`config.ts:130-131#"process.env.ORACLE_LLM_PROVIDER"`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
+- `embeddingProvider`, env `ORACLE_EMBEDDING_PROVIDER` (`config.ts:137-138#"process.env.ORACLE_EMBEDDING_PROVIDER"`). Values: `openai | ollama | stub`. (`stub` = deterministic hash vectors, integration tests only, `config.ts:22-24#"tests/integration/index-cli.test.ts"`.)
+- `llmProvider`, env `ORACLE_LLM_PROVIDER` (`config.ts:140-141#"process.env.ORACLE_LLM_PROVIDER"`). Values: `auto | anthropic | openai | openai-compatible | ollama`.
 
-They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:52-55#"without leaking keys across lanes"` says the `ORACLE_LLM_*` pair is kept separate from `openaiApiKey`/`openaiBaseUrl` because doing so "lets embedding and LLM live on different providers without leaking keys across lanes." That holds for the answer LLM, which never reads `OPENAI_API_KEY` on the `openai-compatible` lane. It does not hold for the `ollama` embedding lane, which falls back to `OPENAI_API_KEY` when `OLLAMA_API_KEY` is unset (see "Which key goes to which endpoint" below).
+They are **independent**: you can embed with `openai` and answer with `ollama` (or any other combination). The comment at `config.ts:62-65#"without leaking keys across lanes"` says the `ORACLE_LLM_*` pair is kept separate from `openaiApiKey`/`openaiBaseUrl` because doing so "lets embedding and LLM live on different providers without leaking keys across lanes." That holds for the answer LLM, which never reads `OPENAI_API_KEY` on the `openai-compatible` lane. It does not hold for the `ollama` embedding lane, which falls back to `OPENAI_API_KEY` when `OLLAMA_API_KEY` is unset (see "Which key goes to which endpoint" below).
 
-## Default models (`loadConfig`, `config.ts:134-141#"claude-sonnet-4-6"`)
+## Default models (`loadConfig`, `config.ts:144-151#"claude-sonnet-4-6"`)
 
 ```ts
 const defaultEmbeddingModel = embeddingProvider === "ollama"
@@ -91,8 +91,9 @@ A typical affected setup is `ORACLE_LLM_PROVIDER=openai-compatible` pointing at 
 
 Each lane resolves its own credential and base URL:
 
-- **Embeddings, `openai`**: `OPENAI_API_KEY` (required, the constructor throws without it) to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`src/store/embeddings.ts:64-76#": undefined,"`).
-- **Embeddings, `ollama`**: `OLLAMA_API_KEY`, else `OPENAI_API_KEY`, else the literal `"ollama"`, sent to `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else `DEFAULT_OLLAMA_BASE_URL` (`src/store/embeddings.ts:51-59#"config.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL"`). Set `OLLAMA_API_KEY` explicitly when `OPENAI_API_KEY` is also set and that key must not reach the Ollama endpoint.
+- **Embeddings, `openai`**: `OPENAI_API_KEY` (required, the constructor throws without it) to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`src/store/embeddings.ts:98-110#": undefined,"`).
+- **Embeddings, `ollama`**: `OLLAMA_API_KEY`, else `OPENAI_API_KEY`, else the literal `"ollama"`, sent to `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else `DEFAULT_OLLAMA_BASE_URL` (`src/store/embeddings.ts:85-93#"config.ollamaBaseUrl ?? DEFAULT_OLLAMA_BASE_URL"`). Set `OLLAMA_API_KEY` explicitly when `OPENAI_API_KEY` is also set and that key must not reach the Ollama endpoint.
+- On **either** embedding lane, `ORACLE_EMBEDDING_QUERY_PREFIX` (`config.embeddingQueryPrefix`) additionally wraps the provider client (`createEmbeddings`, `src/store/embeddings.ts:66-70#"return new QueryPrefixedEmbeddings"`) so the query text embeds as `prefix + query`; `embedDocuments` delegates unprefixed, so documents never see the prefix. A text-level query-path knob only: it changes neither the key nor the endpoint resolution above, is not part of the store fingerprint, and needs no reindex.
 - **LLM, `anthropic`** (and `auto` with `ANTHROPIC_API_KEY`): `ANTHROPIC_API_KEY` to the Anthropic SDK default endpoint (`chain.ts:397-399#"anthropicApiKey: config.anthropicApiKey!"`).
 - **LLM, `openai`** (and `auto` with only `OPENAI_API_KEY`): `OPENAI_API_KEY` to `OPENAI_BASE_URL` when set, else the OpenAI SDK default (`chain.ts:415-424#": undefined,"`). This lane shares both values with the `openai` embedding lane.
 - **LLM, `openai-compatible` and the legacy `ollama` alias**: `ORACLE_LLM_API_KEY`, else `OLLAMA_API_KEY`, else `"not-needed"` (or `"ollama"` for the legacy alias), sent to `ORACLE_LLM_BASE_URL`, else `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, else (legacy alias only) `DEFAULT_OLLAMA_BASE_URL` (`chain.ts:445-455#"const apiKey = config.llmApiKey"`). It never falls back to `OPENAI_API_KEY` (`chain.ts:431-432#"for the LLM was the old footgun"`). The placeholder is non-empty on purpose: the OpenAI SDK client behind `ChatOpenAI` rejects an empty key with `Missing credentials` before sending any request, which would break keyless endpoints. An endpoint that checks auth rejects the placeholder, and `query` then returns degraded raw chunks. A configured `ORACLE_LLM_API_KEY` or `OLLAMA_API_KEY` always wins, as `docs/configuration.md` says.
@@ -101,9 +102,9 @@ The HTTP MCP transport's credential runs the other way: `ORACLE_HTTP_TOKEN` is t
 
 ## Other LLM knobs
 
-- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:155#"ORACLE_LLM_BASE_URL"`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`config.ts:156#"ORACLE_LLM_API_KEY"`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`config.ts:154#"ORACLE_LLM_MODEL"`). These are the preferred `openai-compatible` inputs.
+- `ORACLE_LLM_BASE_URL` -> `config.llmBaseUrl` (`config.ts:169#"ORACLE_LLM_BASE_URL"`), `ORACLE_LLM_API_KEY` -> `config.llmApiKey` (`config.ts:170#"ORACLE_LLM_API_KEY"`), `ORACLE_LLM_MODEL` -> `config.llmModel` (`config.ts:168#"ORACLE_LLM_MODEL"`). These are the preferred `openai-compatible` inputs.
 - `createOpenAICompatibleLlm` resolves the base URL through an intermediate `ollamaBaseUrl` local: `config.ollamaBaseUrl`, falling back to `DEFAULT_OLLAMA_BASE_URL` only for the legacy `ollama` alias (`chain.ts:445-446#"isLegacyOllama ? DEFAULT_OLLAMA_BASE_URL : undefined"`), then `config.llmBaseUrl ?? ollamaBaseUrl!` (`chain.ts:447#"config.llmBaseUrl ?? ollamaBaseUrl!"`). Because `config.ollamaBaseUrl` carries no schema default, an `openai-compatible` lane with nothing configured resolves `ollamaBaseUrl` to `undefined` here instead of silently landing on localhost. The key resolves as `config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey` (`chain.ts:455#"config.llmApiKey ?? config.ollamaApiKey ?? fallbackKey"`), where `fallbackKey` is `"ollama"` for the legacy alias and the non-empty placeholder `"not-needed"` (`OPENAI_COMPATIBLE_FALLBACK_KEY`) otherwise (`chain.ts:454#"const fallbackKey"`). It deliberately does **not** fall back to `openaiApiKey` (`chain.ts:431-432#"for the LLM was the old footgun"`).
-- Ollama base-url precedence (`config.ts:151#"ORACLE_OLLAMA_BASE_URL ?? process.env.OLLAMA_BASE_URL"`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default (`config.ts:47#"ollamaBaseUrl: z.string().optional()"`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8#"export const DEFAULT_OLLAMA_BASE_URL"`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard (`chain.ts:507#"!config.llmBaseUrl && !config.ollamaBaseUrl"`) as a real `undefined` and throws.
+- Ollama base-url precedence (`config.ts:161#"ORACLE_OLLAMA_BASE_URL ?? process.env.OLLAMA_BASE_URL"`): `ORACLE_OLLAMA_BASE_URL ?? OLLAMA_BASE_URL`, with no schema default (`config.ts:47#"ollamaBaseUrl: z.string().optional()"`). The legacy localhost default (`DEFAULT_OLLAMA_BASE_URL`, `config.ts:8#"export const DEFAULT_OLLAMA_BASE_URL"`) is applied only at the `ollama`-alias call sites (`chain.ts` LLM branch, `embeddings.ts` embedding branch), so an unset `ollamaBaseUrl` reaches the `openai-compatible` branch's `!config.llmBaseUrl && !config.ollamaBaseUrl` guard (`chain.ts:507#"!config.llmBaseUrl && !config.ollamaBaseUrl"`) as a real `undefined` and throws.
 - `ORACLE_LLM_PROVIDER=ollama` is deprecated in favor of `openai-compatible` + `ORACLE_LLM_BASE_URL`/`ORACLE_LLM_API_KEY`; it prints a one-time warning (`chain.ts:467-475#"still resolve as fallbacks for now."`).
 - Not covered here (out of this doc's stated scope): every LLM constructor also sets a shared request timeout and `maxRetries: 0` from `config.llmTimeoutMs` (`ORACLE_LLM_TIMEOUT_MS`), see `../configuration.md` for that env var and its default's reasoning.
 
