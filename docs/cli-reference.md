@@ -22,9 +22,12 @@ npm run dev -- list-repos --json | jq '.repos[] | {repo, lastIndexedAt}'
 npm run dev -- expand my-repo my-repo/path/to/file.ts -l 42   # read a window of lines around a position
 npm run dev -- expand my-repo my-repo/path/to/file.ts --json
 npm run watch                            # keep the index fresh in the background
+npm run watch -- --polling               # same, with stat-based polling (see the polling note below)
 npm run migrate-store                    # migrate a v0.2.0 embeddings.jsonl to the SQLite store
 npm run dev -- mcp                       # stdio MCP server (see mcp.md)
 ```
+
+`watch` relies on native OS filesystem events (fs.watch), which can miss events for freshly created directories (observed roughly 1 in 20-40 watcher lifecycles on the test platform): when that happens no event fires at all and the running watcher never learns about files under the new directory. If the index stops tracking one, restart it with `watch --polling` (chokidar stat-based polling: reliable detection, costlier on large scan roots), or rely on the periodic reindex (`npm run index`, scheduled refresh in [configuration.md](configuration.md#scheduled-refresh-macos-launchd)).
 
 `expand` takes the file path exactly as `search` prints it. Indexed paths are relative to `ORACLE_SCAN_ROOT`, so they start with the repo directory.
 
@@ -59,6 +62,7 @@ See [architecture.md#watch-mode](architecture.md#watch-mode) for watch-mode debo
 |---------|--------|-------------|
 | `index`, `watch` | `-p, --path <path>` | Scan root; overrides `ORACLE_SCAN_ROOT` |
 | `watch` | `--debounce <ms>` | Quiet period after the last file event before a batch is processed (default 3000). A non-numeric or non-positive value falls back to the default |
+| `watch` | `--polling` | Use stat-based polling instead of native fs.watch events (default off). Reliable on freshly created directories, costlier on large scan roots |
 | `expand` | `-l, --line <n>` | 1-indexed line to center the window on (default 1) |
 | `expand` | `-w, --window <n>` | Window size in lines, centered on `--line` (default 30, max 200) |
 

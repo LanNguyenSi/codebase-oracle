@@ -2,6 +2,11 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-17T09:45:39Z, `oracle watch --polling` opts into chokidar stat polling. `index-freshness-vs-code-freshness.md`
+  re-verified against `src/index.ts` (its `loadConfig(` citation re-pointed after the new option);
+  `ingest-size-limit-enforcement.md` re-verified (`src/watch.ts` unchanged); `architecture-pointer.md`
+  re-verified after `docs/architecture.md` gained the watch-mode known-limitation paragraph, which its
+  'does not cover' list does not touch. Only timestamps and the one citation moved.
 - 2026-10-12T10:03:22Z, re-verified `configuration-pointer.md` and `provider-enums-and-token-budget.md`
   against `docs/configuration.md` after its sentinel paragraph changed; neither
   doc's claims touch the sentinel, so only their timestamps moved.

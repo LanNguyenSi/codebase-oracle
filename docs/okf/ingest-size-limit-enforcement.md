@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together; the `.codebase-oracle-skip` sentinel check is shared. Since the per-type ceiling was added, the applicable env var name travels with each skip so the WARNING names the knob that actually needs raising.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-10-17T07:40:12Z
+timestamp: 2026-10-17T09:27:19Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
