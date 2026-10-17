@@ -3,7 +3,7 @@ type: invariant
 title: Ingest skips are loud, and enforced in two independent places
 description: Oversize/read-error skips are reported (never swallowed) while empty files skip silently; the stat-first size gate is reimplemented separately in scanner.ts and watch.ts, so both must change together; the `.codebase-oracle-skip` sentinel check is shared. Since the per-type ceiling was added, the applicable env var name travels with each skip so the WARNING names the knob that actually needs raising.
 tags: [ingest, scanner, watch, skips, config]
-timestamp: 2026-10-12T10:03:12Z
+timestamp: 2026-10-17T07:32:59Z
 sources:
   - src/config.ts
   - src/ingest/scanner.ts
@@ -45,24 +45,24 @@ the per-type ceiling existed) produce a WARNING telling the operator to raise th
 ## Config: two size ceilings, same fail-loud parse
 
 `src/config.ts`:
-- `maxFileSizeBytes: z.number().int().positive().default(500_000)` (`config.ts:76#"default(500_000)"`)
+- `maxFileSizeBytes: z.number().int().positive().default(500_000)` (`config.ts:86#"default(500_000)"`)
   and `maxTextFileSizeBytes: z.number().int().positive().default(2_000_000)`
-  (`config.ts:88#"default(2_000_000)"`). Both positive int required.
+  (`config.ts:98#"default(2_000_000)"`). Both positive int required.
 - Env plumbing: `maxFileSizeBytes: parseMaxFileSizeBytes(process.env.ORACLE_MAX_FILE_SIZE)`
   and `maxTextFileSizeBytes: parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE)`
-  (`config.ts:159-160#"parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE)"`).
-- `parseMaxFileSizeBytes(raw)` (`config.ts:191-193#"return Number(raw);"`) and the near-identical
-  `parseMaxTextFileSizeBytes(raw)` (`config.ts:201-203#"return Number(raw);"`): `undefined` or
+  (`config.ts:173-174#"parseMaxTextFileSizeBytes(process.env.ORACLE_MAX_TEXT_FILE_SIZE)"`).
+- `parseMaxFileSizeBytes(raw)` (`config.ts:205-207#"return Number(raw);"`) and the near-identical
+  `parseMaxTextFileSizeBytes(raw)` (`config.ts:215-217#"return Number(raw);"`): `undefined` or
   `raw.trim() === ""` returns `undefined` (schema default applies); otherwise
   `Number(raw)` is handed straight to `configSchema.parse`, where
   `.int().positive()` rejects `NaN`/`0`/negative and `loadConfig` throws. Two
   separate functions (not a shared parser), mirroring the existing
   `parseExtensionsList` / `parseCsvList` pattern of one function per env var.
   (A third, near-identical `parseLlmTimeoutMs(raw)`
-  (`config.ts:209-211#"return Number(raw);"`) was added alongside these for
+  (`config.ts:223-225#"return Number(raw);"`) was added alongside these for
   `ORACLE_LLM_TIMEOUT_MS`; same contract, unrelated env var, out of this doc's
   ingest-size-limit scope.)
-- The empty-`.env`-line contract is spelled out in the comment at `config.ts:183-190#"silently resolve to some other limit."`:
+- The empty-`.env`-line contract is spelled out in the comment at `config.ts:197-204#"silently resolve to some other limit."`:
   an `ORACLE_MAX_FILE_SIZE=` line "must not crash the CLI" (treated as unset), but
   "A typo'd ORACLE_MAX_FILE_SIZE must fail loudly, not silently resolve to some other limit."
   Same contract for `ORACLE_MAX_TEXT_FILE_SIZE`.

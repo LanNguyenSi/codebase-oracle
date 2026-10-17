@@ -3,7 +3,7 @@ type: runbook
 title: Index-data freshness vs server-code freshness
 description: Two independent staleness axes in codebase-oracle — reindexed store data is visible to a running MCP server without restart (WAL), but changed oracle source needs npm run build plus an MCP-client reconnect; verify each separately.
 tags: [runbook, mcp, indexing, freshness, dist]
-timestamp: 2026-10-12T07:32:48Z
+timestamp: 2026-10-17T07:32:59Z
 sources:
   - package.json
   - src/store/sqlite-store.ts
@@ -129,7 +129,7 @@ needs a build on the `dist` path.
 
 Config is **not** re-read per call. `src/mcp-server.ts:21-23#"const config = loadConfig();"` runs
 `loadEnvFromFile()` and `const config = loadConfig()` at **module load**, once.
-`loadConfig()` reads `process.env.ORACLE_*` (`src/config.ts:126-162#"...overrides,"`), and
+`loadConfig()` reads `process.env.ORACLE_*` (`src/config.ts:136-176#"...overrides,"`), and
 `loadEnvFromFile()` only sets vars that are not already defined
 (`src/env.ts:32-33#"process.env[key] = parseEnvValue(rawValue);"`). The lazy `getStore()` retry rebuilds the store/embeddings
 from that **already-parsed `cfg`** — it does not re-read `process.env`
