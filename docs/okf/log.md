@@ -2,6 +2,10 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-18T07:52:46Z, release 0.14.0: `package.json`'s version field changed
+  in place (line 3, no cited line moved);
+  `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
+
 - 2026-10-17T09:45:39Z, `oracle watch --polling` opts into chokidar stat polling. `index-freshness-vs-code-freshness.md`
   re-verified against `src/index.ts` (its `loadConfig(` citation re-pointed after the new option);
   `ingest-size-limit-enforcement.md` re-verified (`src/watch.ts` unchanged); `architecture-pointer.md`
