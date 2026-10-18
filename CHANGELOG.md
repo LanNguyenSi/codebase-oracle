@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-18
+
 ### Added
 
 - `oracle watch --polling`: runs chokidar in stat-based polling mode instead of native fs.watch events, as a workaround for the known limitation that native fs.watch can miss all events for freshly created directories. Default off: without the flag, watch keeps native events (cheaper on large scan roots); polling trades higher CPU/IO cost on large scan roots for reliable detection. See the known-limitation note in `docs/architecture.md#watch-mode`.
