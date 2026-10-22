@@ -2,6 +2,11 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-10-22T08:20:34Z, vitest 4.1.11 -> 4.1.12 exact pins (CVE sweep 2026-10-22): `package.json`'s
+  `devDependencies` values for `vitest` and `@vitest/coverage-v8` changed in place
+  (no cited line moved, version, scripts and `bin` unchanged);
+  `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
+
 - 2026-10-18T07:52:46Z, release 0.14.0: `package.json`'s version field changed
   in place (line 3, no cited line moved);
   `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
