@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **`@hono/node-server` 2.1.5** (GHSA-rmxm-3fg6-px4f): the lockfile resolves 2.1.5 (was 2.0.12), which fixes `serveStatic` decoding the request path a second time and so letting a request bypass middleware on static paths (affected: `>= 1.19.10, < 2.1.3`). Lockfile only, pulled in through `@modelcontextprotocol/sdk`, whose range is unchanged.
+
 ## [0.14.0] - 2026-10-18
 
 ### Added
