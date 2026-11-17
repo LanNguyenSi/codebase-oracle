@@ -2,6 +2,10 @@
 
 <!-- Add new entries at the top, newest first. -->
 
+- 2026-11-17T14:38:00Z, release 0.14.1: `package.json`'s version field and dependency ranges changed in place
+  (no cited line moved, scripts and `bin` unchanged; `src/version.ts` still reads the version from it);
+  `index-freshness-vs-code-freshness.md` re-checked and re-stamped.
+
 - 2026-10-22T08:20:34Z, vitest 4.1.11 -> 4.1.12 exact pins (CVE sweep 2026-10-22): `package.json`'s
   `devDependencies` values for `vitest` and `@vitest/coverage-v8` changed in place
   (no cited line moved, version, scripts and `bin` unchanged);
